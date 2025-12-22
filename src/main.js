@@ -2,6 +2,9 @@ import "./style.css";
 import * as THREE from "three";
 import { SparkRenderer } from "@sparkjsdev/spark";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import {
   getFormatAccept,
   getFormatHandler,
@@ -103,6 +106,13 @@ const defaultCamera = {
   far: camera.far,
 };
 
+const composer = new EffectComposer( renderer );
+const renderPass = new RenderPass( scene, camera );
+composer.addPass( renderPass );
+
+const outputPass = new OutputPass();
+// composer.addPass( outputPass ); // Managed dynamically
+
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -131,6 +141,7 @@ let activeCamera = null;
 const resize = () => {
   const { clientWidth, clientHeight } = viewerEl;
   renderer.setSize(clientWidth, clientHeight, false);
+  composer.setSize(clientWidth, clientHeight);
   if (activeCamera) {
     applyCameraProjection(activeCamera, clientWidth, clientHeight);
   } else {
@@ -145,7 +156,7 @@ resize();
 const animate = () => {
   requestAnimationFrame(animate);
   controls.update();
-  renderer.render(scene, camera);
+  composer.render();
 };
 animate();
 
@@ -428,6 +439,17 @@ const loadSplatFile = async (file) => {
 
     setStatus(`解析 ${formatHandler.label} 并构建 splats...`);
     const mesh = await formatHandler.loadData({ file, bytes });
+
+    // Configure pipeline based on color space
+    // Linear input (SOG) -> RenderPass (Linear) -> OutputPass (Linear->sRGB)
+    // sRGB input (PLY) -> RenderPass (sRGB) -> Screen (sRGB)
+    if (formatHandler.colorSpace === "linear") {
+      if (!composer.passes.includes(outputPass)) {
+        composer.addPass(outputPass);
+      }
+    } else {
+      composer.removePass(outputPass);
+    }
 
     removeCurrentMesh();
     currentMesh = mesh;

@@ -5,6 +5,7 @@ export const plyFormat = {
   id: "ply",
   label: "PLY",
   extensions: ["ply"],
+  colorSpace: "srgb",
   async loadData({ file, bytes }) {
     const mesh = new SplatMesh({
       fileBytes: bytes,
