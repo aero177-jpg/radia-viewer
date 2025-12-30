@@ -44,7 +44,6 @@ app.innerHTML = `
         <button id="pick-btn" class="primary">Choose File</button>
         <input id="file-input" type="file" accept="${formatAccept}" hidden />
       </div>
-      <div class="hint">After import, debug info prints on the right and the scene renders live on the left.</div>
       <div class="debug">
         <div class="row"><span>Status</span><span id="status">Waiting for file...</span></div>
         <div class="row"><span>File</span><span id="file-name">-</span></div>
@@ -54,39 +53,46 @@ app.innerHTML = `
         <div class="row"><span>Bounds</span><span id="bounds">-</span></div>
       </div>
       <div class="settings">
-        <div class="row">
-          <label>
-            <input type="checkbox" id="grid-toggle" checked />
-            Show grid
-          </label>
+        <div class="settings-header">
+          <span class="settings-eyebrow">Camera Settings</span>
         </div>
-        <div class="row fov-controls camera-range-controls">
-          <label for="camera-range-slider">Camera range</label>
-          <input type="range" id="camera-range-slider" min="0" max="1" step="0.01" value="0.33" />
-          <span id="camera-range-label">Sm</span>
+        <div class="control-row camera-range-controls">
+          <span class="control-label">Orbit range</span>
+          <div class="control-track">
+            <input type="range" id="camera-range-slider" min="0" max="180" step="1" value="20" />
+            <span class="control-value" id="camera-range-label">20°</span>
+          </div>
         </div>
-        <div class="row fov-controls">
-          <label for="fov-slider">FOV</label>
-          <input type="range" id="fov-slider" min="20" max="120" step="1" value="60" />
-          <span id="fov-value">60°</span>
+        <div class="control-row">
+          <span class="control-label">FOV</span>
+          <div class="control-track">
+            <input type="range" id="fov-slider" min="20" max="120" step="1" value="60" />
+            <span class="control-value" id="fov-value">60°</span>
+          </div>
         </div>
-        <div class="row">
+        <div class="control-row bg-blur-controls" id="bg-blur-controls">
+          <span class="control-label">Background blur</span>
+          <div class="control-track">
+            <input type="range" id="bg-blur-slider" min="10" max="100" value="40" />
+            <span class="control-value" id="bg-blur-value">40px</span>
+          </div>
+        </div>
+        <div class="settings-footer">
           <button id="recenter-btn" class="secondary">Recenter view</button>
         </div>
-        <div class="row">
-          <label>
-            <input type="checkbox" id="bg-image-toggle" />
-            Show background image
-          </label>
-        </div>
-        <div class="row bg-image-controls" id="bg-image-controls">
-          <button id="bg-image-btn" class="secondary">Choose Background</button>
-          <input id="bg-image-input" type="file" accept="image/*" hidden />
-          <input type="range" id="bg-blur-slider" min="0" max="50" value="20" />
-          <span id="bg-blur-value">20px</span>
-        </div>
       </div>
-      <div class="log" id="log"></div>
+      <div class="log-panel" id="log-panel">
+        <button
+          id="log-toggle"
+          class="log-toggle"
+          type="button"
+          aria-expanded="false"
+        >
+          <span class="settings-eyebrow">Debug console</span>
+          <span class="chevron" aria-hidden="true"></span>
+        </button>
+        <div class="log" id="log" hidden></div>
+      </div>
     </div>
   </div>
 `;
@@ -94,6 +100,7 @@ app.innerHTML = `
 // UI references
 const viewerEl = document.getElementById("viewer");
 const pageEl = document.querySelector(".page");
+const sidePanelEl = document.getElementById("side-panel");
 const panelToggleBtn = document.getElementById("panel-toggle");
 const pickBtn = document.getElementById("pick-btn");
 const fileInput = document.getElementById("file-input");
@@ -104,16 +111,14 @@ const splatCountEl = document.getElementById("splat-count");
 const loadTimeEl = document.getElementById("load-time");
 const boundsEl = document.getElementById("bounds");
 const logEl = document.getElementById("log");
-const gridToggleEl = document.getElementById("grid-toggle");
+const logPanelEl = document.getElementById("log-panel");
+const logToggleBtn = document.getElementById("log-toggle");
 const recenterBtn = document.getElementById("recenter-btn");
 const cameraRangeSliderEl = document.getElementById("camera-range-slider");
 const cameraRangeLabelEl = document.getElementById("camera-range-label");
 const fovSliderEl = document.getElementById("fov-slider");
 const fovValueEl = document.getElementById("fov-value");
-const bgImageToggleEl = document.getElementById("bg-image-toggle");
-const bgImageControlsEl = document.getElementById("bg-image-controls");
-const bgImageBtn = document.getElementById("bg-image-btn");
-const bgImageInput = document.getElementById("bg-image-input");
+const bgBlurControlsEl = document.getElementById("bg-blur-controls");
 const bgBlurSlider = document.getElementById("bg-blur-slider");
 const bgBlurValue = document.getElementById("bg-blur-value");
 
@@ -149,6 +154,21 @@ const setStatus = (message) => {
   appendLog(message);
 };
 
+const setLogExpanded = (expanded) => {
+  if (!logPanelEl || !logToggleBtn || !logEl) return;
+  logPanelEl.classList.toggle("expanded", expanded);
+  logToggleBtn.setAttribute("aria-expanded", String(expanded));
+  logEl.hidden = !expanded;
+};
+
+if (logToggleBtn && logPanelEl && logEl) {
+  setLogExpanded(false);
+  logToggleBtn.addEventListener("click", () => {
+    const nextState = logToggleBtn.getAttribute("aria-expanded") !== "true";
+    setLogExpanded(nextState);
+  });
+}
+
 const resetInfo = () => {
   fileNameEl.textContent = "-";
   fileSizeEl.textContent = "-";
@@ -160,12 +180,42 @@ const resetInfo = () => {
 resetInfo();
 setStatus("Waiting for file...");
 
-// Background image setup
-let bgImageEnabled = false;
+// Background image setup - auto-captured from model render
 let bgImageUrl = null;
 const bgImageContainer = document.createElement("div");
 bgImageContainer.className = "bg-image-container";
 viewerEl.insertBefore(bgImageContainer, viewerEl.firstChild);
+
+const captureAndApplyBackground = () => {
+  if (!currentMesh) return;
+
+  // Store current background state
+  const prevBackground = scene.background;
+  
+  // Set solid background for capture (no transparency)
+  scene.background = new THREE.Color("#0c1018");
+  renderer.setClearColor(0x0c1018, 1);
+  
+  // Force a render
+  composer.render();
+  
+  // Capture the canvas
+  const dataUrl = renderer.domElement.toDataURL("image/jpeg", 0.9);
+  
+  bgImageUrl = dataUrl;
+  const blur = parseInt(bgBlurSlider?.value || 40);
+  updateBackgroundImage(bgImageUrl, blur);
+  
+  // Set transparent background so the blurred image shows through gaps
+  scene.background = null;
+  renderer.setClearColor(0x000000, 0);
+  
+  // Show the blur controls
+  if (bgBlurControlsEl) bgBlurControlsEl.classList.add("visible");
+  
+  requestRender();
+  appendLog("Background captured from model render");
+};
 
 const updateBackgroundImage = (url, blur = 20) => {
   if (url) {
@@ -175,20 +225,6 @@ const updateBackgroundImage = (url, blur = 20) => {
   } else {
     bgImageContainer.style.backgroundImage = "none";
     bgImageContainer.classList.remove("active");
-  }
-  requestRender();
-};
-
-const setBackgroundImageEnabled = (enabled) => {
-  bgImageEnabled = enabled;
-  if (enabled && bgImageUrl) {
-    updateBackgroundImage(bgImageUrl, parseInt(bgBlurSlider?.value || 20));
-    scene.background = null;
-    renderer.setClearColor(0x000000, 0);
-  } else {
-    bgImageContainer.classList.remove("active");
-    scene.background = new THREE.Color("#0c1018");
-    renderer.setClearColor(0x0c1018, 1);
   }
   requestRender();
 };
@@ -241,63 +277,14 @@ const defaultControls = {
   enablePan: controls.enablePan,
 };
 const cameraLimitPresets = {
-  locked: {
-    minDistance: 1.0,
-    maxDistance: 1.3,
-    minPolarAngle: Math.PI * 0.48,
-    maxPolarAngle: Math.PI * 0.52,
-    minAzimuthAngle: -Math.PI * 0.02,
-    maxAzimuthAngle: Math.PI * 0.02,
-    enablePan: false,
-  },
-  sm: {
-    minDistance: 0.9,
-    maxDistance: 1.8,
-    minPolarAngle: Math.PI * 0.45,
-    maxPolarAngle: Math.PI * 0.55,
-    minAzimuthAngle: -Math.PI * 0.05,
-    maxAzimuthAngle: Math.PI * 0.05,
-    enablePan: false,
-  },
-  md: {
-    minDistance: 0.7,
-    maxDistance: 2.5,
-    minPolarAngle: Math.PI * 0.2,
-    maxPolarAngle: Math.PI * 0.8,
-    minAzimuthAngle: -Math.PI * 0.4,
-    maxAzimuthAngle: Math.PI * 0.4,
-    enablePan: true,
-  },
-  lg: {
-    minDistance: 0.5,
-    maxDistance: 4.0,
-    minPolarAngle: Math.PI * 0.15,
-    maxPolarAngle: Math.PI * 0.85,
-    // ~180° orbit around the subject
-    minAzimuthAngle: -Math.PI * 0.5,
-    maxAzimuthAngle: Math.PI * 0.5,
-    // Allow panning over an area roughly matching the splat size
-    enablePan: true,
-  },
+  // Preserved for reference but no longer used - see applyCameraRangeDegrees()
 };
-
-let cameraLimitConfig = cameraLimitPresets.sm;
 
 const spark = new SparkRenderer({ renderer });
 scene.add(spark);
 
 // Raycaster for double-click anchor point selection
 const raycaster = new THREE.Raycaster();
-
-// Provide a simple ground for orientation
-const grid = new THREE.GridHelper(2.5, 10, 0x2a2f3a, 0x151822);
-grid.position.y = -0.5;
-scene.add(grid);
-grid.visible = false;
-
-if (gridToggleEl) {
-  gridToggleEl.checked = grid.visible;
-}
 
 // Dolly zoom state
 let dollyZoomEnabled = true;
@@ -329,10 +316,12 @@ const requestRender = () => {
 };
 
 const updateViewerAspectRatio = () => {
-  const pageEl = document.querySelector(".page");
-  const sidePanelWidth = pageEl.classList.contains("panel-open") ? 456 : 0; // 420px + margins
-  const availableWidth = window.innerWidth - 36 - sidePanelWidth; // 36px = 18px padding * 2
-  const availableHeight = window.innerHeight - 36;
+  const padding = 36; // 18px page padding on each side
+  const panelWidth = pageEl?.classList.contains("panel-open")
+    ? (sidePanelEl?.getBoundingClientRect().width ?? 0) + padding
+    : 0;
+  const availableWidth = Math.max(0, window.innerWidth - padding - panelWidth);
+  const availableHeight = Math.max(0, window.innerHeight - padding);
 
   if (originalImageAspect && originalImageAspect > 0) {
     // Calculate dimensions to fit the aspect ratio within available space
@@ -373,13 +362,6 @@ const resize = () => {
 
 window.addEventListener("resize", resize);
 resize();
-
-if (gridToggleEl) {
-  gridToggleEl.addEventListener("change", (event) => {
-    grid.visible = event.target.checked;
-    requestRender();
-  });
-}
 
 if (recenterBtn) {
   recenterBtn.addEventListener("click", () => {
@@ -525,21 +507,6 @@ const restoreHomeView = () => {
   resize();
 };
 
-function applyCameraMovementLimits(enabled) {
-  if (enabled) {
-    controls.minPolarAngle = cameraLimitConfig.minPolarAngle;
-    controls.maxPolarAngle = cameraLimitConfig.maxPolarAngle;
-    controls.minAzimuthAngle = cameraLimitConfig.minAzimuthAngle;
-    controls.maxAzimuthAngle = cameraLimitConfig.maxAzimuthAngle;
-    controls.enablePan = cameraLimitConfig.enablePan;
-  } else {
-    controls.minPolarAngle = defaultControls.minPolarAngle;
-    controls.maxPolarAngle = defaultControls.maxPolarAngle;
-    controls.minAzimuthAngle = defaultControls.minAzimuthAngle;
-    controls.maxAzimuthAngle = defaultControls.maxAzimuthAngle;
-    controls.enablePan = defaultControls.enablePan;
-  }
-}
 
 const fitViewToMesh = (mesh) => {
   if (!mesh.getBoundingBox) return;
@@ -850,11 +817,18 @@ const loadSplatFile = async (file) => {
     // The spark renderer may need multiple frames to fully initialize,
     // so we render several frames in quick succession.
     let warmupFrames = 120; // ~2 seconds at 60fps - testing if this approach works
+    let bgCaptured = false;
     const warmup = () => {
       if (warmupFrames > 0) {
         warmupFrames--;
         needsRender = true;
         requestAnimationFrame(warmup);
+        
+        // Capture background after some warmup frames (around 30 frames / 0.5s)
+        if (!bgCaptured && warmupFrames === 90) {
+          bgCaptured = true;
+          captureAndApplyBackground();
+        }
       }
     };
     warmup();
@@ -921,46 +895,40 @@ fileInput.addEventListener("change", (event) => {
   }
 });
 
-const setCameraRangePreset = (size) => {
-  const preset = cameraLimitPresets[size];
-  if (!preset) return;
-  cameraLimitConfig = preset;
-  applyCameraMovementLimits(true);
+const applyCameraRangeDegrees = (degrees) => {
+  // Convert degrees (0-180) to orbit limits
+  // 0° = locked view, 180° = full hemisphere orbit
+  const t = Math.max(0, Math.min(180, degrees)) / 180;
+  
+  // Azimuth: 0 to ±90° (π/2)
+  const azimuthRange = t * (Math.PI / 2);
+  controls.minAzimuthAngle = -azimuthRange;
+  controls.maxAzimuthAngle = azimuthRange;
+  
+  // Polar: centered at π/2 (horizontal), expand outward
+  // At 0°: very tight around horizontal (0.48π to 0.52π)
+  // At 180°: full range (0.05π to 0.95π)
+  const polarMin = 0.5 - (0.45 * t);
+  const polarMax = 0.5 + (0.45 * t);
+  controls.minPolarAngle = Math.PI * polarMin;
+  controls.maxPolarAngle = Math.PI * polarMax;
 };
 
-const cameraRangeStops = [
-  { key: "locked", label: "Locked", value: 0.0 },
-  { key: "sm", label: "Sm", value: 0.33 },
-  { key: "md", label: "Md", value: 0.66 },
-  { key: "lg", label: "Lg", value: 1.0 },
-];
-
 if (cameraRangeSliderEl) {
-  const updateCameraRangeFromSlider = (value) => {
-    let closest = cameraRangeStops[0];
-    let minDelta = Math.abs(value - closest.value);
-    for (let i = 1; i < cameraRangeStops.length; i += 1) {
-      const stop = cameraRangeStops[i];
-      const delta = Math.abs(value - stop.value);
-      if (delta < minDelta) {
-        minDelta = delta;
-        closest = stop;
-      }
-    }
-
-    setCameraRangePreset(closest.key);
+  const updateCameraRange = (degrees) => {
+    applyCameraRangeDegrees(degrees);
     if (cameraRangeLabelEl) {
-      cameraRangeLabelEl.textContent = closest.label;
+      cameraRangeLabelEl.textContent = `${Math.round(degrees)}°`;
     }
   };
 
-  const initialValue = Number.parseFloat(cameraRangeSliderEl.value);
-  updateCameraRangeFromSlider(Number.isFinite(initialValue) ? initialValue : 0.33);
+  const initialValue = Number.parseInt(cameraRangeSliderEl.value, 10);
+  updateCameraRange(Number.isFinite(initialValue) ? initialValue : 20);
 
   cameraRangeSliderEl.addEventListener("input", (event) => {
-    const val = Number.parseFloat(event.target.value);
+    const val = Number.parseInt(event.target.value, 10);
     if (!Number.isFinite(val)) return;
-    updateCameraRangeFromSlider(val);
+    updateCameraRange(val);
   });
 }
 
@@ -998,42 +966,12 @@ if (fovSliderEl) {
   });
 }
 
-// Background image controls
-if (bgImageToggleEl) {
-  bgImageToggleEl.addEventListener("change", (event) => {
-    setBackgroundImageEnabled(event.target.checked);
-    if (bgImageControlsEl) {
-      bgImageControlsEl.classList.toggle("visible", event.target.checked);
-    }
-  });
-}
-
-if (bgImageBtn && bgImageInput) {
-  bgImageBtn.addEventListener("click", () => bgImageInput.click());
-  bgImageInput.addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (file && file.type.startsWith("image/")) {
-      // Revoke previous URL to prevent memory leaks
-      if (bgImageUrl) {
-        URL.revokeObjectURL(bgImageUrl);
-      }
-      bgImageUrl = URL.createObjectURL(file);
-      if (bgImageEnabled) {
-        updateBackgroundImage(bgImageUrl, parseInt(bgBlurSlider?.value || 20));
-        scene.background = null;
-        renderer.setClearColor(0x000000, 0);
-      }
-      appendLog(`Background image set: ${file.name}`);
-    }
-    bgImageInput.value = "";
-  });
-}
-
+// Background blur slider control
 if (bgBlurSlider && bgBlurValue) {
   bgBlurSlider.addEventListener("input", (event) => {
     const blur = parseInt(event.target.value);
     bgBlurValue.textContent = `${blur}px`;
-    if (bgImageEnabled && bgImageUrl) {
+    if (bgImageUrl) {
       bgImageContainer.style.filter = `blur(${blur}px)`;
     }
   });
