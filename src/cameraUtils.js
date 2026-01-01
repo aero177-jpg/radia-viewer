@@ -16,6 +16,7 @@ import {
   THREE,
 } from "./viewer.js";
 import { appendLog, updateBounds, formatVec3 } from "./ui.js";
+import { startSmoothResetAnimation, cancelResetAnimation } from "./cameraAnimations.js";
 
 // Home view state
 let homeView = null;
@@ -40,35 +41,55 @@ export const saveHomeView = () => {
 export const restoreHomeView = (fovSliderEl, fovValueEl, resize) => {
   if (!homeView) return;
 
-  camera.position.copy(homeView.cameraPosition);
-  camera.quaternion.copy(homeView.cameraQuaternion);
-  camera.fov = homeView.cameraFov;
-  camera.near = homeView.cameraNear;
-  camera.far = homeView.cameraFar;
-  camera.zoom = homeView.cameraZoom;
-  camera.updateProjectionMatrix();
+  const targetState = {
+    position: homeView.cameraPosition.clone(),
+    quaternion: homeView.cameraQuaternion.clone(),
+    fov: homeView.cameraFov,
+    near: homeView.cameraNear,
+    far: homeView.cameraFar,
+    zoom: homeView.cameraZoom,
+    target: homeView.controlsTarget.clone(),
+  };
 
-  controls.target.copy(homeView.controlsTarget);
-  controls.dampingFactor = homeView.controlsDampingFactor;
-  controls.rotateSpeed = homeView.controlsRotateSpeed;
-  controls.zoomSpeed = homeView.controlsZoomSpeed;
-  controls.panSpeed = homeView.controlsPanSpeed;
+  // Animate FOV slider during transition
+  const animateFovSlider = () => {
+    if (fovSliderEl) {
+      fovSliderEl.value = String(camera.fov.toFixed(0));
+      if (fovValueEl) fovValueEl.textContent = `${camera.fov.toFixed(0)}°`;
+    }
+  };
 
-  setActiveCamera(homeView.activeCamera ? { ...homeView.activeCamera } : null);
+  // Update slider during animation
+  const sliderInterval = setInterval(animateFovSlider, 16);
 
-  // Sync UI FOV slider with restored camera fov
-  if (fovSliderEl) {
-    fovSliderEl.value = String(camera.fov);
-    if (fovValueEl) fovValueEl.textContent = `${camera.fov.toFixed(0)}°`;
-  }
+  startSmoothResetAnimation(targetState, {
+    duration: 600,
+    onComplete: () => {
+      clearInterval(sliderInterval);
 
-  // Reset dolly zoom to its default enabled state and baseline
-  setDollyZoomEnabled(true);
-  updateDollyZoomBaselineFromCamera();
+      // Apply final control settings
+      controls.dampingFactor = homeView.controlsDampingFactor;
+      controls.rotateSpeed = homeView.controlsRotateSpeed;
+      controls.zoomSpeed = homeView.controlsZoomSpeed;
+      controls.panSpeed = homeView.controlsPanSpeed;
 
-  controls.update();
-  requestRender();
-  if (resize) resize();
+      setActiveCamera(homeView.activeCamera ? { ...homeView.activeCamera } : null);
+
+      // Sync UI FOV slider with restored camera fov
+      if (fovSliderEl) {
+        fovSliderEl.value = String(homeView.cameraFov);
+        if (fovValueEl) fovValueEl.textContent = `${homeView.cameraFov.toFixed(0)}°`;
+      }
+
+      // Reset dolly zoom to its default enabled state and baseline
+      setDollyZoomEnabled(true);
+      updateDollyZoomBaselineFromCamera();
+
+      controls.update();
+      requestRender();
+      if (resize) resize();
+    },
+  });
 };
 
 export const fitViewToMesh = (mesh) => {

@@ -7,8 +7,6 @@ import {
   viewerEl,
   pickBtn,
   fileInput,
-  bgBlurControlsEl,
-  bgBlurSlider,
   appendLog,
   setStatus,
   updateInfo,
@@ -46,6 +44,7 @@ import {
   saveHomeView,
   applyCameraProjection,
 } from "./cameraUtils.js";
+import { startLoadZoomAnimation } from "./cameraAnimations.js";
 import {
   setAssetList,
   getAssetList,
@@ -144,14 +143,12 @@ const captureAndApplyBackground = () => {
   const dataUrl = renderer.domElement.toDataURL("image/jpeg", 0.9);
   
   setBgImageUrl(dataUrl);
-  const blur = parseInt(bgBlurSlider?.value || 40);
+  const blur = 20;
   updateBackgroundImage(dataUrl, blur);
   
   // Set transparent background so blurred image shows through
   scene.background = null;
   renderer.setClearColor(0x000000, 0);
-  
-  if (bgBlurControlsEl) bgBlurControlsEl.classList.add("visible");
   
   requestRender();
   appendLog("Background captured from model render");
@@ -219,6 +216,11 @@ export const loadSplatFile = async (file) => {
     }
     spark.update({ scene });
 
+    // Save home view BEFORE animation so we capture the correct position
+    saveHomeView();
+
+    startLoadZoomAnimation();
+
     // Warmup frames for spark renderer
     let warmupFrames = 120;
     let bgCaptured = false;
@@ -245,7 +247,6 @@ export const loadSplatFile = async (file) => {
 
     const loadMs = performance.now() - start;
     updateInfo({ file, mesh, loadMs });
-    saveHomeView();
     
     setTimeout(() => {
       viewerEl.classList.remove("loading");
@@ -253,8 +254,8 @@ export const loadSplatFile = async (file) => {
     
     setStatus(
       cameraMetadata
-        ? "Loaded (using file camera: drag to rotate / scroll to zoom)"
-        : "Loaded: drag to rotate / scroll to zoom",
+        ? "Loaded "
+        : "Loaded (no camera data)",
     );
     appendLog(
       `Debug: splats=${mesh.packedSplats.numSplats}`,

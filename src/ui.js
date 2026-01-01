@@ -68,13 +68,41 @@ export const initializeUI = () => {
               <span class="control-value" id="fov-value">60°</span>
             </div>
           </div>
-          <div class="control-row bg-blur-controls" id="bg-blur-controls">
-            <span class="control-label">Bg blur</span>
-            <div class="control-track">
-              <input type="range" id="bg-blur-slider" min="0" max="100" value="40" />
-              <span class="control-value" id="bg-blur-value">40px</span>
+          
+          <div class="settings-group">
+            <button class="group-toggle" id="anim-settings-toggle" aria-expanded="false">
+              <span class="settings-eyebrow">Animation Settings</span>
+              <span class="chevron"></span>
+            </button>
+            <div class="group-content" id="anim-settings-content" hidden>
+              <div class="control-row animate-toggle-row">
+                <span class="control-label">Animate on load</span>
+                <label class="switch">
+                  <input type="checkbox" id="animation-toggle" checked />
+                  <span class="switch-track" aria-hidden="true"></span>
+                </label>
+              </div>
+              <div class="control-row select-row">
+                <span class="control-label">Style</span>
+                <select id="animation-intensity-select">
+                  <option value="subtle">Subtle</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="dramatic">Dramatic</option>
+                </select>
+              </div>
+              <div class="control-row select-row">
+                <span class="control-label">Direction</span>
+                <select id="animation-direction-select">
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                  <option value="up">Top</option>
+                  <option value="down">Bottom</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
             </div>
           </div>
+
           <div class="settings-footer">
             <button id="recenter-btn" class="secondary">Recenter view</button>
             <button id="auto-anchor-btn" class="secondary">Auto target</button>
@@ -126,12 +154,14 @@ export let cameraRangeSliderEl;
 export let cameraRangeLabelEl;
 export let fovSliderEl;
 export let fovValueEl;
-export let bgBlurControlsEl;
-export let bgBlurSlider;
-export let bgBlurValue;
 export let assetGalleryEl;
 export let assetListEl;
 export let assetCountEl;
+export let animationToggleEl;
+export let animationIntensitySelect;
+export let animationDirectionSelect;
+export let animSettingsToggleBtn;
+export let animSettingsContentEl;
 
 let panelIsOpen = true;
 let panelToggleCallback = null;
@@ -158,12 +188,14 @@ export const bindElements = () => {
   cameraRangeLabelEl = document.getElementById("camera-range-label");
   fovSliderEl = document.getElementById("fov-slider");
   fovValueEl = document.getElementById("fov-value");
-  bgBlurControlsEl = document.getElementById("bg-blur-controls");
-  bgBlurSlider = document.getElementById("bg-blur-slider");
-  bgBlurValue = document.getElementById("bg-blur-value");
+  animationToggleEl = document.getElementById("animation-toggle");
+  animationIntensitySelect = document.getElementById("animation-intensity-select");
+  animationDirectionSelect = document.getElementById("animation-direction-select");
   assetGalleryEl = document.getElementById("asset-gallery");
   assetListEl = document.getElementById("asset-list");
   assetCountEl = document.getElementById("asset-count");
+  animSettingsToggleBtn = document.getElementById("anim-settings-toggle");
+  animSettingsContentEl = document.getElementById("anim-settings-content");
 };
 
 // Logging
@@ -230,6 +262,16 @@ export const initLogToggle = () => {
   });
 };
 
+export const initAnimationSettingsToggle = () => {
+  if (!animSettingsToggleBtn || !animSettingsContentEl) return;
+  
+  animSettingsToggleBtn.addEventListener("click", () => {
+    const isExpanded = animSettingsToggleBtn.getAttribute("aria-expanded") === "true";
+    animSettingsToggleBtn.setAttribute("aria-expanded", String(!isExpanded));
+    animSettingsContentEl.hidden = isExpanded;
+  });
+};
+
 // Info display helpers
 export const formatBytes = (bytes) => {
   if (!bytes && bytes !== 0) return "-";
@@ -263,6 +305,12 @@ export const updateInfo = ({ file, mesh, loadMs }) => {
 
 export const updateBounds = (center, size) => {
   if (boundsEl) boundsEl.textContent = `${formatVec3(center)} | size ${formatVec3(size)}`;
+};
+
+export const setAnimationToggleChecked = (enabled) => {
+  if (animationToggleEl) {
+    animationToggleEl.checked = Boolean(enabled);
+  }
 };
 
 // Asset gallery management

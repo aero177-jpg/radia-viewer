@@ -16,16 +16,19 @@ import {
   cameraRangeLabelEl,
   fovSliderEl,
   fovValueEl,
-  bgBlurSlider,
-  bgBlurValue,
   initPanelToggle,
   togglePanel,
   initLogToggle,
+  initAnimationSettingsToggle,
   resetInfo,
   setStatus,
   appendLog,
   formatVec3,
   autoAnchorBtn,
+  animationToggleEl,
+  setAnimationToggleChecked,
+  animationIntensitySelect,
+  animationDirectionSelect,
 } from "./ui.js";
 
 // Viewer module
@@ -59,6 +62,17 @@ import {
   applyCameraProjection,
   applyCameraRangeDegrees,
 } from "./cameraUtils.js";
+import {
+  startLoadZoomAnimation,
+  cancelLoadZoomAnimation,
+  setLoadAnimationEnabled,
+  isLoadAnimationEnabled,
+  setLoadAnimationIntensity,
+  getLoadAnimationIntensityKey,
+  setLoadAnimationDirection,
+  getLoadAnimationDirection,
+  startAnchorTransition,
+} from "./cameraAnimations.js";
 
 // File loader
 import {
@@ -77,6 +91,15 @@ bindElements();
 // Initialize Three.js viewer
 initViewer(viewerEl);
 
+const cancelLoadZoomOnUserInput = () => {
+  cancelLoadZoomAnimation();
+};
+
+controls.addEventListener("start", cancelLoadZoomOnUserInput);
+renderer.domElement.addEventListener("pointerdown", cancelLoadZoomOnUserInput);
+renderer.domElement.addEventListener("wheel", cancelLoadZoomOnUserInput, { passive: true });
+renderer.domElement.addEventListener("touchstart", cancelLoadZoomOnUserInput);
+
 // Panel toggle with resize callback
 initPanelToggle(() => {
   setTimeout(resize, 350);
@@ -84,6 +107,9 @@ initPanelToggle(() => {
 
 // Log panel toggle
 initLogToggle();
+
+// Animation settings toggle
+initAnimationSettingsToggle();
 
 // Reset info display
 resetInfo();
@@ -96,15 +122,46 @@ resize();
 // Recenter button
 if (recenterBtn) {
   recenterBtn.addEventListener("click", () => {
+    cancelLoadZoomAnimation();
     restoreHomeView(fovSliderEl, fovValueEl, resize);
   });
 }
 
+const syncAnimationToggle = () => setAnimationToggleChecked(isLoadAnimationEnabled());
+syncAnimationToggle();
+
+if (animationToggleEl) {
+  animationToggleEl.addEventListener("change", (event) => {
+    const enabled = Boolean(event.target.checked);
+    setLoadAnimationEnabled(enabled);
+    setAnimationToggleChecked(enabled);
+  });
+}
+
+if (animationIntensitySelect) {
+  animationIntensitySelect.value = getLoadAnimationIntensityKey();
+  animationIntensitySelect.addEventListener("change", (event) => {
+    const applied = setLoadAnimationIntensity(event.target.value);
+    animationIntensitySelect.value = applied;
+  });
+}
+
+if (animationDirectionSelect) {
+  animationDirectionSelect.value = getLoadAnimationDirection();
+  animationDirectionSelect.addEventListener("change", (event) => {
+    const applied = setLoadAnimationDirection(event.target.value);
+    animationDirectionSelect.value = applied;
+  });
+}
+
 const applyAnchorTarget = (point, distance = null, label = "Anchor set") => {
-  controls.target.copy(point);
-  controls.update();
-  updateDollyZoomBaselineFromCamera();
-  requestRender();
+  startAnchorTransition(point, {
+    duration: 700,
+    onComplete: () => {
+      updateDollyZoomBaselineFromCamera();
+      requestRender();
+    },
+  });
   const distanceText = distance != null ? ` (distance: ${distance.toFixed(2)})` : "";
   appendLog(`${label}: ${formatVec3(point)}${distanceText}`);
 };
@@ -163,6 +220,8 @@ document.addEventListener("keydown", (event) => {
   ) {
     return;
   }
+
+  cancelLoadZoomAnimation();
 
   if (event.key === "t" || event.key === "T") {
     event.preventDefault();
@@ -252,7 +311,7 @@ if (cameraRangeSliderEl) {
     }
   };
 
-  const desiredDegrees = 5;
+  const desiredDegrees = 8;
   const initialSliderValue = degreesToSliderValue(desiredDegrees);
   cameraRangeSliderEl.value = String(initialSliderValue.toFixed(1));
   updateCameraRange(Number.parseFloat(cameraRangeSliderEl.value));
@@ -297,13 +356,3 @@ if (fovSliderEl) {
   });
 }
 
-// Background blur slider
-if (bgBlurSlider && bgBlurValue) {
-  bgBlurSlider.addEventListener("input", (event) => {
-    const blur = parseInt(event.target.value);
-    bgBlurValue.textContent = `${blur}px`;
-    if (bgImageUrl) {
-      bgImageContainer.style.filter = `blur(${blur}px)`;
-    }
-  });
-}
