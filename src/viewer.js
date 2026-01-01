@@ -120,6 +120,16 @@ export const initViewer = (viewerEl) => {
   // Initialize dolly zoom baseline
   updateDollyZoomBaselineFromCamera();
 
+  // Apply default camera range (imported after initialization to avoid circular dependency)
+  setTimeout(() => {
+    import('./cameraUtils.js').then(({ applyCameraRangeDegrees }) => {
+      import('./store.js').then(({ useStore }) => {
+        const defaultRange = useStore.getState().cameraRange;
+        applyCameraRangeDegrees(defaultRange);
+      });
+    });
+  }, 0);
+
   // On-demand rendering
   controls.addEventListener("change", requestRender);
   document.addEventListener("visibilitychange", () => {

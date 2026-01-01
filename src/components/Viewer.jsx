@@ -46,6 +46,9 @@ const formatPoint = (point) =>
   `${point.x.toFixed(2)}, ${point.y.toFixed(2)}, ${point.z.toFixed(2)}`;
 
 function Viewer({ viewerReady }) {
+  // Store state
+  const debugLoadingMode = useStore((state) => state.debugLoadingMode);
+  
   // Store actions
   const addLog = useStore((state) => state.addLog);
   const togglePanel = useStore((state) => state.togglePanel);
@@ -179,7 +182,7 @@ function Viewer({ viewerReady }) {
   }, [viewerReady, addLog, togglePanel]);
 
   return (
-    <div id="viewer" class="viewer" ref={viewerRef}>
+    <div id="viewer" class={`viewer ${debugLoadingMode ? 'loading' : ''}`} ref={viewerRef}>
       <div class="loading-overlay">
         <div class="loading-spinner"></div>
       </div>

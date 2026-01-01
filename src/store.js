@@ -56,6 +56,9 @@ export const useStore = create((set, get) => ({
   panelOpen: true,
   logExpanded: false,
   animSettingsExpanded: false,
+  
+  // Debug
+  debugLoadingMode: false,
 
   // ============ Actions ============
   
@@ -134,5 +137,10 @@ export const useStore = create((set, get) => ({
   /** Toggles animation settings expanded */
   toggleAnimSettingsExpanded: () => set((state) => ({ 
     animSettingsExpanded: !state.animSettingsExpanded 
+  })),
+  
+  /** Toggles debug loading mode */
+  toggleDebugLoadingMode: () => set((state) => ({ 
+    debugLoadingMode: !state.debugLoadingMode 
   })),
 }));

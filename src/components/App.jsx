@@ -46,10 +46,7 @@ function App() {
    * Trigger resize after panel toggle animation completes.
    * This ensures the viewer properly fills available space.
    */
-  useEffect(() => {
-    const timer = setTimeout(resize, PANEL_TRANSITION_MS);
-    return () => clearTimeout(timer);
-  }, [panelOpen]);
+
 
   return (
     <div class={`page ${panelOpen ? 'panel-open' : ''}`}>

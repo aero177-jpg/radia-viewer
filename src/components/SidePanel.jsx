@@ -24,9 +24,11 @@ function SidePanel() {
   const panelOpen = useStore((state) => state.panelOpen);
   const status = useStore((state) => state.status);
   const fileInfo = useStore((state) => state.fileInfo);
+  const debugLoadingMode = useStore((state) => state.debugLoadingMode);
   
   // Store actions
   const togglePanel = useStore((state) => state.togglePanel);
+  const toggleDebugLoadingMode = useStore((state) => state.toggleDebugLoadingMode);
 
   // Ref for file input to avoid DOM queries
   const fileInputRef = useRef(null);
@@ -108,11 +110,26 @@ function SidePanel() {
           </div>
         </div>
         
+        {/* Debug controls */}
+        {/* <div class="settings">
+          <div class="control-row animate-toggle-row">
+            <span class="control-label">Debug Loading</span>
+            <label class="switch">
+              <input
+                type="checkbox"
+                checked={debugLoadingMode}
+                onChange={toggleDebugLoadingMode}
+              />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+        </div> */}
+        
         {/* Settings panels */}
         <CameraControls />
         <AnimationSettings />
         <AssetGallery />
-        <LogPanel />
+        {/* <LogPanel /> */}
       </div>
     </>
   );
