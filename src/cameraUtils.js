@@ -59,6 +59,40 @@ export const restoreHomeView = () => {
     target: homeView.controlsTarget.clone(),
   };
 
+  // Check if in fullscreen portrait mode - skip animation to avoid zoom issues
+  const viewerEl = document.getElementById('viewer');
+  const isFullscreenPortrait = 
+    document.fullscreenElement === viewerEl && 
+    window.innerHeight > window.innerWidth;
+
+  if (isFullscreenPortrait) {
+    // Apply reset instantly without animation
+    camera.position.copy(targetState.position);
+    camera.quaternion.copy(targetState.quaternion);
+    camera.fov = targetState.fov;
+    camera.near = targetState.near;
+    camera.far = targetState.far;
+    camera.zoom = targetState.zoom;
+    camera.updateProjectionMatrix();
+    
+    controls.target.copy(targetState.target);
+    controls.dampingFactor = homeView.controlsDampingFactor;
+    controls.rotateSpeed = homeView.controlsRotateSpeed;
+    controls.zoomSpeed = homeView.controlsZoomSpeed;
+    controls.panSpeed = homeView.controlsPanSpeed;
+    controls.update();
+
+    setActiveCamera(homeView.activeCamera ? { ...homeView.activeCamera } : null);
+    store.setFov(Math.round(homeView.cameraFov));
+    
+    setDollyZoomEnabled(true);
+    updateDollyZoomBaselineFromCamera();
+    requestRender();
+    
+    if (resize) resize();
+    return;
+  }
+
   // Animate FOV update in store during transition
   const animateFov = () => {
     store.setFov(Math.round(camera.fov));

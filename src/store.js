@@ -51,6 +51,8 @@ export const useStore = create((set, get) => ({
 
   // Custom focus state
   hasCustomFocus: false,
+  // Show FPS counter overlay
+  showFps: false,
 
   // File info
   fileInfo: DEFAULT_FILE_INFO,
@@ -190,6 +192,9 @@ export const useStore = create((set, get) => ({
   
   /** Sets immersive mode sensitivity multiplier */
   setImmersiveSensitivity: (sensitivity) => set({ immersiveSensitivity: sensitivity }),
+
+  /** Sets visibility of FPS counter overlay */
+  setShowFps: (show) => set({ showFps: show }),
   
   /** Toggles debug loading mode */
   toggleDebugLoadingMode: () => set((state) => ({ 

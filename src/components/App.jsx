@@ -37,31 +37,66 @@ function App() {
 
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // Refs for moving controls into the viewer during element fullscreen
   const controlsRef = useRef(null);
-  const originalParentRef = useRef(null);
+  const originalParentsRef = useRef({});
 
-  // Track fullscreen changes and move controls into the viewer when it is fullscreen
+  // Track fullscreen changes and move UI into viewer
   useEffect(() => {
     const onFsChange = () => {
       const fsEl = document.fullscreenElement;
       setIsFullscreen(!!fsEl);
 
-      const controlsEl = controlsRef.current;
       const viewerEl = document.getElementById('viewer');
-      if (!controlsEl || !viewerEl) return;
+      if (!viewerEl) return;
+
+      // All UI elements that need to be accessible in fullscreen
+      const panelToggle = document.querySelector('.panel-toggle');
+      const sidePanel = document.querySelector('.side');
+      const assetSidebar = document.querySelector('.asset-sidebar');
+      const sidebarHoverTarget = document.querySelector('.sidebar-hover-target');
+      const sidebarTriggerBtn = document.querySelector('.sidebar-trigger-btn.left');
+      const mobileSheet = document.querySelector('.mobile-sheet');
+      const modalOverlay = document.querySelector('.modal-overlay');
+      const controlsEl = controlsRef.current;
 
       if (fsEl === viewerEl) {
-        // Save original parent and move controls inside viewer so they overlay the canvas
-        if (controlsEl.parentElement !== viewerEl) {
-          originalParentRef.current = controlsEl.parentElement;
-          viewerEl.appendChild(controlsEl);
-        }
+        // Entering fullscreen - move UI inside viewer
+        const elementsToMove = [
+          { el: panelToggle, key: 'panelToggle' },
+          { el: sidePanel, key: 'sidePanel' },
+          { el: assetSidebar, key: 'assetSidebar' },
+          { el: sidebarHoverTarget, key: 'sidebarHoverTarget' },
+          { el: sidebarTriggerBtn, key: 'sidebarTriggerBtn' },
+          { el: mobileSheet, key: 'mobileSheet' },
+          { el: modalOverlay, key: 'modalOverlay' },
+          { el: controlsEl, key: 'controls' }
+        ];
+
+        elementsToMove.forEach(({ el, key }) => {
+          if (el && el.parentElement !== viewerEl) {
+            originalParentsRef.current[key] = el.parentElement;
+            viewerEl.appendChild(el);
+          }
+        });
       } else {
-        // Move controls back to their original place
-        if (originalParentRef.current && controlsEl.parentElement !== originalParentRef.current) {
-          originalParentRef.current.appendChild(controlsEl);
-        }
+        // Exiting fullscreen - restore to original parents
+        const elementsToRestore = [
+          { el: panelToggle, key: 'panelToggle' },
+          { el: sidePanel, key: 'sidePanel' },
+          { el: assetSidebar, key: 'assetSidebar' },
+          { el: sidebarHoverTarget, key: 'sidebarHoverTarget' },
+          { el: sidebarTriggerBtn, key: 'sidebarTriggerBtn' },
+          { el: mobileSheet, key: 'mobileSheet' },
+          { el: modalOverlay, key: 'modalOverlay' },
+          { el: controlsEl, key: 'controls' }
+        ];
+
+        elementsToRestore.forEach(({ el, key }) => {
+          const originalParent = originalParentsRef.current[key];
+          if (el && originalParent && el.parentElement !== originalParent) {
+            originalParent.appendChild(el);
+          }
+        });
       }
     };
 
@@ -156,7 +191,7 @@ function App() {
       <Viewer viewerReady={viewerReady} />
       {isMobile && isPortrait ? <MobileSheet /> : <SidePanel />}
       {/* Mobile-only controls shown when mesh is loaded */}
-      {isMobile && hasMesh && (
+      {hasMesh && (
         <div ref={controlsRef} style={{ display: 'flex', gap: '8px', position: 'relative' }}>
           <button
             style={{ width: "50px", height: "32px", fontSize: "14px", right: "80px" }}

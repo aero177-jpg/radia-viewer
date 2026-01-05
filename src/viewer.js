@@ -41,6 +41,8 @@ export let dollyZoomBaseFov = null;
 // Background capture state
 export let bgImageUrl = null;
 export let bgImageContainer = null;
+// FPS overlay element
+export let fpsContainer = null;
 
 export const setCurrentMesh = (mesh) => { currentMesh = mesh; };
 export const setActiveCamera = (cam) => { activeCamera = cam; };
@@ -117,6 +119,24 @@ export const initViewer = (viewerEl) => {
   bgImageContainer.className = "bg-image-container";
   viewerEl.insertBefore(bgImageContainer, viewerEl.firstChild);
 
+  // FPS overlay
+  fpsContainer = document.createElement('div');
+  fpsContainer.id = 'fps-counter';
+  fpsContainer.textContent = '';
+  fpsContainer.style.display = 'none';
+  viewerEl.appendChild(fpsContainer);
+
+  // Subscribe to store for showFps flag (lazy import to avoid circular deps)
+  import('./store.js').then(({ useStore }) => {
+    // Initialize visibility
+    const initial = useStore.getState().showFps;
+    fpsContainer.style.display = initial ? 'block' : 'none';
+    // Subscribe to changes
+    useStore.subscribe((s) => s.showFps, (show) => {
+      if (fpsContainer) fpsContainer.style.display = show ? 'block' : 'none';
+    });
+  }).catch(() => {});
+
   // Initialize dolly zoom baseline
   updateDollyZoomBaselineFromCamera();
 
@@ -140,6 +160,11 @@ export const initViewer = (viewerEl) => {
 };
 
 export const startRenderLoop = () => {
+  // Simple FPS measurement
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let lastFpsUpdate = performance.now();
+
   const animate = () => {
     requestAnimationFrame(animate);
 
@@ -152,6 +177,19 @@ export const startRenderLoop = () => {
     if (needsRender || controlsNeedUpdate) {
       composer.render();
       needsRender = false;
+      frameCount++;
+    }
+
+    // Update FPS display once per 250ms if present
+    if (fpsContainer && fpsContainer.style.display === 'block') {
+      const now = performance.now();
+      const dt = now - lastFpsUpdate;
+      if (dt >= 250) {
+        const fps = Math.round((frameCount * 1000) / dt);
+        fpsContainer.textContent = `${fps} FPS`;
+        frameCount = 0;
+        lastFpsUpdate = now;
+      }
     }
   };
   animate();
