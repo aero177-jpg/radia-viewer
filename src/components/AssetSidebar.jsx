@@ -15,7 +15,8 @@ function AssetSidebar() {
   const setAssets = useStore((state) => state.setAssets);
   const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
 
-  const [isVisible, setIsVisible] = useState(false);
+  const isVisible = useStore((state) => state.assetSidebarOpen);
+  const setIsVisible = useStore((state) => state.setAssetSidebarOpen);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteScope, setDeleteScope] = useState('single'); // 'single' or 'all'
   const [clearMetadata, setClearMetadata] = useState(false);
@@ -53,21 +54,14 @@ function AssetSidebar() {
 
   const hideSidebar = useCallback(() => {
     setIsVisible(false);
-  }, []);
+  }, [setIsVisible]);
 
   const showSidebar = useCallback(() => {
     setIsVisible(true);
     openedByHoverRef.current = true;
-  }, []);
+  }, [setIsVisible]);
 
-  // Show on index change (navigation)
-  useEffect(() => {
-    if (hasMultipleAssets) {
-      showSidebar();
-    }
-  }, [currentAssetIndex, hasMultipleAssets, showSidebar]);
-
-  // No hide timer: sidebar visibility is manual or based on navigation
+  // Sidebar visibility is manual only - no auto-open on navigation
 
   // Cleanup hide timeout on unmount
   useEffect(() => {
@@ -193,14 +187,7 @@ function AssetSidebar() {
         onMouseEnter={showSidebar}
       />
 
-      {/* Trigger Button (Index indicator) - Visible when sidebar is hidden */}
-      <button 
-        class={`sidebar-trigger-btn left${isVisible ? ' hidden' : ''}`}
-        onClick={showSidebar}
-        title="Open asset browser"
-      >
-        {currentAssetIndex + 1} / {assets.length}
-      </button>
+      {/* Trigger Button moved to App.jsx - bottom controls container */}
 
       {/* Sidebar */}
       <div 

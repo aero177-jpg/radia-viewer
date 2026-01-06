@@ -88,6 +88,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
   z-index: 0;
 }
 
+
 /* Canvas always at bottom */
 .viewer canvas {
   position: relative;
@@ -810,15 +811,12 @@ button, a, input, .sidebar-btn, .panel-toggle {
   z-index: 94;
 }
 
-#viewer:fullscreen .sidebar-trigger-btn,
-#viewer:-webkit-full-screen .sidebar-trigger-btn {
-  position: fixed;
-  z-index: 93;
-}
+
 
 #viewer:fullscreen .mobile-sheet,
 #viewer:-webkit-full-screen .mobile-sheet {
   position: fixed;
+    background: transparent !important;
   z-index: 92;
 }
 
@@ -839,7 +837,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 /* FPS counter badge */
 #fps-counter {
   position: absolute;
-  right: 8px;
+  left: 8px;
   top: 8px;
   z-index: 50;
   background: rgba(0,0,0,0.6);
@@ -1334,7 +1332,7 @@ select option {
 
 .mobile-sheet .drag-handle-touch-target {
   position: absolute;
-  top: -20px;
+  top: -10px;
   left: 60px;
   right: 60px;
   bottom: -10px;
@@ -1380,8 +1378,8 @@ select option {
   position: absolute;
   left: 0;
   top: 0;
-  bottom: 0;
-  width: 60px;
+  bottom: 130px;
+  width: 40px;
   z-index: 9;
 }
 
@@ -1393,39 +1391,29 @@ select option {
   }
 }
 
-.sidebar-trigger-btn {
-    position: fixed;
-
-  bottom: 20px;
+/* Bottom page buttons (shared styles, no positioning) */
+.bottom-page-btn {
+  width: 52px;
   background: rgba(12, 16, 26, 0.6);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.8);
   padding: 6px 12px;
   border-radius: 20px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  z-index: 8;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.sidebar-trigger-btn.left {
-  left: 20px;
-}
-.sidebar-trigger-btn.right {
-  right: 20px;
-}
-
-.sidebar-trigger-btn.hidden {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-20px);
+  transition: background 0.2s ease, border-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 /* Apply hover styles only on devices that support hover (desktop, trackpads)
    Prevents :hover from sticking on touchscreens after tap */
 @media (hover: hover) and (pointer: fine) {
-  .sidebar-trigger-btn:hover {
+  .bottom-page-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.3);
     color: #fff;
@@ -1434,17 +1422,11 @@ select option {
 
 /* On touch devices, mirror the hover appearance while the button is actively pressed */
 @media (hover: none) and (pointer: coarse) {
-  .sidebar-trigger-btn:active {
+  .bottom-page-btn:active {
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.3);
     color: #fff;
   }
-}
-
-.sidebar-trigger-btn.hidden {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-20px);
 }
 
 .asset-list-vertical {
@@ -1507,41 +1489,10 @@ select option {
 }
 
 
-@media (max-width: 768px) and (orientation: portrait) {
-  .sidebar-trigger-btn {
-    bottom: 55px;
-  }
-  .reset-view-btn {
-    bottom: 50px;
-  }
-}
+
 
 /* Keep controls visible when the viewer element is fullscreen */
-@media screen and (max-width: 768px) {
-  #viewer:fullscreen .sidebar-trigger-btn,
-  #viewer:-webkit-full-screen .sidebar-trigger-btn {
-    bottom: 18px!important; /* base offset when viewer is fullscreen */
-    z-index: 9999;
-  }
-
-  #viewer:fullscreen .sidebar-trigger-btn.right,
-  #viewer:-webkit-full-screen .sidebar-trigger-btn.right {
-    right: 20px;
-  }
-
-  #viewer:fullscreen .sidebar-trigger-btn.left,
-  #viewer:-webkit-full-screen .sidebar-trigger-btn.left {
-    left: 20px;
-  }
-
-  /* When in fullscreen and in portrait (mobile), nudge buttons further down so they're reachable */
-  @media (orientation: portrait) {
-    #viewer:fullscreen .sidebar-trigger-btn,
-    #viewer:-webkit-full-screen .sidebar-trigger-btn {
-      bottom: 70px;
-    }
-  }
-}
+/* (Handled by .bottom-controls rules above) */
 
 /* Sidebar Controls */
 .sidebar-controls {
@@ -1700,5 +1651,78 @@ select option {
 
 .modal-actions button.danger:hover {
   background: rgba(255, 80, 80, 0.2);
+}
+
+/* Bottom controls container - flexbox layout with left/center/right sections */
+.bottom-controls {
+  position: fixed;
+  bottom: 24px;
+  left: 20px;
+  right: 20px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 8;
+  pointer-events: none; /* enable from children */
+}
+
+.bottom-controls > * { 
+  pointer-events: auto; 
+}
+
+.bottom-controls-left,
+.bottom-controls-center,
+.bottom-controls-right {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.bottom-controls-left {
+  flex: 0 0 auto;
+}
+
+.bottom-controls-center {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.bottom-controls-right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* Mobile portrait: adjust for bottom sheet */
+@media (max-width: 768px) and (orientation: portrait) {
+  .bottom-controls {
+    bottom: 55px;
+  }
+}
+
+/* Fullscreen mode adjustments */
+#viewer:fullscreen .bottom-controls,
+#viewer:-webkit-full-screen .bottom-controls {
+  position: fixed;
+  z-index: 8;
+}
+
+/* Mobile fullscreen adjustments */
+@media screen and (max-width: 768px) {
+  #viewer:fullscreen .bottom-controls,
+  #viewer:-webkit-full-screen .bottom-controls {
+    bottom: 18px !important;
+  }
+
+  @media (orientation: portrait) {
+    #viewer:fullscreen .bottom-controls,
+    #viewer:-webkit-full-screen .bottom-controls {
+      bottom: 70px !important;
+    }
+  }
 }
 

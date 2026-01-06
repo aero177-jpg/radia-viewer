@@ -59,13 +59,13 @@ export const restoreHomeView = () => {
     target: homeView.controlsTarget.clone(),
   };
 
-  // Check if in fullscreen portrait mode - skip animation to avoid zoom issues
+  // Check if in fullscreen portrait mode or immersive fullscreen - skip animation to avoid zoom/stutter issues
   const viewerEl = document.getElementById('viewer');
-  const isFullscreenPortrait = 
-    document.fullscreenElement === viewerEl && 
-    window.innerHeight > window.innerWidth;
+  const isFullscreen = document.fullscreenElement === viewerEl;
+  const isFullscreenPortrait = isFullscreen && window.innerHeight > window.innerWidth;
+  const isImmersiveFullscreen = isFullscreen && immersiveModeModule?.isImmersiveModeActive?.();
 
-  if (isFullscreenPortrait) {
+  if (isFullscreenPortrait || isImmersiveFullscreen) {
     // Apply reset instantly without animation
     camera.position.copy(targetState.position);
     camera.quaternion.copy(targetState.quaternion);

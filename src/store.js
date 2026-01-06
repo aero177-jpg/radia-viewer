@@ -70,6 +70,7 @@ export const useStore = create((set, get) => ({
 
   // UI state
   panelOpen: false,
+  assetSidebarOpen: false,
   logExpanded: false,
   animSettingsExpanded: false,
   cameraSettingsExpanded: true,
@@ -153,6 +154,12 @@ export const useStore = create((set, get) => ({
   
   /** Sets panel open state */
   setPanelOpen: (open) => set({ panelOpen: open }),
+
+  /** Sets asset sidebar open state */
+  setAssetSidebarOpen: (open) => set({ assetSidebarOpen: open }),
+
+  /** Toggles asset sidebar open/closed */
+  toggleAssetSidebar: () => set((state) => ({ assetSidebarOpen: !state.assetSidebarOpen })),
   
   /** Toggles panel open/closed */
   togglePanel: () => set((state) => ({ panelOpen: !state.panelOpen })),

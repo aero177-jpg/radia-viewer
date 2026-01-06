@@ -10,9 +10,12 @@ import Viewer from './Viewer';
 import SidePanel from './SidePanel';
 import MobileSheet from './MobileSheet';
 import AssetSidebar from './AssetSidebar';
+import AssetNavigation from './AssetNavigation';
 import { initViewer, startRenderLoop, currentMesh } from '../viewer';
 import { resize } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
+import { setupFullscreenHandler } from '../fullscreenHandler';
+import useOutsideClick from '../utils/useOutsideClick';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import { faExpand, faCompress } from '@fortawesome/free-solid-svg-icons';
@@ -27,6 +30,11 @@ function App() {
   const isPortrait = useStore((state) => state.isPortrait);
   const setMobileState = useStore((state) => state.setMobileState);
   const togglePanel = useStore((state) => state.togglePanel);
+  const assets = useStore((state) => state.assets);
+  const currentAssetIndex = useStore((state) => state.currentAssetIndex);
+  const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
+  const setAssets = useStore((state) => state.setAssets);
+  const toggleAssetSidebar = useStore((state) => state.toggleAssetSidebar);
   
   // Local state for viewer initialization
   const [viewerReady, setViewerReady] = useState(false);
@@ -38,68 +46,21 @@ function App() {
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
   const controlsRef = useRef(null);
-  const originalParentsRef = useRef({});
 
-  // Track fullscreen changes and move UI into viewer
+  // Outside click handler to close side panel
+  useOutsideClick(
+    togglePanel,
+    ['.side', '.mobile-sheet', '.panel-toggle'],
+    panelOpen
+  );
+
+  // Setup fullscreen handler - re-run when controls mount
   useEffect(() => {
-    const onFsChange = () => {
-      const fsEl = document.fullscreenElement;
-      setIsFullscreen(!!fsEl);
+    const viewerEl = document.getElementById('viewer');
+    if (!viewerEl) return;
 
-      const viewerEl = document.getElementById('viewer');
-      if (!viewerEl) return;
-
-      // All UI elements that need to be accessible in fullscreen
-      const panelToggle = document.querySelector('.panel-toggle');
-      const sidePanel = document.querySelector('.side');
-      const assetSidebar = document.querySelector('.asset-sidebar');
-      const sidebarHoverTarget = document.querySelector('.sidebar-hover-target');
-      const sidebarTriggerBtn = document.querySelector('.sidebar-trigger-btn.left');
-      const mobileSheet = document.querySelector('.mobile-sheet');
-      const controlsEl = controlsRef.current;
-
-      if (fsEl === viewerEl) {
-        // Entering fullscreen - move UI inside viewer
-        const elementsToMove = [
-          { el: panelToggle, key: 'panelToggle' },
-          { el: sidePanel, key: 'sidePanel' },
-          { el: assetSidebar, key: 'assetSidebar' },
-          { el: sidebarHoverTarget, key: 'sidebarHoverTarget' },
-          { el: sidebarTriggerBtn, key: 'sidebarTriggerBtn' },
-          { el: mobileSheet, key: 'mobileSheet' },
-          { el: controlsEl, key: 'controls' }
-        ];
-
-        elementsToMove.forEach(({ el, key }) => {
-          if (el && el.parentElement !== viewerEl) {
-            originalParentsRef.current[key] = el.parentElement;
-            viewerEl.appendChild(el);
-          }
-        });
-      } else {
-        // Exiting fullscreen - restore to original parents
-        const elementsToRestore = [
-          { el: panelToggle, key: 'panelToggle' },
-          { el: sidePanel, key: 'sidePanel' },
-          { el: assetSidebar, key: 'assetSidebar' },
-          { el: sidebarHoverTarget, key: 'sidebarHoverTarget' },
-          { el: sidebarTriggerBtn, key: 'sidebarTriggerBtn' },
-          { el: mobileSheet, key: 'mobileSheet' },
-          { el: controlsEl, key: 'controls' }
-        ];
-
-        elementsToRestore.forEach(({ el, key }) => {
-          const originalParent = originalParentsRef.current[key];
-          if (el && originalParent && el.parentElement !== originalParent) {
-            originalParent.appendChild(el);
-          }
-        });
-      }
-    };
-
-    document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
+    return setupFullscreenHandler(viewerEl, controlsRef.current, setIsFullscreen);
+  }, [hasMesh]); // Re-run when hasMesh changes (when controls appear/disappear)
 
   /**
    * Track mesh loading state - only update state when value changes
@@ -185,32 +146,55 @@ function App() {
   return (
     <div class={`page ${panelOpen ? 'panel-open' : ''}`}>
       <AssetSidebar />
-      <Viewer viewerReady={viewerReady} />
+      <div class="viewer-container">
+        <Viewer viewerReady={viewerReady} />
+      </div>
       {isMobile && isPortrait ? <MobileSheet /> : <SidePanel />}
-      {/* Mobile-only controls shown when mesh is loaded */}
-      {hasMesh && (
-        <div ref={controlsRef} style={{ display: 'flex', gap: '8px', position: 'relative' }}>
-          <button
-            style={{ width: "50px", height: "32px", fontSize: "14px", right: "80px" }}
-            class="sidebar-trigger-btn right"
-            onClick={handleToggleFullscreen}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
-          </button>
-
-          <button 
-            style={{width:"50px", height:"32px", fontSize: "14px"}}
-            class="sidebar-trigger-btn right" 
-            onClick={handleResetView}
-            aria-label="Reset camera view"
-            title="Reset view (R)"
-          >
-            <FontAwesomeIcon icon={faRotateRight} />
-          </button>
+      {/* Bottom controls container: sidebar index (left), nav (center), fullscreen+reset (right) */}
+      <div class="bottom-controls">
+        {/* Left: Asset index button */}
+        <div class="bottom-controls-left">
+          {assets.length > 0 && (
+            <button
+              class="bottom-page-btn"
+              onClick={toggleAssetSidebar}
+              title="Open asset browser"
+            >
+              {currentAssetIndex + 1} / {assets.length}
+            </button>
+          )}
         </div>
-      )}
+
+        {/* Center: Navigation buttons */}
+        <div class="bottom-controls-center">
+          <AssetNavigation />
+        </div>
+
+        {/* Right: Fullscreen and reset buttons */}
+        <div class="bottom-controls-right">
+          {hasMesh && (
+            <>
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleFullscreen}
+                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
+              </button>
+
+              <button 
+                class="bottom-page-btn" 
+                onClick={handleResetView}
+                aria-label="Reset camera view"
+                title="Reset view (R)"
+              >
+                <FontAwesomeIcon icon={faRotateRight} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
