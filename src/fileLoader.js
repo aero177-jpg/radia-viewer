@@ -4,7 +4,7 @@
  * Works with Zustand store for state updates and Preact components for UI.
  */
 
-import { getFormatHandler, getSupportedExtensions } from "./formats/index.js";
+import { getSupportedExtensions } from "./formats/index.js";
 import { useStore } from "./store.js";
 import {
   scene,
@@ -13,34 +13,26 @@ import {
   camera,
   controls,
   spark,
-  outputPass,
   currentMesh,
   setCurrentMesh,
   setOriginalImageAspect,
   originalImageAspect,
   activeCamera,
-  removeCurrentMesh,
   requestRender,
   updateBackgroundImage,
-  bgImageContainer,
   setBgImageUrl,
   THREE,
-  dollyZoomBaseDistance,
-  dollyZoomBaseFov,
 } from "./viewer.js";
-import {
-  loadFileSettings,
-  saveAnimationSettings,
-  savePreviewImage,
-} from "./fileStorage.js";
+import { savePreviewImage } from "./fileStorage.js";
 import {
   fitViewToMesh,
   applyMetadataCamera,
   clearMetadataCamera,
   saveHomeView,
   applyCameraProjection,
+  animateCameraMutation,
 } from "./cameraUtils.js";
-import { startLoadZoomAnimation } from "./cameraAnimations.js";
+import { slideOutAnimation, slideInAnimation, cancelSlideAnimation } from "./cameraAnimations.js";
 import { isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode } from "./immersiveMode.js";
 import {
   setAssetList as setAssetListManager,
@@ -57,15 +49,29 @@ import {
   captureCurrentAssetPreview,
   addAssets,
 } from "./assetManager.js";
+import {
+  activateSplatEntry,
+  ensureSplatEntry,
+  retainOnlySplats,
+  resetSplatManager,
+  isSplatCached,
+  getSplatCache,
+} from "./splatManager.js";
 
-/** Warmup frames for renderer stabilization */
+/** Warmup frames for renderer stabilization (fresh load) */
 const WARMUP_FRAMES = 120;
+
+/** Reduced warmup frames for preloaded/cached splats */
+const WARMUP_FRAMES_CACHED = 15;
 
 /** Frame at which to capture background */
 const BG_CAPTURE_FRAME = 90;
 
 /** Frame at which to capture preview thumbnail */
 const PREVIEW_CAPTURE_FRAME = 60;
+
+/** Frame at which to capture for cached splats */
+const PREVIEW_CAPTURE_FRAME_CACHED = 10;
 
 /** Page padding in pixels */
 const PAGE_PADDING = 36;
@@ -82,6 +88,91 @@ const getStoreState = () => useStore.getState();
 /** Supported file extensions for display */
 const supportedExtensions = getSupportedExtensions();
 const supportedExtensionsText = supportedExtensions.join(", ");
+
+const focusDirection = new THREE.Vector3();
+
+const isFile = (value) => typeof File !== "undefined" && value instanceof File;
+
+const makeAdHocAssetId = (file) =>
+  `adhoc-${file?.name ?? "asset"}-${file?.size ?? 0}-${file?.lastModified ?? Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+
+const normalizeAssetCandidate = (candidate) => {
+  if (!candidate) return null;
+  if (candidate.file && isFile(candidate.file)) {
+    if (!candidate.id) {
+      candidate.id = makeAdHocAssetId(candidate.file);
+    }
+    if (!candidate.name) {
+      candidate.name = candidate.file.name ?? "Untitled";
+    }
+    return candidate;
+  }
+  if (isFile(candidate)) {
+    return {
+      id: makeAdHocAssetId(candidate),
+      file: candidate,
+      name: candidate.name ?? "Untitled",
+      preview: null,
+      previewSource: null,
+      loaded: false,
+    };
+  }
+  return null;
+};
+
+const collectNeighborAssets = (assets, centerIndex) => {
+  if (!assets || assets.length === 0) return [];
+  const indices = [];
+  if (centerIndex >= 0 && centerIndex < assets.length) {
+    indices.push(centerIndex, centerIndex - 1, centerIndex + 1);
+  } else {
+    indices.push(0);
+  }
+  const seen = new Set();
+  const results = [];
+  for (const idx of indices) {
+    if (idx < 0 || idx >= assets.length) continue;
+    const asset = assets[idx];
+    if (!asset || seen.has(asset.id)) continue;
+    seen.add(asset.id);
+    results.push(asset);
+  }
+  return results;
+};
+
+const applyFocusDistanceOverride = (distance) => {
+  if (distance === undefined || distance === null) return;
+  if (!camera || !controls) return;
+  camera.getWorldDirection(focusDirection);
+  const target = camera.position.clone().addScaledVector(focusDirection, distance);
+  controls.target.copy(target);
+  controls.update();
+};
+
+const syncStoredAnimationSettings = async (animationSettings, wasImmersiveModeActive, store) => {
+  if (!animationSettings) return;
+  const { enabled, intensity, direction } = animationSettings;
+  store.setAnimationEnabled(enabled);
+  store.setAnimationIntensity(intensity);
+  store.setAnimationDirection(direction);
+
+  if (wasImmersiveModeActive) return;
+
+  try {
+    const {
+      setLoadAnimationEnabled,
+      setLoadAnimationIntensity,
+      setLoadAnimationDirection,
+    } = await import("./cameraAnimations.js");
+    setLoadAnimationEnabled(enabled);
+    setLoadAnimationIntensity(intensity);
+    setLoadAnimationDirection(direction);
+  } catch (err) {
+    console.warn("Failed to sync animation module", err);
+  }
+};
 
 /**
  * Updates viewer dimensions based on window size and panel state.
@@ -259,247 +350,291 @@ const formatBytes = (bytes) => {
  * Handles format detection, camera metadata parsing, mesh creation,
  * and post-load effects (animation, preview capture, background).
  * 
- * @param {File} file - File object to load
+ * @param {Object|File} assetOrFile - Asset descriptor or File object to load
+ * @param {Object} options - Load options
+ * @param {string} options.slideDirection - 'next' or 'prev' for slide transition
  */
-export const loadSplatFile = async (file) => {
+export const loadSplatFile = async (assetOrFile, options = {}) => {
   const viewerEl = document.getElementById('viewer');
-  if (!file || !viewerEl) return;
-  
+  if (!viewerEl) return;
+
+  const asset = normalizeAssetCandidate(assetOrFile);
+  if (!asset?.file) return;
+
   const store = getStoreState();
+  const { slideDirection } = options;
+  const wasAlreadyCached = isSplatCached(asset);
   
-  const formatHandler = getFormatHandler(file);
-  if (!formatHandler) {
-    store.setStatus(`Only ${supportedExtensionsText} 3DGS files are supported`);
-    return;
+  // For cached slide transitions, preload entry DURING slide-out for seamless swap
+  let preloadedEntry = null;
+  if (slideDirection && wasAlreadyCached && currentMesh) {
+    // Start slide-out and entry prep in parallel
+    // Pan for 1.2s, fade canvas in last 0.2s (at 80% = 960ms)
+    const slideOutPromise = slideOutAnimation(slideDirection, { duration: 1200, amount: 0.5, fadeDelay: 0.625 });
+    const prepPromise = ensureSplatEntry(asset).catch(err => {
+      console.warn('Failed to preload during slide-out:', err);
+      return null;
+    });
+    
+    const [, entry] = await Promise.all([slideOutPromise, prepPromise]);
+    preloadedEntry = entry;
+  } else if (slideDirection && currentMesh) {
+    // Non-cached: just slide out
+    await slideOutAnimation(slideDirection, { duration: 1200, amount: 0.5, fadeDelay: 0.625 });
   }
+  
+  store.setFileInfo({ name: asset.name });
 
-  // Set file name early so components can save settings
-  store.setFileInfo({ name: file.name });
-
-  // Check if immersive mode is active - we'll pause it during load and skip animations
   const wasImmersiveModeActive = isImmersiveModeActive();
   if (wasImmersiveModeActive) {
     pauseImmersiveMode();
   }
 
-  // Load stored settings for this file
-  let focusDistanceOverride = undefined;
-  const storedSettings = await loadFileSettings(file.name);
-  if (storedSettings) {
-    store.addLog(`Found stored settings for ${file.name}`);
+  const start = performance.now();
 
-    // Apply stored preview if available (before loading mesh)
-    if (storedSettings.preview) {
-      applyPreviewAsBackground(storedSettings.preview);
-    }
-
-    // Apply stored animation settings (but not if immersive mode is active)
-    if (storedSettings.animation) {
-      const { enabled, intensity, direction } = storedSettings.animation;
-      // Store settings in state even if immersive mode is active (for when it's disabled)
-      store.setAnimationEnabled(enabled);
-      store.setAnimationIntensity(intensity);
-      store.setAnimationDirection(direction);
-      
-      // Only apply to animation module if not in immersive mode
-      if (!wasImmersiveModeActive) {
-        const { setLoadAnimationEnabled, setLoadAnimationIntensity, setLoadAnimationDirection } = await import('./cameraAnimations.js');
-        setLoadAnimationEnabled(enabled);
-        setLoadAnimationIntensity(intensity);
-        setLoadAnimationDirection(direction);
+  try {
+    // Only clear background if not cached (avoid flash)
+    if (!wasAlreadyCached) {
+      updateBackgroundImage(null);
+      const pageEl = document.querySelector(".page");
+      if (pageEl) {
+        pageEl.classList.remove("has-glow");
       }
     }
 
-    // Store focus distance override for later application (after camera is positioned)
-    if (storedSettings.focusDistance !== undefined) {
-      focusDistanceOverride = storedSettings.focusDistance;
+    // Only show loading overlay for non-cached loads
+    if (!wasAlreadyCached) {
+      viewerEl.classList.add("loading");
+      store.setIsLoading(true);
+      store.setStatus("Preparing splat...");
+    }
+
+    const assetList = getAssetList();
+    const assetIndex = assetList.findIndex((a) => a.id === asset.id);
+    const neighborAssets = assetIndex >= 0
+      ? collectNeighborAssets(assetList, assetIndex)
+      : [asset];
+
+    let entry = preloadedEntry; // Use preloaded if available
+    if (!entry) {
+      try {
+        entry = await activateSplatEntry(asset);
+      } catch (error) {
+      if (error?.code === "UNSUPPORTED_FORMAT") {
+        store.setStatus(`Only ${supportedExtensionsText} 3DGS files are supported`);
+        viewerEl.classList.remove("loading");
+        store.setIsLoading(false);
+        if (wasImmersiveModeActive) {
+          resumeImmersiveMode();
+        }
+        return;
+      }
+      throw error;
+    }
+    } else {
+      // Activate the preloaded entry
+      const cache = getSplatCache();
+      cache.forEach((cached, id) => {
+        cached.mesh.visible = id === asset.id;
+      });
+      requestRender(); // Immediately render the new mesh
+    }
+
+    if (!entry) {
+      throw new Error("Unable to activate splat entry");
+    }
+
+    setCurrentMesh(entry.mesh);
+    viewerEl.classList.add("has-mesh");
+    spark.update({ scene });
+
+    // Fire-and-forget neighbor preloading (don't block current asset)
+    const neighborIds = new Set(neighborAssets.map((neighbor) => neighbor.id));
+    retainOnlySplats(neighborIds);
+    
+    // Preload neighbors in background without awaiting
+    neighborAssets
+      .filter((neighbor) => neighbor.id !== asset.id)
+      .forEach((neighbor) => {
+        ensureSplatEntry(neighbor)
+          .then(() => spark.update({ scene }))
+          .catch((err) => {
+            console.warn(`[SplatManager] Failed to preload ${neighbor.name}:`, err);
+          });
+      });
+
+    const { cameraMetadata, storedSettings, focusDistanceOverride, formatLabel } = entry;
+
+    if (storedSettings) {
+      store.addLog(`Found stored settings for ${asset.name}`);
+    }
+
+    if (storedSettings?.preview) {
+      applyPreviewAsBackground(storedSettings.preview);
+    }
+
+    await syncStoredAnimationSettings(
+      storedSettings?.animation,
+      wasImmersiveModeActive,
+      store,
+    );
+
+    if (focusDistanceOverride !== undefined) {
       store.setHasCustomFocus(true);
       store.addLog(`Found focus distance override: ${focusDistanceOverride.toFixed(2)} units`);
     } else {
       store.setHasCustomFocus(false);
     }
-  } else {
-    store.setHasCustomFocus(false);
-  }
 
-  try {
-    // Immediately clear old backgrounds to prevent aspect ratio mismatch artifacts
-    updateBackgroundImage(null);
-    const pageEl = document.querySelector(".page");
-    if (pageEl) {
-      pageEl.classList.remove("has-glow");
-    }
-    
-    // Get current asset to check for existing preview
-    const currentIndex = getCurrentAssetIndex();
-    const currentAsset = getAssetByIndex(currentIndex);
-    
-    viewerEl.classList.add("loading");
-    store.setIsLoading(true);
-    
-    store.setStatus("Reading local file...");
-    const start = performance.now();
-    const bytes = new Uint8Array(await file.arrayBuffer());
-
-    let cameraMetadata = null;
-    try {
-      cameraMetadata = await formatHandler.loadMetadata({ file, bytes });
-      if (cameraMetadata) {
-        const { intrinsics } = cameraMetadata;
-        // Store aspect ratio but don't update viewer yet
-        setOriginalImageAspect(intrinsics.imageWidth / intrinsics.imageHeight);
-        
-        store.addLog(
-          `${formatHandler.label} camera: fx=${intrinsics.fx.toFixed(1)}, fy=${intrinsics.fy.toFixed(1)}, ` +
-            `cx=${intrinsics.cx.toFixed(1)}, cy=${intrinsics.cy.toFixed(1)}, ` +
-            `img=${intrinsics.imageWidth}x${intrinsics.imageHeight}`,
-        );
-      } else {
-        setOriginalImageAspect(null);
-      }
-    } catch (error) {
-      setOriginalImageAspect(null);
-      store.addLog(`Failed to parse camera metadata, falling back to default view: ${error?.message ?? error}`);
-    }
-
-    store.setStatus(`Parsing ${formatHandler.label} and building splats...`);
-    const mesh = await formatHandler.loadData({ file, bytes });
-
-    // Configure pipeline based on color space
-    // if (formatHandler.colorSpace === "linear") {
-    //   if (!composer.passes.includes(outputPass)) {
-    //     composer.addPass(outputPass);
-    //   }
-    // } else {
-    //   composer.removePass(outputPass);
-    // }
-
-    removeCurrentMesh();
-    setCurrentMesh(mesh);
-    viewerEl.classList.add("has-mesh");
-    scene.add(mesh);
-
-    // Now update aspect ratio after old mesh is removed and new mesh is added
-    updateViewerAspectRatio();
-    
-    // Apply preview background after aspect ratio is set
-    if (currentAsset?.preview) {
-      setTimeout(() => {
-        applyPreviewAsBackground(currentAsset.preview);
-      }, 50);
-    }
-
-    clearMetadataCamera(resize);
-    if (cameraMetadata) {
-      applyMetadataCamera(mesh, cameraMetadata, resize);
+    if (cameraMetadata?.intrinsics) {
+      const { intrinsics } = cameraMetadata;
+      setOriginalImageAspect(intrinsics.imageWidth / intrinsics.imageHeight);
+      store.addLog(
+        `${formatLabel ?? "3DGS"} camera: fx=${intrinsics.fx.toFixed(1)}, fy=${intrinsics.fy.toFixed(1)}, ` +
+          `cx=${intrinsics.cx.toFixed(1)}, cy=${intrinsics.cy.toFixed(1)}, ` +
+          `img=${intrinsics.imageWidth}x${intrinsics.imageHeight}`,
+      );
     } else {
-      fitViewToMesh(mesh);
-    }
-    spark.update({ scene });
-
-    // Ensure UI reflects the computed camera FOV after positioning
-    try {
-      store.setFov(camera.fov);
-    } catch (err) {
-      console.warn('Failed to set store FOV from camera:', err);
+      setOriginalImageAspect(null);
     }
 
-    // Apply focus distance override if present (after camera is positioned)
-    if (focusDistanceOverride !== undefined && camera && controls) {
-      const cameraDirection = new THREE.Vector3();
-      camera.getWorldDirection(cameraDirection);
-      const newTarget = camera.position.clone().addScaledVector(cameraDirection, focusDistanceOverride);
-      controls.target.copy(newTarget);
-      controls.update();
-      store.addLog(`Applied focus distance override: ${focusDistanceOverride.toFixed(2)} units`);
+    updateViewerAspectRatio();
+    clearMetadataCamera(resize);
+
+    // For slide transitions on cached splats, apply camera instantly then slide in
+    // Otherwise use the smooth camera mutation animation
+    if (slideDirection && wasAlreadyCached) {
+      // Apply camera settings instantly
+      if (cameraMetadata) {
+        applyMetadataCamera(entry.mesh, cameraMetadata, resize);
+      } else {
+        fitViewToMesh(entry.mesh);
+      }
+
+      if (focusDistanceOverride !== undefined) {
+        applyFocusDistanceOverride(focusDistanceOverride);
+        store.addLog(`Applied focus distance override: ${focusDistanceOverride.toFixed(2)} units`);
+      }
+
+      try {
+        store.setFov(camera.fov);
+      } catch (err) {
+        console.warn('Failed to set store FOV from camera:', err);
+      }
+
+      saveHomeView();
+      
+      // Slide in from the navigation direction (1s pan with quick fade-in)
+      await slideInAnimation(slideDirection, { duration: 1000, amount: 0.5 });
+    } else {
+      const shouldAnimateCamera = !wasImmersiveModeActive && store.animationEnabled;
+
+      await animateCameraMutation(() => {
+        if (cameraMetadata) {
+          applyMetadataCamera(entry.mesh, cameraMetadata, resize);
+        } else {
+          fitViewToMesh(entry.mesh);
+        }
+
+        if (focusDistanceOverride !== undefined) {
+          applyFocusDistanceOverride(focusDistanceOverride);
+          store.addLog(`Applied focus distance override: ${focusDistanceOverride.toFixed(2)} units`);
+        }
+
+        try {
+          store.setFov(camera.fov);
+        } catch (err) {
+          console.warn('Failed to set store FOV from camera:', err);
+        }
+
+        saveHomeView();
+      }, { animate: shouldAnimateCamera });
     }
 
-    // Save home view BEFORE animation so we capture the correct position
-    saveHomeView();
-
-    // Skip load animation if immersive mode is active, otherwise play it
-    if (!wasImmersiveModeActive) {
-      startLoadZoomAnimation();
+    // Apply preview immediately for cached splats
+    if (asset.preview) {
+      if (wasAlreadyCached) {
+        applyPreviewAsBackground(asset.preview);
+      } else {
+        setTimeout(() => {
+          applyPreviewAsBackground(asset.preview);
+        }, 50);
+      }
     }
 
-    // Warmup frames for spark renderer stabilization
-    let warmupFrames = WARMUP_FRAMES;
-    let bgCaptured = false;
+    // Use reduced warmup for cached splats
+    let warmupFrames = wasAlreadyCached ? WARMUP_FRAMES_CACHED : WARMUP_FRAMES;
+    let bgCaptured = wasAlreadyCached; // Skip bg capture for cached
     let previewCaptured = false;
-    
-    // Skip background generation if we already have an image-based preview
-    const skipBgGeneration = currentAsset?.preview && currentAsset.previewSource === "image";
-    
-    /**
-     * Warmup loop for renderer stabilization.
-     * Captures background and preview at specific frames.
-     */
+
+    const skipBgGeneration = wasAlreadyCached || (asset.preview && asset.previewSource === "image");
+
+    const storedSettingsRef = storedSettings;
+
     const warmup = () => {
       if (warmupFrames > 0) {
         warmupFrames--;
         requestRender();
         requestAnimationFrame(warmup);
-        
+
         if (!bgCaptured && warmupFrames === BG_CAPTURE_FRAME && !skipBgGeneration) {
           bgCaptured = true;
           captureAndApplyBackground();
         }
-        
-        if (!previewCaptured && warmupFrames === PREVIEW_CAPTURE_FRAME) {
+
+        const previewFrame = wasAlreadyCached ? PREVIEW_CAPTURE_FRAME_CACHED : PREVIEW_CAPTURE_FRAME;
+        if (!previewCaptured && warmupFrames === previewFrame) {
           previewCaptured = true;
-          
-          // Only generate preview if not already in IndexedDB
-          const shouldGeneratePreview = !storedSettings?.preview;
-          
+          const shouldGeneratePreview = !storedSettingsRef?.preview;
+
           if (shouldGeneratePreview) {
             captureCurrentAssetPreview();
-
-            // Save compressed preview to IndexedDB
             const previewUrl = capturePreviewThumbnail();
             if (previewUrl) {
               const sizeKB = (previewUrl.length * 0.75 / 1024).toFixed(1);
               store.addLog(`Preview saved (${sizeKB} KB)`);
-              savePreviewImage(file.name, previewUrl).catch(err => {
+              savePreviewImage(asset.file.name, previewUrl).catch((err) => {
                 console.warn('Failed to save preview:', err);
               });
             }
           } else {
-            // Use stored preview for current asset
-            captureCurrentAssetPreview(); // Still call to update asset manager
+            captureCurrentAssetPreview();
             store.addLog('Using stored preview from IndexedDB');
           }
         }
-      } else {
-        // Warmup complete - resume immersive mode if it was active
-        if (wasImmersiveModeActive) {
-          resumeImmersiveMode();
-        }
+      } else if (wasImmersiveModeActive) {
+        resumeImmersiveMode();
       }
     };
     warmup();
 
     const loadMs = performance.now() - start;
-    
-    // Update file info in store
+
     store.setFileInfo({
-      name: file.name,
-      size: formatBytes(file.size),
-      splatCount: mesh?.packedSplats?.numSplats ?? "-",
+      name: asset.name,
+      size: formatBytes(asset.file.size),
+      splatCount: entry.mesh?.packedSplats?.numSplats ?? "-",
       loadTime: `${loadMs.toFixed(1)} ms`,
     });
-    
-    setTimeout(() => {
+
+    // Remove loading state immediately for cached, short delay for fresh loads
+    if (wasAlreadyCached) {
       viewerEl.classList.remove("loading");
       store.setIsLoading(false);
-    }, 100);
-    
-    store.setStatus(
-      cameraMetadata
-        ? "Loaded "
-        : "Loaded (no camera data)",
-    );
+    } else {
+      requestAnimationFrame(() => {
+        viewerEl.classList.remove("loading");
+        store.setIsLoading(false);
+      });
+    }
+
+    const formatName = formatLabel ?? asset.name ?? "asset";
+    const loadedMessage = cameraMetadata
+      ? `Loaded ${formatName}`
+      : `Loaded ${formatName} (no camera data)`;
+    store.setStatus(loadedMessage);
     store.addLog(
-      `Debug: splats=${mesh.packedSplats.numSplats}`,
+      `Debug: splats=${entry.mesh?.packedSplats?.numSplats ?? "-"}`,
     );
   } catch (error) {
     console.error(error);
@@ -507,8 +642,7 @@ export const loadSplatFile = async (file) => {
     store.setIsLoading(false);
     clearMetadataCamera(resize);
     store.setStatus("Load failed, please check the file or console log");
-    
-    // Resume immersive mode even on error
+
     if (wasImmersiveModeActive) {
       resumeImmersiveMode();
     }
@@ -656,6 +790,10 @@ export const handleMultipleFiles = async (files) => {
     return;
   }
   
+  resetSplatManager();
+  setCurrentMesh(null);
+  spark.update({ scene });
+
   // Update store with assets
   store.setAssets(result.assets);
   
@@ -663,7 +801,7 @@ export const handleMultipleFiles = async (files) => {
     // Single file - load directly
     setCurrentAssetIndexManager(0);
     store.setCurrentAssetIndex(0);
-    await loadSplatFile(result.assets[0].file);
+    await loadSplatFile(result.assets[0]);
   } else {
     // Multiple files - show gallery and start loading
     store.addLog(`Found ${result.count} assets`);
@@ -688,7 +826,7 @@ export const handleMultipleFiles = async (files) => {
     // Load first asset (preview will be captured automatically after warmup)
     setCurrentAssetIndexManager(0);
     store.setCurrentAssetIndex(0);
-    await loadSplatFile(result.assets[0].file);
+    await loadSplatFile(result.assets[0]);
   }
 };
 
@@ -742,7 +880,7 @@ export const loadAssetByIndex = async (index) => {
   const store = getStoreState();
   setCurrentAssetIndexManager(index);
   store.setCurrentAssetIndex(index);
-  await loadSplatFile(asset.file);
+  await loadSplatFile(asset);
 };
 
 /**
@@ -757,7 +895,7 @@ export const loadNextAsset = async () => {
     const index = getCurrentAssetIndex();
     const store = getStoreState();
     store.setCurrentAssetIndex(index);
-    await loadSplatFile(asset.file);
+    await loadSplatFile(asset, { slideDirection: 'next' });
   }
 };
 
@@ -773,6 +911,6 @@ export const loadPrevAsset = async () => {
     const index = getCurrentAssetIndex();
     const store = getStoreState();
     store.setCurrentAssetIndex(index);
-    await loadSplatFile(asset.file);
+    await loadSplatFile(asset, { slideDirection: 'prev' });
   }
 };

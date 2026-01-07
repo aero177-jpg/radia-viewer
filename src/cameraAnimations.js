@@ -1,4 +1,4 @@
-import { camera, controls, requestRender, THREE } from "./viewer.js";
+import { camera, controls, requestRender, THREE, bgImageContainer } from "./viewer.js";
 import { useStore } from "./store.js";
 
 // Get store state
@@ -323,6 +323,217 @@ export const cancelAnchorTransition = () => {
     cancelAnimationFrame(anchorAnimationState.frameId);
   }
   anchorAnimationState = null;
+};
+
+// Slide transition state
+let slideAnimationState = null;
+
+export const cancelSlideAnimation = () => {
+  if (slideAnimationState?.frameId) {
+    cancelAnimationFrame(slideAnimationState.frameId);
+  }
+  if (slideAnimationState?.fadeTimeoutId) {
+    clearTimeout(slideAnimationState.fadeTimeoutId);
+  }
+  slideAnimationState = null;
+};
+
+/**
+ * Performs a slide-out animation (pan camera in direction of navigation).
+ * @param {'next'|'prev'} direction - Navigation direction
+ * @param {Object} options - Animation options
+ * @returns {Promise} Resolves when animation completes
+ */
+export const slideOutAnimation = (direction, { duration = 1200, amount = 0.45, fadeDelay = 0.625 } = {}) => {
+  return new Promise((resolve) => {
+    if (!camera || !controls) {
+      resolve();
+      return;
+    }
+
+    cancelSlideAnimation();
+    
+    const viewerEl = document.getElementById('viewer');
+    if (viewerEl) {
+      viewerEl.classList.remove('slide-in');
+    }
+    if (bgImageContainer) {
+      bgImageContainer.classList.remove('active');
+    }
+    
+    // Schedule canvas blur for later in the animation (last 0.45s)
+    const fadeTimeoutId = setTimeout(() => {
+      if (viewerEl) {
+        viewerEl.classList.add('slide-out');
+      }
+    }, duration * fadeDelay);
+
+    const startPosition = camera.position.clone();
+    const startTarget = controls.target.clone();
+
+    // Calculate right vector for horizontal pan
+    const forward = new THREE.Vector3().subVectors(startTarget, startPosition).normalize();
+    const up = camera.up.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(forward, up).normalize();
+
+    // Pan direction: next = pan right (camera moves left relative to scene)
+    // prev = pan left (camera moves right relative to scene)
+    const panSign = direction === 'next' ? 1 : -1;
+    const distance = startPosition.distanceTo(startTarget);
+    const panAmount = distance * amount * panSign;
+
+    const panOffset = right.multiplyScalar(panAmount);
+    const endPosition = startPosition.clone().add(panOffset);
+    const endTarget = startTarget.clone().add(panOffset);
+
+    // Orbit parameters (directional: next => right, prev => left)
+    const orbitAxis = up;
+    const orbitAngle = (Math.PI / 180) * 8 * (direction === 'next' ? 1 : -1); // 8 degrees
+
+    const animate = (timestamp) => {
+      if (!slideAnimationState) {
+        resolve();
+        return;
+      }
+
+      if (slideAnimationState.startTime == null) {
+        slideAnimationState.startTime = timestamp;
+      }
+
+      const elapsed = timestamp - slideAnimationState.startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = easingFunctions['ease-in'](t);
+
+      // Interpolate position and target
+      camera.position.lerpVectors(startPosition, endPosition, eased);
+      controls.target.lerpVectors(startTarget, endTarget, eased);
+
+      // Add orbit rotation
+      const currentOrbitAngle = orbitAngle * eased;
+      const orbitOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
+      orbitOffset.applyAxisAngle(orbitAxis, currentOrbitAngle);
+      camera.position.copy(controls.target).add(orbitOffset);
+
+      controls.update();
+      requestRender();
+
+      if (t < 1) {
+        slideAnimationState.frameId = requestAnimationFrame(animate);
+      } else {
+        slideAnimationState = null;
+        resolve();
+      }
+    };
+
+    slideAnimationState = {
+      frameId: requestAnimationFrame(animate),
+      startTime: null,
+      fadeTimeoutId,
+    };
+  });
+};
+
+/**
+ * Performs a slide-in animation (camera starts offset, slides to center).
+ * Call this AFTER setting up the new camera position.
+ * @param {'next'|'prev'} direction - Navigation direction (determines start offset)
+ * @param {Object} options - Animation options
+ * @returns {Promise} Resolves when animation completes
+ */
+export const slideInAnimation = (direction, { duration = 1000, amount = 0.45 } = {}) => {
+  return new Promise((resolve) => {
+    if (!camera || !controls) {
+      resolve();
+      return;
+    }
+
+    cancelSlideAnimation();
+    
+    // Remove blur-out immediately but delay fade-in slightly to avoid asset loading overlap
+    const viewerEl = document.getElementById('viewer');
+    if (viewerEl) {
+      viewerEl.classList.remove('slide-out');
+      setTimeout(() => {
+        if (viewerEl) {
+          viewerEl.classList.add('slide-in');
+        }
+      }, 100);
+    }
+
+    // End position is current (target) position
+    const endPosition = camera.position.clone();
+    const endTarget = controls.target.clone();
+
+    // Calculate right vector
+    const forward = new THREE.Vector3().subVectors(endTarget, endPosition).normalize();
+    const up = camera.up.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(forward, up).normalize();
+
+    // Start offset: OPPOSITE of slide-out direction
+    // next = start from left (old slid right), prev = start from right (old slid left)
+    const panSign = direction === 'next' ? -1 : 1;
+    const distance = endPosition.distanceTo(endTarget);
+    const panAmount = distance * amount * panSign;
+
+    const panOffset = right.multiplyScalar(panAmount);
+    const startPosition = endPosition.clone().add(panOffset);
+    const startTarget = endTarget.clone().add(panOffset);
+
+    // Orbit parameters (directional: next incoming from left, prev incoming from right)
+    const orbitAxis = up;
+    const startOrbitAngle = (Math.PI / 180) * 8 * (direction === 'next' ? -1 : 1); // Start offset angle
+
+    // Set camera to start position
+    camera.position.copy(startPosition);
+    controls.target.copy(startTarget);
+    controls.update();
+    requestRender();
+
+    const animate = (timestamp) => {
+      if (!slideAnimationState) {
+        resolve();
+        return;
+      }
+
+      if (slideAnimationState.startTime == null) {
+        slideAnimationState.startTime = timestamp;
+      }
+
+      const elapsed = timestamp - slideAnimationState.startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = easingFunctions['ease-out'](t);
+
+      // Interpolate position and target
+      camera.position.lerpVectors(startPosition, endPosition, eased);
+      controls.target.lerpVectors(startTarget, endTarget, eased);
+
+      // Add orbit rotation (from left to center)
+      const currentOrbitAngle = startOrbitAngle * (1 - eased); // Rotate from left back to center
+      const orbitOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
+      orbitOffset.applyAxisAngle(orbitAxis, currentOrbitAngle);
+      camera.position.copy(controls.target).add(orbitOffset);
+
+      controls.update();
+      requestRender();
+
+      if (t < 1) {
+        slideAnimationState.frameId = requestAnimationFrame(animate);
+      } else {
+        slideAnimationState = null;
+        // Clean up blur classes after slide-in completes
+        const viewerEl = document.getElementById('viewer');
+        if (viewerEl) {
+          viewerEl.classList.remove('slide-out', 'slide-in');
+        }
+        resolve();
+      }
+    };
+
+    slideAnimationState = {
+      frameId: requestAnimationFrame(animate),
+      startTime: null,
+    };
+  });
 };
 
 export const startAnchorTransition = (nextTarget, { duration = 650, onComplete } = {}) => {

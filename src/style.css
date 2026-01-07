@@ -108,6 +108,32 @@ button, a, input, .sidebar-btn, .panel-toggle {
   transition: filter 0.8s ease, opacity 0.8s ease;
 }
 
+/* Slide transition blur and fade classes */
+.viewer.slide-out canvas {
+  /* filter: blur(20px); */
+
+  opacity: 0;
+  /* Heavy blur and fade at end - controlled by JS adding this class late */
+  transition: filter 0.35s ease-out, opacity 0.45s ease-out;
+}
+
+.viewer.slide-in canvas {
+  filter: blur(0px);
+  opacity: 1;
+  transition: filter 0.5s ease-in, opacity 0.5s ease-in;
+}
+
+/* Background image fades with canvas during transitions */
+.viewer.slide-out .bg-image-container {
+  filter: blur(120px);
+  transition: filter 0.05s ease-out !important;
+}
+
+.viewer.slide-in .bg-image-container {
+  opacity: 1 !important;
+  transition: opacity 0.1s ease-in !important;
+}
+
 .viewer.loading canvas {
   filter: blur(24px);
   opacity: 0.1;

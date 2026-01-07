@@ -130,6 +130,105 @@ export const restoreHomeView = () => {
   });
 };
 
+// Camera pose helpers -------------------------------------------------------
+export const captureCameraPose = () => ({
+  position: camera.position.clone(),
+  quaternion: camera.quaternion.clone(),
+  fov: camera.fov,
+  near: camera.near,
+  far: camera.far,
+  zoom: camera.zoom,
+  target: controls.target.clone(),
+});
+
+export const applyCameraPose = (pose) => {
+  if (!pose) return;
+  camera.position.copy(pose.position);
+  camera.quaternion.copy(pose.quaternion);
+  camera.fov = pose.fov;
+  camera.near = pose.near;
+  camera.far = pose.far;
+  camera.zoom = pose.zoom;
+  camera.updateProjectionMatrix();
+  controls.target.copy(pose.target);
+  controls.update();
+};
+
+const hasPoseDelta = (from, to) => {
+  if (!from || !to) return false;
+  if (from.position.distanceToSquared(to.position) > 1e-6) return true;
+  if (Math.abs(from.fov - to.fov) > 1e-3) return true;
+  if (Math.abs(from.near - to.near) > 1e-4) return true;
+  if (Math.abs(from.far - to.far) > 1e-3) return true;
+  if (Math.abs(from.zoom - to.zoom) > 1e-4) return true;
+  if (from.target.distanceToSquared(to.target) > 1e-6) return true;
+  const dot = from.quaternion.dot(to.quaternion);
+  return 1 - Math.abs(dot) > 1e-4;
+};
+
+const getTransitionDurationMs = (options) => {
+  if (options?.duration != null) return options.duration;
+  const state = getStoreState();
+  const { animationIntensity, customAnimation } = state;
+  switch (animationIntensity) {
+    case "subtle":
+      return 550;
+    case "dramatic":
+      return 1200;
+    case "custom": {
+      const customMs = Math.max(300, (customAnimation?.duration ?? 1.5) * 1000);
+      return Math.min(4000, customMs);
+    }
+    default:
+      return 850;
+  }
+};
+
+const runCameraPoseTransition = (targetPose, options = {}) => new Promise((resolve) => {
+  if (!targetPose) {
+    resolve();
+    return;
+  }
+
+  const animate = options.animate ?? getStoreState().animationEnabled;
+  const duration = getTransitionDurationMs(options);
+
+  const finalize = () => {
+    updateDollyZoomBaselineFromCamera();
+    requestRender();
+    if (typeof options.onComplete === "function") {
+      options.onComplete();
+    }
+    resolve();
+  };
+
+  if (!animate || duration <= 0) {
+    applyCameraPose(targetPose);
+    finalize();
+    return;
+  }
+
+  startSmoothResetAnimation(targetPose, {
+    duration,
+    onComplete: finalize,
+  });
+});
+
+export const animateCameraMutation = async (mutateFn, options = {}) => {
+  if (typeof mutateFn !== "function" || !camera || !controls) return;
+  const startPose = captureCameraPose();
+  mutateFn();
+  const targetPose = captureCameraPose();
+  if (!hasPoseDelta(startPose, targetPose)) {
+    if (typeof options.onComplete === "function") {
+      options.onComplete();
+    }
+    return;
+  }
+  applyCameraPose(startPose);
+  await runCameraPoseTransition(targetPose, options);
+};
+
 // Lazy import to avoid circular dependency
 let immersiveModeModule = null;
 const getImmersiveModule = async () => {
