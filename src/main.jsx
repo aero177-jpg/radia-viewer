@@ -6,8 +6,25 @@ import { render } from 'preact';
 import App from './components/App';
 import './style.css';
 
-// Render the Preact app
-render(<App />, document.getElementById('app'));
+// Initialize storage sources from IndexedDB on startup
+import { initializeSources } from './storage/index.js';
+
+// Initialize storage sources first, then render the app
+const startApp = async () => {
+  try {
+    const sources = await initializeSources();
+    if (sources.length > 0) {
+      console.log(`[Storage] Restored ${sources.length} storage source(s)`);
+    }
+  } catch (err) {
+    console.warn('[Storage] Failed to restore sources:', err);
+  }
+
+  // Render the Preact app after sources are loaded
+  render(<App />, document.getElementById('app'));
+};
+
+startApp();
 
 // Global error handlers to capture unhandled rejections and errors
 window.addEventListener('unhandledrejection', (event) => {

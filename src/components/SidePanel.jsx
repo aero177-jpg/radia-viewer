@@ -4,9 +4,13 @@
  * Collapsible via toggle button.
  */
 
+import { useState, useCallback } from 'preact/hooks';
 import { useStore } from '../store';
 import CameraControls from './CameraControls';
 import AnimationSettings from './AnimationSettings';
+import StorageSourceList from './StorageSourceList';
+import ConnectStorageDialog from './ConnectStorageDialog';
+import { loadFromStorageSource } from '../fileLoader';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronLeft } from '@fortawesome/free-solid-svg-icons';
 
@@ -18,6 +22,27 @@ function SidePanel() {
   const panelOpen = useStore((state) => state.panelOpen); // assumes this exists
   // Store actions
   const togglePanel = useStore((state) => state.togglePanel);
+  
+  // Storage dialog state
+  const [storageDialogOpen, setStorageDialogOpen] = useState(false);
+  
+  const handleOpenStorageDialog = useCallback(() => {
+    setStorageDialogOpen(true);
+  }, []);
+  
+  const handleCloseStorageDialog = useCallback(() => {
+    setStorageDialogOpen(false);
+  }, []);
+  
+  const handleSourceConnect = useCallback((source) => {
+    // Load assets from the newly connected source
+    loadFromStorageSource(source);
+  }, []);
+  
+  const handleSelectSource = useCallback((source) => {
+    // Load assets from selected source
+    loadFromStorageSource(source);
+  }, []);
 
   return (
     <>
@@ -60,8 +85,19 @@ function SidePanel() {
         {/* Settings panels */}
         <CameraControls />
         <AnimationSettings />
-        {/* <AssetGallery /> */}
+        {/* Storage sources */}
+        <StorageSourceList 
+          onAddSource={handleOpenStorageDialog}
+          onSelectSource={handleSelectSource}
+        />
       </div>
+      
+      {/* Connect to Storage dialog */}
+      <ConnectStorageDialog
+        isOpen={storageDialogOpen}
+        onClose={handleCloseStorageDialog}
+        onConnect={handleSourceConnect}
+      />
     </>
   );
 }

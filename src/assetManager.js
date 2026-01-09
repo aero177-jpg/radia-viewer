@@ -310,3 +310,18 @@ export const clearAssets = () => {
   assetList = [];
   currentAssetIndex = -1;
 };
+
+/**
+ * Set assets directly from pre-adapted asset descriptors.
+ * Used by storage source loading which provides already-formatted assets.
+ * @param {Object[]} assets - Array of asset descriptors
+ */
+export const setAdaptedAssets = (assets) => {
+  assetList = assets.map((asset, index) => ({
+    ...asset,
+    id: asset.id || `adapted-${Date.now()}-${index}`,
+    loaded: false,
+  }));
+  currentAssetIndex = -1;
+  return { count: assetList.length, assets: assetList };
+};

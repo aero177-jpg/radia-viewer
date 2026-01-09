@@ -1,6 +1,7 @@
 /**
  * Splat Manager
  * Maintains a persistent THREE.Group of splats and handles preload/activation.
+ * Supports both local files and storage source assets.
  */
 
 import { scene, THREE } from "./viewer.js";
@@ -46,30 +47,62 @@ const disposeEntry = (entry) => {
   disposeMesh(entry.mesh);
 };
 
+/**
+ * Ensure asset has a File object.
+ * For storage source assets, loads the file lazily.
+ */
+const ensureAssetFile = async (asset) => {
+  if (asset.file) return asset.file;
+  
+  // Check if this is a storage source asset
+  if (asset.sourceId && asset._remoteAsset) {
+    const { loadAssetFile } = await import("./storage/sourceAssetAdapter.js");
+    return loadAssetFile(asset);
+  }
+  
+  throw new Error("Asset has no file and no source");
+};
+
 const createEntry = async (asset) => {
-  if (!asset?.file) {
+  // Get file - may need to load from storage source
+  const file = await ensureAssetFile(asset);
+  if (!file) {
     const err = new Error("Missing file reference for asset");
     err.code = "MISSING_FILE";
     throw err;
   }
+  
+  // Update asset's file reference
+  asset.file = file;
 
-  const formatHandler = getFormatHandler(asset.file);
+  const formatHandler = getFormatHandler(file);
   if (!formatHandler) {
     const err = new Error(`Unsupported file: ${asset.name}`);
     err.code = "UNSUPPORTED_FORMAT";
     throw err;
   }
 
-  const bytes = new Uint8Array(await asset.file.arrayBuffer());
+  const bytes = new Uint8Array(await file.arrayBuffer());
 
   let cameraMetadata = null;
   try {
-    cameraMetadata = await formatHandler.loadMetadata({ file: asset.file, bytes });
+    cameraMetadata = await formatHandler.loadMetadata({ file, bytes });
   } catch (err) {
     console.warn(`[SplatManager] Failed to parse metadata for ${asset.name}:`, err);
   }
 
-  const mesh = await formatHandler.loadData({ file: asset.file, bytes });
+  // Try to load metadata from storage source
+  let sourceMetadata = null;
+  if (asset.sourceId && asset._remoteAsset) {
+    try {
+      const { loadAssetMetadata } = await import("./storage/sourceAssetAdapter.js");
+      sourceMetadata = await loadAssetMetadata(asset);
+    } catch (err) {
+      console.warn(`[SplatManager] Failed to load source metadata for ${asset.name}:`, err);
+    }
+  }
+
+  const mesh = await formatHandler.loadData({ file, bytes });
   mesh.visible = false;
   mesh.userData.assetId = asset.id;
   ensureGroup().add(mesh);
@@ -79,6 +112,22 @@ const createEntry = async (asset) => {
     storedSettings = await loadFileSettings(asset.name);
   } catch (err) {
     console.warn(`[SplatManager] Failed to read stored settings for ${asset.name}:`, err);
+  }
+
+  // Merge source metadata with stored settings (source takes precedence for camera)
+  if (sourceMetadata) {
+    if (sourceMetadata.camera && !cameraMetadata) {
+      cameraMetadata = sourceMetadata.camera;
+    }
+    if (!storedSettings) {
+      storedSettings = {};
+    }
+    if (sourceMetadata.animation && !storedSettings.animation) {
+      storedSettings.animation = sourceMetadata.animation;
+    }
+    if (sourceMetadata.focusDistance !== undefined && storedSettings.focusDistance === undefined) {
+      storedSettings.focusDistance = sourceMetadata.focusDistance;
+    }
   }
 
   return {

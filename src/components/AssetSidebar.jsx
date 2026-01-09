@@ -8,6 +8,7 @@ import { deleteFileSettings, clearAllFileSettings } from '../fileStorage';
 import { getFormatAccept } from '../formats/index';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { getSource } from '../storage/index.js';
 
 function AssetSidebar() {
   const assets = useStore((state) => state.assets);
@@ -227,7 +228,7 @@ function AssetSidebar() {
             <button 
               class="sidebar-btn delete" 
               onClick={handleDeleteClick}
-              title="Delete asset"
+              title="Remove asset(s)"
             >
               <FontAwesomeIcon icon={faTrash} />
             </button>
@@ -239,7 +240,52 @@ function AssetSidebar() {
       {showDeleteModal && portalTarget && createPortal(
         <div class="modal-overlay">
           <div class="modal-content">
-            <h3>Delete Asset</h3>
+            <h3>Remove Image</h3>
+            {(() => {
+              const asset = assets[currentAssetIndex];
+              const sourceType = asset?.sourceType;
+              const isCollection = !!asset?.sourceId;
+              const source = asset?.sourceId ? getSource(asset.sourceId) : null;
+              const isLocalCollection = sourceType === 'local-folder';
+              const isUrlCollection = sourceType === 'public-url';
+              const isSupabase = sourceType === 'supabase-storage';
+
+              if (!isCollection) {
+                return null; // plain queue, no source note
+              }
+
+              if (isLocalCollection) {
+                return (
+                  <p class="modal-note">
+                    Removing here only clears it from the app; delete the file in the folder to remove it on your device.
+                  </p>
+                );
+              }
+
+              if (isUrlCollection) {
+                return (
+                  <p class="modal-note">
+                    This only removes the link from the collection; the original URL/file stays online.
+                  </p>
+                );
+              }
+
+              if (isSupabase) {
+                // Supabase messaging will be handled separately per request
+                return (
+                  <p class="modal-note">
+                    Removing here only clears it from the app; file remains in the Supabase collection.
+                  </p>
+                );
+              }
+
+              // Fallback
+              return (
+                <p class="modal-note">
+                  Removing here only clears it from the app; the source is unchanged.
+                </p>
+              );
+            })()}
             
             <div class="modal-options">
               <label class="radio-option">
@@ -250,7 +296,7 @@ function AssetSidebar() {
                   checked={deleteScope === 'single'}
                   onChange={(e) => setDeleteScope(e.target.value)}
                 />
-                Delete this image
+                Remove image from queue 
               </label>
               
               <label class="radio-option">
@@ -261,7 +307,7 @@ function AssetSidebar() {
                   checked={deleteScope === 'all'}
                   onChange={(e) => setDeleteScope(e.target.value)}
                 />
-                Delete all images
+                Remove all images from queue
               </label>
             </div>
 
@@ -274,6 +320,9 @@ function AssetSidebar() {
                 />
                 Clear stored metadata
               </label>
+              <div class="modal-subnote">
+                Keeping metadata preserves image previews and camera settings, so re-adding the image restores them.
+              </div>
             </div>
 
             <div class="modal-actions">

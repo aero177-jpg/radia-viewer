@@ -109,6 +109,13 @@ const normalizeAssetCandidate = (candidate) => {
     }
     return candidate;
   }
+  // Storage source asset - file will be loaded lazily
+  if (candidate.sourceId && candidate._remoteAsset) {
+    if (!candidate.id) {
+      candidate.id = `source-${candidate.sourceId}-${Date.now()}`;
+    }
+    return candidate;
+  }
   if (isFile(candidate)) {
     return {
       id: makeAdHocAssetId(candidate),
@@ -124,16 +131,21 @@ const normalizeAssetCandidate = (candidate) => {
 
 const collectNeighborAssets = (assets, centerIndex) => {
   if (!assets || assets.length === 0) return [];
+  const n = assets.length;
   const indices = [];
-  if (centerIndex >= 0 && centerIndex < assets.length) {
-    indices.push(centerIndex, centerIndex - 1, centerIndex + 1);
+
+  if (centerIndex >= 0 && centerIndex < n) {
+    // Use circular indices so neighbors wrap around the list (important for seamless looping)
+    const prev = (centerIndex - 1 + n) % n;
+    const next = (centerIndex + 1) % n;
+    indices.push(centerIndex, prev, next);
   } else {
     indices.push(0);
   }
+
   const seen = new Set();
   const results = [];
   for (const idx of indices) {
-    if (idx < 0 || idx >= assets.length) continue;
     const asset = assets[idx];
     if (!asset || seen.has(asset.id)) continue;
     seen.add(asset.id);
@@ -141,6 +153,42 @@ const collectNeighborAssets = (assets, centerIndex) => {
   }
   return results;
 };
+
+const applyIntrinsicsAspect = (entry) => {
+  const intrinsics = entry?.cameraMetadata?.intrinsics;
+  if (!intrinsics || !intrinsics.imageWidth || !intrinsics.imageHeight) return;
+  const aspect = intrinsics.imageWidth / intrinsics.imageHeight;
+  setOriginalImageAspect(aspect);
+  updateViewerAspectRatio();
+  requestRender();
+};
+
+const waitForViewerResizeTransition = () => new Promise((resolve) => {
+  const viewerEl = document.getElementById('viewer');
+  if (!viewerEl) {
+    resolve();
+    return;
+  }
+
+  let timeoutId = null;
+  const done = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    viewerEl.removeEventListener('transitionend', onEnd);
+    resolve();
+  };
+
+  const onEnd = (event) => {
+    if (event.propertyName === 'width' || event.propertyName === 'height') {
+      done();
+    }
+  };
+
+  timeoutId = setTimeout(done, 280); // Fallback in case transitionend doesn't fire
+  viewerEl.addEventListener('transitionend', onEnd);
+});
 
 const applyFocusDistanceOverride = (distance) => {
   if (distance === undefined || distance === null) return;
@@ -277,8 +325,7 @@ setCapturePreviewFn(capturePreviewThumbnail);
 const applyPreviewAsBackground = (previewUrl) => {
   if (!previewUrl) return;
   setBgImageUrl(previewUrl);
-  const blur = 20;
-  updateBackgroundImage(previewUrl, blur);
+  updateBackgroundImage(previewUrl);
   
   // Apply glow effect to page container
   const pageEl = document.querySelector(".page");
@@ -310,8 +357,7 @@ const captureAndApplyBackground = () => {
   const dataUrl = renderer.domElement.toDataURL("image/jpeg", 0.9);
   
   setBgImageUrl(dataUrl);
-  const blur = 20;
-  updateBackgroundImage(dataUrl, blur);
+  updateBackgroundImage(dataUrl);
   
   // Apply glow effect to page container
   const pageEl = document.querySelector(".page");
@@ -359,28 +405,33 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
   if (!viewerEl) return;
 
   const asset = normalizeAssetCandidate(assetOrFile);
-  if (!asset?.file) return;
+  // Allow assets with file OR storage source (file loaded lazily)
+  if (!asset) return;
+  const hasFileOrSource = asset.file || (asset.sourceId && asset._remoteAsset);
+  if (!hasFileOrSource) return;
 
   const store = getStoreState();
   const { slideDirection } = options;
   const wasAlreadyCached = isSplatCached(asset);
+
+  // Preload entry early (reused later to avoid duplicate loads)
+  const entryPromise = ensureSplatEntry(asset);
+  let aspectApplied = false;
   
-  // For cached slide transitions, preload entry DURING slide-out for seamless swap
+  // For slide transitions, start slide-out and entry prep in parallel
   let preloadedEntry = null;
-  if (slideDirection && wasAlreadyCached && currentMesh) {
-    // Start slide-out and entry prep in parallel
-    // Pan for 1.2s, fade canvas in last 0.2s (at 80% = 960ms)
+  if (slideDirection && currentMesh) {
     const slideOutPromise = slideOutAnimation(slideDirection, { duration: 1200, amount: 0.5, fadeDelay: 0.625 });
-    const prepPromise = ensureSplatEntry(asset).catch(err => {
+    const prepPromise = entryPromise.catch((err) => {
       console.warn('Failed to preload during slide-out:', err);
       return null;
     });
-    
     const [, entry] = await Promise.all([slideOutPromise, prepPromise]);
+    if (entry) {
+      applyIntrinsicsAspect(entry);
+      aspectApplied = true;
+    }
     preloadedEntry = entry;
-  } else if (slideDirection && currentMesh) {
-    // Non-cached: just slide out
-    await slideOutAnimation(slideDirection, { duration: 1200, amount: 0.5, fadeDelay: 0.625 });
   }
   
   store.setFileInfo({ name: asset.name });
@@ -418,19 +469,31 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     let entry = preloadedEntry; // Use preloaded if available
     if (!entry) {
       try {
-        entry = await activateSplatEntry(asset);
-      } catch (error) {
-      if (error?.code === "UNSUPPORTED_FORMAT") {
-        store.setStatus(`Only ${supportedExtensionsText} 3DGS files are supported`);
-        viewerEl.classList.remove("loading");
-        store.setIsLoading(false);
-        if (wasImmersiveModeActive) {
-          resumeImmersiveMode();
+        entry = await entryPromise;
+        // Toggle visibility now that the entry is loaded
+        if (entry) {
+          if (!aspectApplied) {
+            applyIntrinsicsAspect(entry);
+            aspectApplied = true;
+          }
+          const cache = getSplatCache();
+          cache.forEach((cached, id) => {
+            cached.mesh.visible = id === asset.id;
+          });
+          requestRender();
         }
-        return;
+      } catch (error) {
+        if (error?.code === "UNSUPPORTED_FORMAT") {
+          store.setStatus(`Only ${supportedExtensionsText} 3DGS files are supported`);
+          viewerEl.classList.remove("loading");
+          store.setIsLoading(false);
+          if (wasImmersiveModeActive) {
+            resumeImmersiveMode();
+          }
+          return;
+        }
+        throw error;
       }
-      throw error;
-    }
     } else {
       // Activate the preloaded entry
       const cache = getSplatCache();
@@ -496,6 +559,10 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       );
     } else {
       setOriginalImageAspect(null);
+    }
+
+    if (aspectApplied) {
+      await waitForViewerResizeTransition();
     }
 
     updateViewerAspectRatio();
@@ -593,7 +660,8 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
             if (previewUrl) {
               const sizeKB = (previewUrl.length * 0.75 / 1024).toFixed(1);
               store.addLog(`Preview saved (${sizeKB} KB)`);
-              savePreviewImage(asset.file.name, previewUrl).catch((err) => {
+              // Use asset.name as key (works for both local files and source assets)
+              savePreviewImage(asset.name, previewUrl).catch((err) => {
                 console.warn('Failed to save preview:', err);
               });
             }
@@ -612,7 +680,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
     store.setFileInfo({
       name: asset.name,
-      size: formatBytes(asset.file.size),
+      size: formatBytes(asset.file?.size ?? asset.size),
       splatCount: entry.mesh?.packedSplats?.numSplats ?? "-",
       loadTime: `${loadMs.toFixed(1)} ms`,
     });
@@ -783,6 +851,7 @@ const processEntries = async (entries) => {
 export const handleMultipleFiles = async (files) => {
   if (!files || files.length === 0) return;
   const store = getStoreState();
+  store.clearActiveSource();
   const result = await setAssetListManager(files);
   
   if (result.count === 0) {
@@ -841,6 +910,7 @@ export const handleMultipleFiles = async (files) => {
 export const handleAddFiles = async (files) => {
   if (!files || files.length === 0) return;
   const store = getStoreState();
+  store.clearActiveSource();
   
   const result = await addAssets(files);
   
@@ -881,6 +951,88 @@ export const loadAssetByIndex = async (index) => {
   setCurrentAssetIndexManager(index);
   store.setCurrentAssetIndex(index);
   await loadSplatFile(asset);
+};
+
+/**
+ * Loads assets from a connected storage source.
+ * Replaces current asset list with assets from the source.
+ * 
+ * @param {import('./storage/AssetSource.js').AssetSource} source
+ */
+export const loadFromStorageSource = async (source) => {
+  const store = getStoreState();
+  
+  try {
+    store.setStatus(`Loading assets from ${source.name}...`);
+    
+    // Import storage adapter
+    const { loadSourceAssets, loadAssetPreview } = await import('./storage/index.js');
+    const { setAdaptedAssets } = await import('./assetManager.js');
+    
+    // Get assets from source
+    const adaptedAssets = await loadSourceAssets(source);
+
+    // Record the active collection for UI highlighting
+    store.setActiveSourceId(source.id);
+    
+    if (adaptedAssets.length === 0) {
+      store.setStatus(`No supported assets found in ${source.name}`);
+      store.clearActiveSource();
+      return;
+    }
+    
+    // Reset current state
+    resetSplatManager();
+    setCurrentMesh(null);
+    spark.update({ scene });
+    
+    // Clear background
+    updateBackgroundImage(null);
+    const pageEl = document.querySelector(".page");
+    if (pageEl) {
+      pageEl.classList.remove("has-glow");
+    }
+    
+    // Set the adapted assets in the asset manager
+    const result = setAdaptedAssets(adaptedAssets);
+    
+    // Update store with assets
+    store.setAssets(result.assets);
+    
+    store.addLog(`Found ${adaptedAssets.length} assets from ${source.name}`);
+    
+    // Set up preview generation callback
+    onPreviewGenerated((asset, index) => {
+      store.updateAssetPreview(index, asset.preview);
+    });
+    
+    // Load previews from source for all assets (in background)
+    const loadPreviews = async () => {
+      for (let i = 0; i < result.assets.length; i++) {
+        const asset = result.assets[i];
+        if (!asset.preview) {
+          const preview = await loadAssetPreview(asset);
+          if (preview) {
+            asset.preview = preview;
+            store.updateAssetPreview(i, preview);
+          }
+        }
+      }
+    };
+    loadPreviews(); // Don't await, run in background
+    
+    // Load first asset
+    if (result.assets.length > 0) {
+      setCurrentAssetIndexManager(0);
+      store.setCurrentAssetIndex(0);
+      await loadSplatFile(result.assets[0]);
+    }
+    
+  } catch (error) {
+    console.error('Failed to load from storage source:', error);
+    store.setStatus(`Failed to load from ${source.name}: ${error.message}`);
+    store.clearActiveSource();
+  }
 };
 
 /**

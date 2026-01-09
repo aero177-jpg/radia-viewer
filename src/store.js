@@ -65,6 +65,9 @@ export const useStore = create((set, get) => ({
   assets: [],
   currentAssetIndex: -1,
 
+  // Active storage collection
+  activeSourceId: null,
+
   // Logs
   logs: [],
 
@@ -187,6 +190,12 @@ export const useStore = create((set, get) => ({
   toggleGalleryExpanded: () => set((state) => ({ 
     galleryExpanded: !state.galleryExpanded 
   })),
+
+  /** Marks which storage source is currently in use */
+  setActiveSourceId: (sourceId) => set({ activeSourceId: sourceId }),
+
+  /** Clears active storage source (used for ad-hoc file loads) */
+  clearActiveSource: () => set({ activeSourceId: null }),
   
   /** Sets mobile state */
   setMobileState: (isMobile, isPortrait) => set({ isMobile, isPortrait }),

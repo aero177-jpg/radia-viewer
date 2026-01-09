@@ -258,7 +258,7 @@ function Viewer({ viewerReady }) {
         !hasMesh && (
           <div class="drop-help mobile-file-picker">
             <button class="primary large-file-btn" onClick={handlePickFile}>
-              Choose File
+              Choose Files
             </button>
             <div class="fine-print">Select PLY/SOG files • Spark + THREE 3DGS</div>
           </div>

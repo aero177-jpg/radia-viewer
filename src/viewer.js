@@ -41,6 +41,8 @@ export let dollyZoomBaseFov = null;
 // Background capture state
 export let bgImageUrl = null;
 export let bgImageContainer = null;
+let bgActivateRaf = null;
+let pendingBg = null;
 // FPS overlay element
 export let fpsContainer = null;
 
@@ -164,12 +166,22 @@ export const startRenderLoop = () => {
   let lastTime = performance.now();
   let frameCount = 0;
   let lastFpsUpdate = performance.now();
+  const targetFrameMs = 1000 / 60; // cap at 60 FPS
+  let lastRenderTime = performance.now();
 
   const animate = () => {
     requestAnimationFrame(animate);
 
     // Skip rendering if tab is hidden
     if (document.hidden) return;
+
+    const now = performance.now();
+    const elapsedSinceRender = now - lastRenderTime;
+    if (elapsedSinceRender < targetFrameMs) {
+      return;
+    }
+    // Align to the frame boundary to reduce drift on high-refresh monitors
+    lastRenderTime = now - (elapsedSinceRender % targetFrameMs);
 
     // Always update controls for damping, but only render if needed
     const controlsNeedUpdate = controls.update();
@@ -202,16 +214,50 @@ export const removeCurrentMesh = () => {
   }
 };
 
-export const updateBackgroundImage = (url, blur = 20) => {
+const cancelPendingBgActivation = () => {
+  if (bgActivateRaf) {
+    cancelAnimationFrame(bgActivateRaf);
+    bgActivateRaf = null;
+  }
+  pendingBg = null;
+};
+
+export const updateBackgroundImage = (url) => {
   if (!bgImageContainer) return;
+  cancelPendingBgActivation();
+
   if (url) {
-    bgImageContainer.style.backgroundImage = `url(${url})`;
-    bgImageContainer.style.filter = `blur(${blur}px)`;
-    bgImageContainer.classList.add("active");
+    const viewerEl = bgImageContainer.parentElement;
+    const isSlidingOut = viewerEl?.classList.contains("slide-out");
+
+    if (isSlidingOut) {
+      // Defer swapping the background image until slide-out finishes so the old background stays visible
+        pendingBg = { url };
+      bgActivateRaf = requestAnimationFrame(function waitUntilSlideOutEnds() {
+        bgActivateRaf = null;
+        if (viewerEl?.classList.contains("slide-out")) {
+          bgActivateRaf = requestAnimationFrame(waitUntilSlideOutEnds);
+          return;
+        }
+        if (pendingBg) {
+          bgImageContainer.style.backgroundImage = `url(${pendingBg.url})`;
+          bgImageUrl = pendingBg.url;
+          pendingBg = null;
+        }
+        bgImageContainer.classList.add("active");
+        requestRender();
+      });
+    } else {
+      bgImageContainer.style.backgroundImage = `url(${url})`;
+      bgImageUrl = url;
+      bgImageContainer.classList.add("active");
+    }
   } else {
+    pendingBg = null;
     bgImageContainer.style.backgroundImage = "none";
     bgImageContainer.classList.remove("active");
   }
+
   requestRender();
 };
 

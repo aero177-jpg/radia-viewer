@@ -344,7 +344,7 @@ export const cancelSlideAnimation = () => {
  * @param {Object} options - Animation options
  * @returns {Promise} Resolves when animation completes
  */
-export const slideOutAnimation = (direction, { duration = 1200, amount = 0.45, fadeDelay = 0.625 } = {}) => {
+export const slideOutAnimation = (direction, { duration = 1200, amount = 0.45, fadeDelay = 0.7 } = {}) => {
   return new Promise((resolve) => {
     if (!camera || !controls) {
       resolve();
@@ -358,13 +358,18 @@ export const slideOutAnimation = (direction, { duration = 1200, amount = 0.45, f
       viewerEl.classList.remove('slide-in');
     }
     if (bgImageContainer) {
-      bgImageContainer.classList.remove('active');
+      // Begin blurring the existing background immediately; fade happens later
+      bgImageContainer.classList.add('blur-out');
     }
     
     // Schedule canvas blur for later in the animation (last 0.45s)
     const fadeTimeoutId = setTimeout(() => {
       if (viewerEl) {
         viewerEl.classList.add('slide-out');
+      }
+      // Fade background out in sync with canvas blur instead of immediately
+      if (bgImageContainer) {
+        bgImageContainer.classList.remove('active');
       }
     }, duration * fadeDelay);
 
@@ -449,15 +454,15 @@ export const slideInAnimation = (direction, { duration = 1000, amount = 0.45 } =
 
     cancelSlideAnimation();
     
-    // Remove blur-out immediately but delay fade-in slightly to avoid asset loading overlap
+    // Layer slide-in on top first, then drop slide-out on next frame so CSS can transition opacity/blur smoothly
     const viewerEl = document.getElementById('viewer');
     if (viewerEl) {
-      viewerEl.classList.remove('slide-out');
-      setTimeout(() => {
+      viewerEl.classList.add('slide-in');
+      requestAnimationFrame(() => {
         if (viewerEl) {
-          viewerEl.classList.add('slide-in');
+          viewerEl.classList.remove('slide-out');
         }
-      }, 100);
+      });
     }
 
     // End position is current (target) position
@@ -524,6 +529,9 @@ export const slideInAnimation = (direction, { duration = 1000, amount = 0.45 } =
         const viewerEl = document.getElementById('viewer');
         if (viewerEl) {
           viewerEl.classList.remove('slide-out', 'slide-in');
+        }
+        if (bgImageContainer) {
+          bgImageContainer.classList.remove('blur-out');
         }
         resolve();
       }

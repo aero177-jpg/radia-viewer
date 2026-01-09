@@ -1,0 +1,207 @@
+/**
+ * Source Asset Adapter
+ * 
+ * Bridges storage sources with the existing asset pipeline.
+ * Converts RemoteAssetDescriptor to the format expected by fileLoader/splatManager.
+ */
+
+import { getSource, touchSource } from './sourceManager.js';
+import { loadFileSettings } from '../fileStorage.js';
+
+/**
+ * Adapts a RemoteAssetDescriptor to the internal asset format.
+ * Creates a File-like object that works with existing loaders.
+ * 
+ * @param {import('./types.js').RemoteAssetDescriptor} remoteAsset
+ * @returns {Object} Internal asset descriptor
+ */
+export const adaptRemoteAsset = (remoteAsset) => {
+  return {
+    id: remoteAsset.id,
+    name: remoteAsset.name,
+    path: remoteAsset.path,
+    sourceId: remoteAsset.sourceId,
+    sourceType: remoteAsset.sourceType,
+    // File will be loaded lazily
+    file: null,
+    _remoteAsset: remoteAsset,
+    preview: remoteAsset.preview || null,
+    previewSource: remoteAsset.previewSource || null,
+    loaded: false,
+    // Size from remote if known
+    size: remoteAsset.size || null,
+  };
+};
+
+/**
+ * Lazily load the File object for an adapted asset.
+ * This is called when the asset is about to be displayed.
+ * 
+ * @param {Object} asset - Internal asset descriptor
+ * @returns {Promise<File>}
+ */
+export const loadAssetFile = async (asset) => {
+  // Already loaded
+  if (asset.file) {
+    return asset.file;
+  }
+
+  // No remote info - can't load
+  if (!asset._remoteAsset || !asset.sourceId) {
+    throw new Error('Asset has no source information');
+  }
+
+  const source = getSource(asset.sourceId);
+  if (!source) {
+    throw new Error(`Source not found: ${asset.sourceId}`);
+  }
+
+  if (!source.isConnected()) {
+    const result = await source.connect(false);
+    if (!result.success) {
+      throw new Error(result.error || 'Source not connected');
+    }
+  }
+
+  // Fetch file from source
+  const file = await source.fetchAssetFile(asset._remoteAsset);
+  asset.file = file;
+
+  // Update source access time
+  await touchSource(asset.sourceId);
+
+  return file;
+};
+
+/**
+ * Load preview image for an asset.
+ * Tries source preview first, falls back to IndexedDB.
+ * 
+ * @param {Object} asset
+ * @returns {Promise<string | null>} Preview data URL or URL
+ */
+export const loadAssetPreview = async (asset) => {
+  // Already have preview
+  if (asset.preview) {
+    return asset.preview;
+  }
+
+  const source = asset.sourceId ? getSource(asset.sourceId) : null;
+
+  // Try source preview
+  if (source && asset._remoteAsset) {
+    try {
+      const preview = await source.fetchPreview(asset._remoteAsset);
+      if (preview) {
+        asset.preview = preview;
+        asset.previewSource = 'remote';
+        return preview;
+      }
+    } catch (err) {
+      console.warn('Failed to load remote preview:', err);
+    }
+  }
+
+  // Fall back to IndexedDB
+  try {
+    const stored = await loadFileSettings(asset.name);
+    if (stored?.preview) {
+      asset.preview = stored.preview;
+      asset.previewSource = 'indexeddb';
+      return stored.preview;
+    }
+  } catch (err) {
+    console.warn('Failed to load stored preview:', err);
+  }
+
+  return null;
+};
+
+/**
+ * Load metadata for an asset.
+ * Tries source metadata first, falls back to IndexedDB.
+ * 
+ * @param {Object} asset
+ * @returns {Promise<Object | null>}
+ */
+export const loadAssetMetadata = async (asset) => {
+  const source = asset.sourceId ? getSource(asset.sourceId) : null;
+
+  // Try source metadata
+  if (source && asset._remoteAsset) {
+    try {
+      const metadata = await source.fetchMetadata(asset._remoteAsset);
+      if (metadata) {
+        return metadata;
+      }
+    } catch (err) {
+      console.warn('Failed to load remote metadata:', err);
+    }
+  }
+
+  // Fall back to IndexedDB
+  try {
+    const stored = await loadFileSettings(asset.name);
+    if (stored) {
+      return {
+        animation: stored.animation,
+        focusDistance: stored.focusDistance,
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to load stored metadata:', err);
+  }
+
+  return null;
+};
+
+/**
+ * Check if an asset is from a storage source (vs local file)
+ * @param {Object} asset
+ * @returns {boolean}
+ */
+export const isSourceAsset = (asset) => {
+  return !!asset?.sourceId;
+};
+
+/**
+ * Load all assets from a storage source and adapt them.
+ * 
+ * @param {import('./AssetSource.js').AssetSource} source
+ * @returns {Promise<Object[]>} Array of adapted assets
+ */
+export const loadSourceAssets = async (source) => {
+  if (!source.isConnected()) {
+    const result = await source.connect(false);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to connect to source');
+    }
+  }
+
+  const remoteAssets = await source.listAssets();
+  return remoteAssets.map(adaptRemoteAsset);
+};
+
+/**
+ * Get all assets from all connected sources.
+ * 
+ * @param {Map<string, import('./AssetSource.js').AssetSource>} sources
+ * @returns {Promise<Object[]>}
+ */
+export const loadAllSourceAssets = async (sources) => {
+  const allAssets = [];
+
+  for (const [id, source] of sources) {
+    try {
+      if (!source.isConnected()) {
+        continue; // Skip disconnected sources
+      }
+      const assets = await loadSourceAssets(source);
+      allAssets.push(...assets);
+    } catch (err) {
+      console.warn(`Failed to load assets from source ${id}:`, err);
+    }
+  }
+
+  return allAssets;
+};
