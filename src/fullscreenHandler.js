@@ -1,7 +1,11 @@
 /**
  * Fullscreen handler utility.
- * Manages moving UI elements into/out of the fullscreen viewer element.
+ * Manages moving UI elements into/out of the fullscreen viewer element and
+ * orchestrates a clean viewer reload after fullscreen transitions.
  */
+
+import { resize, reloadCurrentAsset } from './fileLoader.js';
+import { requestRender, suspendRenderLoop, resumeRenderLoop } from './viewer.js';
 
 // Elements to move into fullscreen viewer (selector : key)
 const FULLSCREEN_ELEMENTS = [
@@ -16,6 +20,13 @@ const FULLSCREEN_ELEMENTS = [
 
 // Track original parents for restoration
 const originalParents = {};
+
+const waitForNextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
+const setViewerTransitionState = (viewerEl, active) => {
+  if (!viewerEl) return;
+  viewerEl.classList.toggle('fullscreen-refresh', Boolean(active));
+};
 
 /**
  * Moves UI elements into the fullscreen viewer element.
@@ -68,18 +79,55 @@ export function restoreElementsFromFullscreen(extraElement = null) {
  * @returns {Function} Cleanup function to remove listener
  */
 export function setupFullscreenHandler(viewerEl, extraElement = null, onStateChange = null) {
-  const handleFullscreenChange = () => {
+  if (!viewerEl) return () => {};
+
+  let transitionPromise = null;
+  let rerunRequested = false;
+
+  const processChange = async () => {
     const isFullscreen = document.fullscreenElement === viewerEl;
-    
-    if (isFullscreen) {
-      moveElementsToFullscreen(viewerEl, extraElement);
-    } else {
-      restoreElementsFromFullscreen(extraElement);
+
+    setViewerTransitionState(viewerEl, true);
+    suspendRenderLoop();
+
+    try {
+      if (isFullscreen) {
+        moveElementsToFullscreen(viewerEl, extraElement);
+      } else {
+        restoreElementsFromFullscreen(extraElement);
+      }
+
+      // Let layout settle before resizing and reloading content
+      await waitForNextFrame();
+      resize();
+      requestRender();
+
+      // Reload the current asset so the new layout renders cleanly
+      await reloadCurrentAsset();
+    } catch (err) {
+      console.warn('Fullscreen refresh failed:', err);
+    } finally {
+      setViewerTransitionState(viewerEl, false);
+      resumeRenderLoop();
     }
 
     if (onStateChange) {
       onStateChange(isFullscreen);
     }
+  };
+
+  const handleFullscreenChange = () => {
+    rerunRequested = true;
+    if (transitionPromise) return;
+
+    transitionPromise = (async () => {
+      do {
+        rerunRequested = false;
+        await processChange();
+      } while (rerunRequested);
+    })().finally(() => {
+      transitionPromise = null;
+    });
   };
 
   document.addEventListener('fullscreenchange', handleFullscreenChange);

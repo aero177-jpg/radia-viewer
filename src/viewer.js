@@ -8,6 +8,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { StereoEffect } from "three/examples/jsm/effects/StereoEffect.js";
 
 // Scene
 export const scene = new THREE.Scene();
@@ -22,6 +23,7 @@ export let camera;
 export let controls;
 export let spark;
 export let raycaster;
+export let stereoEffect;
 
 // Default settings (captured after initialization)
 export let defaultCamera;
@@ -32,6 +34,8 @@ export let currentMesh = null;
 export let activeCamera = null;
 export let needsRender = true;
 export let originalImageAspect = null;
+export let stereoEnabled = false;
+let renderSuspended = false;
 
 // Dolly zoom state
 export let dollyZoomEnabled = true;
@@ -52,7 +56,29 @@ export const setOriginalImageAspect = (aspect) => { originalImageAspect = aspect
 export const setDollyZoomEnabled = (enabled) => { dollyZoomEnabled = enabled; };
 export const setBgImageUrl = (url) => { bgImageUrl = url; };
 
+const ensureStereoEffect = () => {
+  if (stereoEffect || !renderer) return;
+  stereoEffect = new StereoEffect(renderer);
+};
+
+export const setStereoEffectEnabled = (enabled) => {
+  stereoEnabled = enabled;
+  if (enabled) {
+    ensureStereoEffect();
+  }
+  requestRender();
+};
+
 export const requestRender = () => {
+  needsRender = true;
+};
+
+export const suspendRenderLoop = () => {
+  renderSuspended = true;
+};
+
+export const resumeRenderLoop = () => {
+  renderSuspended = false;
   needsRender = true;
 };
 
@@ -183,11 +209,19 @@ export const startRenderLoop = () => {
     // Align to the frame boundary to reduce drift on high-refresh monitors
     lastRenderTime = now - (elapsedSinceRender % targetFrameMs);
 
+    if (renderSuspended || !renderer || !controls || !composer || !camera) {
+      return;
+    }
+
     // Always update controls for damping, but only render if needed
     const controlsNeedUpdate = controls.update();
 
     if (needsRender || controlsNeedUpdate) {
-      composer.render();
+      if (stereoEnabled && stereoEffect) {
+        stereoEffect.render(scene, camera);
+      } else {
+        composer.render();
+      }
       needsRender = false;
       frameCount++;
     }

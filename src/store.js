@@ -32,6 +32,7 @@ export const useStore = create((set, get) => ({
   fov: 60,
   cameraRange: 8,
   dollyZoomEnabled: true,
+  stereoEnabled: false,
 
   // Animation settings
   animationEnabled: true,
@@ -99,6 +100,9 @@ export const useStore = create((set, get) => ({
   
   /** Enables/disables dolly zoom compensation */
   setDollyZoomEnabled: (enabled) => set({ dollyZoomEnabled: enabled }),
+
+  /** Enables/disables side-by-side stereo rendering */
+  setStereoEnabled: (enabled) => set({ stereoEnabled: enabled }),
   
   /** Enables/disables load animation */
   setAnimationEnabled: (enabled) => set({ animationEnabled: enabled }),

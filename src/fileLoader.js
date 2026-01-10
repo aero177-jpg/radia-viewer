@@ -18,6 +18,7 @@ import {
   setOriginalImageAspect,
   originalImageAspect,
   activeCamera,
+  stereoEffect,
   requestRender,
   updateBackgroundImage,
   setBgImageUrl,
@@ -294,10 +295,14 @@ export const updateViewerAspectRatio = () => {
 export const resize = () => {
   const viewerEl = document.getElementById('viewer');
   if (!viewerEl) return;
+  if (!renderer) return;
   
   updateViewerAspectRatio();
   const { clientWidth, clientHeight } = viewerEl;
   renderer.setSize(clientWidth, clientHeight, false);
+  if (stereoEffect) {
+    stereoEffect.setSize(clientWidth, clientHeight);
+  }
 //   composer.setSize(clientWidth, clientHeight);
   
   if (activeCamera) {
@@ -1167,6 +1172,36 @@ export const loadPrevAsset = async () => {
   } finally {
     isNavigationLocked = false;
     // Resume immersive mode after navigation completes
+    if (wasImmersive) {
+      resumeImmersiveMode();
+    }
+  }
+};
+
+/**
+ * Reloads the current asset to force a clean render (e.g., after fullscreen).
+ * Skips if navigation is already locked or no asset is selected.
+ */
+export const reloadCurrentAsset = async () => {
+  if (isNavigationLocked) return;
+
+  const index = getCurrentAssetIndex();
+  if (index < 0) return;
+
+  const asset = getAssetByIndex(index);
+  if (!asset) return;
+
+  isNavigationLocked = true;
+
+  const wasImmersive = isImmersiveModeActive();
+  if (wasImmersive) {
+    pauseImmersiveMode();
+  }
+
+  try {
+    await loadSplatFile(asset);
+  } finally {
+    isNavigationLocked = false;
     if (wasImmersive) {
       resumeImmersiveMode();
     }

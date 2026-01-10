@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import { useStore } from '../store';
-import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE } from '../viewer';
+import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEffectEnabled } from '../viewer';
 import { applyCameraRangeDegrees, restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
 import { currentMesh, raycaster, SplatMesh, scene } from '../viewer';
 import { updateDollyZoomBaselineFromCamera } from '../viewer';
@@ -14,6 +14,7 @@ import { enableImmersiveMode, disableImmersiveMode, recenterInImmersiveMode, isI
 import { saveFocusDistance, clearFocusDistance } from '../fileStorage';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
+import { resize } from '../fileLoader';
 /** Default orbit range in degrees */
 const DEFAULT_CAMERA_RANGE_DEGREES = 8;
 
@@ -114,6 +115,8 @@ function CameraControls() {
   const setHasCustomFocus = useStore((state) => state.setHasCustomFocus);
   const showFps = useStore((state) => state.showFps);
   const setShowFps = useStore((state) => state.setShowFps);
+  const stereoEnabled = useStore((state) => state.stereoEnabled);
+  const setStereoEnabled = useStore((state) => state.setStereoEnabled);
 
   // Ref for camera range slider to avoid DOM queries
   const rangeSliderRef = useRef(null);
@@ -474,6 +477,56 @@ function CameraControls() {
     resetViewWithImmersive();
   }, []);
 
+  /** Toggle side-by-side stereo effect; enter fullscreen when enabling */
+  const handleStereoToggle = useCallback(async (e) => {
+    const enabled = e.target.checked;
+    const viewerEl = document.getElementById('viewer');
+    if (!viewerEl) return;
+
+    try {
+      if (enabled) {
+        if (document.fullscreenElement !== viewerEl) {
+          await viewerEl.requestFullscreen();
+        }
+        setStereoEffectEnabled(true);
+        setStereoEnabled(true);
+        resize();
+        addLog('Side-by-side stereo enabled');
+      } else {
+        setStereoEffectEnabled(false);
+        setStereoEnabled(false);
+        requestRender();
+        if (document.fullscreenElement === viewerEl) {
+          await document.exitFullscreen();
+        }
+        resize();
+        addLog('Stereo mode disabled');
+      }
+    } catch (err) {
+      setStereoEffectEnabled(false);
+      setStereoEnabled(false);
+      e.target.checked = false;
+      addLog('Stereo toggle failed');
+      console.warn('Stereo toggle failed:', err);
+    }
+  }, [setStereoEnabled, addLog]);
+
+  // If fullscreen is exited while stereo is on, disable stereo to avoid misalignment
+  useEffect(() => {
+    const handleFsChange = () => {
+      const viewerEl = document.getElementById('viewer');
+      const inFullscreen = document.fullscreenElement === viewerEl;
+      if (stereoEnabled && !inFullscreen) {
+        setStereoEffectEnabled(false);
+        setStereoEnabled(false);
+        requestRender();
+        resize();
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, [stereoEnabled, setStereoEnabled]);
+
   return (
     <div class="settings-group">
       {/* Collapsible header */}
@@ -536,6 +589,18 @@ function CameraControls() {
               type="checkbox"
               checked={showFps}
               onChange={handleFpsToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Side-by-side stereo</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={stereoEnabled}
+              onChange={handleStereoToggle}
             />
             <span class="switch-track" aria-hidden="true" />
           </label>

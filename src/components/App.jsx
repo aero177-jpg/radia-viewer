@@ -118,12 +118,10 @@ function App() {
     if (!viewerEl) return;
 
     try {
-      if (!document.fullscreenElement) {
-        await viewerEl.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
+      if (document.fullscreenElement === viewerEl) {
         await document.exitFullscreen();
-        setIsFullscreen(false);
+      } else {
+        await viewerEl.requestFullscreen();
       }
     } catch (err) {
       console.warn('Fullscreen toggle failed:', err);
