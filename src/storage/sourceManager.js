@@ -342,3 +342,83 @@ export const touchSource = async (sourceId) => {
     console.warn('Failed to update source access time:', error);
   }
 };
+
+/**
+ * Mark a single source as the default collection. Clears the flag on others.
+ * Pass null to clear all defaults.
+ * @param {string | null} sourceId
+ * @returns {Promise<boolean>} True if the source exists (or null) and update succeeded
+ */
+export const setDefaultSource = async (sourceId) => {
+  try {
+    const db = await openDatabase();
+    const transaction = db.transaction([SOURCES_STORE], 'readwrite');
+    const store = transaction.objectStore(SOURCES_STORE);
+    const request = store.getAll();
+
+    return new Promise((resolve, reject) => {
+      request.onerror = () => reject(new Error('Failed to load sources for default update'));
+
+      request.onsuccess = () => {
+        const configs = request.result || [];
+        let found = sourceId === null; // null always succeeds (clear all)
+        let previousDefaultId = null;
+        let changed = false;
+
+        configs.forEach((config) => {
+          if (config.isDefault) {
+            previousDefaultId = config.id;
+          }
+
+          const isDefault = sourceId !== null && config.id === sourceId;
+          if (isDefault) {
+            found = true;c
+          }
+
+          if (!!config.isDefault !== isDefault) {
+            changed = true;
+            store.put({ ...config, isDefault });
+          }
+        });
+
+        transaction.oncomplete = () => {
+          // Keep in-memory instances in sync
+          activeSources.forEach((source) => {
+            source.config.isDefault = sourceId !== null && source.id === sourceId;
+          });
+
+          if (changed) {
+            if (sourceId) {
+              notifyListeners('updated', sourceId);
+            }
+            if (previousDefaultId && previousDefaultId !== sourceId) {
+              notifyListeners('updated', previousDefaultId);
+            }
+          }
+
+          resolve(found);
+        };
+
+        transaction.onerror = () => reject(new Error('Failed to set default source'));
+      };
+    });
+  } catch (error) {
+    console.error('Failed to set default source:', error);
+    return false;
+  }
+};
+
+/**
+ * Read the default source ID from persistence.
+ * @returns {Promise<string | null>}
+ */
+export const getDefaultSourceId = async () => {
+  try {
+    const configs = await loadAllSources();
+    const entry = configs.find((config) => config.isDefault);
+    return entry?.id ?? null;
+  } catch (error) {
+    console.warn('Failed to read default source id:', error);
+    return null;
+  }
+};

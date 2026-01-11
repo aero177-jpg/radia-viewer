@@ -62,6 +62,8 @@ export {
   onSourceChange,
   clearAllSources,
   touchSource,
+  setDefaultSource,
+  getDefaultSourceId,
   saveDirectoryHandle,
   loadDirectoryHandle,
 } from './sourceManager.js';

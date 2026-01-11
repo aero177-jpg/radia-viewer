@@ -12,16 +12,16 @@ import MobileSheet from './MobileSheet';
 import AssetSidebar from './AssetSidebar';
 import AssetNavigation from './AssetNavigation';
 import { initViewer, startRenderLoop, currentMesh } from '../viewer';
-import { resize } from '../fileLoader';
+import { resize, loadFromStorageSource, loadNextAsset, loadPrevAsset } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
 import { setupFullscreenHandler } from '../fullscreenHandler';
 import useOutsideClick from '../utils/useOutsideClick';
 import useSwipe from '../utils/useSwipe';
-import { loadNextAsset, loadPrevAsset } from '../fileLoader';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import { faExpand, faCompress } from '@fortawesome/free-solid-svg-icons';
 import { initVrSupport } from '../vrMode';
+import { getSourcesArray } from '../storage/index.js';
 
 /** Delay before resize after panel toggle animation completes */
 const PANEL_TRANSITION_MS = 350;
@@ -38,6 +38,7 @@ function App() {
   const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
   const setAssets = useStore((state) => state.setAssets);
   const toggleAssetSidebar = useStore((state) => state.toggleAssetSidebar);
+  const setStatus = useStore((state) => state.setStatus);
   
   // Local state for viewer initialization
   const [viewerReady, setViewerReady] = useState(false);
@@ -45,6 +46,7 @@ function App() {
   // Track mesh state
   const [hasMesh, setHasMesh] = useState(false);
   const hasMeshRef = useRef(false);
+  const defaultLoadAttempted = useRef(false);
 
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -165,6 +167,41 @@ function App() {
       window.removeEventListener('resize', resize);
     };
   }, []);
+
+  // Auto-load the default collection (if any) once the viewer is ready
+  useEffect(() => {
+    if (!viewerReady || defaultLoadAttempted.current || assets.length > 0) {
+      return;
+    }
+
+    defaultLoadAttempted.current = true;
+
+    const tryLoadDefaultSource = async () => {
+      try {
+        const sources = getSourcesArray();
+        const defaultSource = sources.find((source) => source?.config?.isDefault);
+        if (!defaultSource) return;
+
+        if (!defaultSource.isConnected()) {
+          const result = await defaultSource.connect(false);
+          if (!result?.success) {
+            if (result?.needsPermission) {
+              setStatus(`"${defaultSource.name}" needs permission to load the default collection.`);
+            } else if (result?.error) {
+              setStatus(`Could not load default collection: ${result.error}`);
+            }
+            return;
+          }
+        }
+
+        await loadFromStorageSource(defaultSource);
+      } catch (err) {
+        setStatus(`Failed to load default collection: ${err?.message || err}`);
+      }
+    };
+
+    tryLoadDefaultSource();
+  }, [viewerReady, assets.length, setStatus]);
 
   return (
     <div class={`page ${panelOpen ? 'panel-open' : ''}`}>

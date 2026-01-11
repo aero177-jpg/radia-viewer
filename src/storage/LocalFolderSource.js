@@ -386,6 +386,7 @@ export const createLocalFolderSource = () => {
     name: 'Local Folder',
     createdAt: Date.now(),
     lastAccessed: Date.now(),
+    isDefault: false,
     config: {
       path: '',
     },

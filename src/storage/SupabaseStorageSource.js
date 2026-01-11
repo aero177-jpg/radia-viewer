@@ -497,6 +497,7 @@ export const createSupabaseStorageSource = ({ supabaseUrl, anonKey, bucket, coll
     name: displayName,
     createdAt: Date.now(),
     lastAccessed: Date.now(),
+    isDefault: false,
     config: {
       supabaseUrl: supabaseUrl.trim(),
       anonKey: anonKey.trim(),

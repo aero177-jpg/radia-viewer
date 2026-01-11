@@ -26,6 +26,7 @@
  * @property {string} name - User-friendly display name
  * @property {number} createdAt - Timestamp when connection was created
  * @property {number} lastAccessed - Timestamp of last access
+ * @property {boolean} [isDefault] - Marks the default collection to auto-load
  * @property {Object} config - Type-specific configuration
  */
 

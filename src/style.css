@@ -239,6 +239,75 @@ button, a, input, .sidebar-btn, .panel-toggle {
   pointer-events: auto;
 }
 
+.drop-help .action-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.action-btn:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 1);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.action-btn.browse {
+  border-color: rgba(100, 180, 255, 0.3);
+  background: rgba(100, 180, 255, 0.08);
+}
+
+.action-btn.browse:hover {
+  border-color: rgba(100, 180, 255, 0.5);
+  background: rgba(100, 180, 255, 0.15);
+  color: #c2ddfa;
+  box-shadow: 0 0 16px rgba(118, 183, 243, 0.146);
+}
+
+.action-btn.storage {
+  border-color: rgba(76, 187, 116, 0.3);
+  background: rgba(76, 187, 116, 0.08);
+}
+
+.action-btn.storage:hover {
+  border-color: rgba(76, 187, 116, 0.5);
+  background: rgba(76, 187, 116, 0.15);
+  color: #becdc1;
+  box-shadow: 0 0 16px rgba(107, 182, 134, 0.116);
+}
+
+.action-btn.demo {
+  border-color: rgba(139, 115, 246, 0.3);
+  background: rgba(139, 115, 246, 0.08);
+}
+
+.action-btn.demo:hover {
+  border-color: rgba(139, 115, 246, 0.5);
+  background: rgba(139, 115, 246, 0.15);
+  color: #cbc4f7;
+  box-shadow: 0 0 16px rgba(165, 149, 234, 0.122);
+}
+
 .side {
   position: fixed;
   top: 18px;
@@ -2576,6 +2645,7 @@ select option {
 .source-actions {
   width: 100%;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
@@ -2600,6 +2670,17 @@ select option {
 .source-action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+
+.source-action-btn.default {
+  background: rgba(76, 187, 116, 0.12);
+  border-color: rgba(76, 187, 116, 0.5);
+  color: #7bd88f;
+}
+
+.source-action-btn.default:hover {
+  background: rgba(76, 187, 116, 0.2);
+  color: #a3f5b9;
 }
 
 .source-action-btn.danger {

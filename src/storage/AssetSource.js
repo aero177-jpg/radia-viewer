@@ -141,6 +141,7 @@ export class AssetSource {
       name: this.config.name,
       createdAt: this.config.createdAt,
       lastAccessed: this.config.lastAccessed,
+      isDefault: !!this.config.isDefault,
       config: this.config.config,
     };
   }

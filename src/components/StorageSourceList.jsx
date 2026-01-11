@@ -28,6 +28,7 @@ import {
   onSourceChange,
   deleteSource,
   touchSource,
+  setDefaultSource,
 } from '../storage/index.js';
 import { useStore } from '../store';
 import { getSupportedExtensions, getFormatAccept } from '../formats/index.js';
@@ -343,6 +344,21 @@ function SourceItem({ source, onSelect, onRemove, expanded, onToggleExpand, isAc
 
   const isConnected = status === 'connected';
   const needsPermission = status === 'needs-permission';
+  const isDefault = Boolean(source?.config?.isDefault);
+
+  const handleSetDefault = useCallback(async (e) => {
+    e.stopPropagation();
+
+    setIsLoading(true);
+    try {
+      // Toggle: if already default, clear it; otherwise set it
+      await setDefaultSource(isDefault ? null : source.id);
+    } catch (err) {
+      console.warn('Failed to set default source:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isDefault, source?.id]);
 
   return (
     <>
@@ -420,6 +436,14 @@ function SourceItem({ source, onSelect, onRemove, expanded, onToggleExpand, isAc
               <span>Refresh</span>
             </button>
           )}
+          <button
+            class={`source-action-btn ${isDefault ? 'default' : ''}`}
+            onClick={handleSetDefault}
+            title={isDefault ? 'Clear default collection' : 'Set as default collection'}
+          >
+            {isDefault && <FontAwesomeIcon icon={faCheck} />}
+            <span>{isDefault ? 'Default' : 'Set Default'}</span>
+          </button>
           {source.type === 'supabase-storage' && (
             <>
               <button

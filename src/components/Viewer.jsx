@@ -23,10 +23,11 @@ import {
 import { restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
 import { cancelLoadZoomAnimation, startAnchorTransition } from '../cameraAnimations';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faRotate, faRotateRight } from '@fortawesome/free-solid-svg-icons';
+import { faRotate, faRotateRight, faFolder, faCloud, faRocket } from '@fortawesome/free-solid-svg-icons';
 import { loadNextAsset, loadPrevAsset, resize, initDragDrop, handleMultipleFiles, loadFromStorageSource } from '../fileLoader';
 import { getSource, createPublicUrlSource, registerSource, saveSource } from '../storage/index.js';
 import { getFormatAccept } from '../formats/index';
+import ConnectStorageDialog from './ConnectStorageDialog';
 
 /** Tags that should not trigger keyboard shortcuts */
 const INPUT_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']);
@@ -69,6 +70,9 @@ function Viewer({ viewerReady }) {
   // Track mesh state
   const [hasMesh, setHasMesh] = useState(false);
   const hasMeshRef = useRef(false);
+  
+  // Storage dialog state
+  const [storageDialogOpen, setStorageDialogOpen] = useState(false);
 
   /**
    * Track mesh loading state - only update state when value changes
@@ -96,6 +100,32 @@ function Viewer({ viewerReady }) {
   const handlePickFile = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+  
+  /**
+   * Opens connect storage dialog.
+   */
+  const handleOpenStorage = useCallback(() => {
+    setStorageDialogOpen(true);
+  }, []);
+  
+  /**
+   * Closes connect storage dialog.
+   */
+  const handleCloseStorage = useCallback(() => {
+    setStorageDialogOpen(false);
+  }, []);
+  
+  /**
+   * Handles successful storage connection.
+   */
+  const handleSourceConnect = useCallback(async (source) => {
+    setStorageDialogOpen(false);
+    try {
+      await loadFromStorageSource(source);
+    } catch (err) {
+      addLog('Failed to load from storage: ' + (err?.message || err));
+    }
+  }, [addLog]);
 
   /**
    * Load demo public URL collection (create it if missing) and open it
@@ -303,23 +333,50 @@ function Viewer({ viewerReady }) {
       {isMobile ? (
         !hasMesh && (
           <div class="drop-help mobile-file-picker">
-            <button class="primary large-file-btn" onClick={handlePickFile}>
-              Choose Files
-            </button>
-            <div class="fine-print">Select PLY/SOG files or <button class="link-button subtle-demo-btn" onClick={(e) => { e.preventDefault(); handleLoadDemo(); }}>load demo</button>
-</div>
+            <div class="action-buttons">
+              <button class="action-btn browse" onClick={handlePickFile}>
+                <FontAwesomeIcon icon={faFolder} />
+                <span>Browse Files</span>
+              </button>
+              <button class="action-btn storage" onClick={handleOpenStorage}>
+                <FontAwesomeIcon icon={faCloud} />
+                <span>Connect Storage</span>
+              </button>
+              <button class="action-btn demo" onClick={handleLoadDemo}>
+                <FontAwesomeIcon icon={faRocket} />
+                <span>Load Demo</span>
+              </button>
+            </div>
           </div>
         )
       ) : (
         !hasMesh && (
           <div class="drop-help">
             <div class="eyebrow">Drag PLY/SOG files or folders here</div>
-            <div class="fine-print">
-             <a href="#" onClick={(e) => { e.preventDefault(); handlePickFile(); }} style="color: inherit; text-decoration: underline; cursor: pointer; pointer-events: auto;">click here</a> to browse local files, or <button class="link-button subtle-demo-btn" onClick={(e) => { e.preventDefault(); handleLoadDemo(); }}>load demo</button>
+            <div class="action-buttons">
+              <button class="action-btn browse" onClick={handlePickFile}>
+                <FontAwesomeIcon icon={faFolder} />
+                <span>Browse Files</span>
+              </button>
+              <button class="action-btn storage" onClick={handleOpenStorage}>
+                <FontAwesomeIcon icon={faCloud} />
+                <span>Connect Storage</span>
+              </button>
+              <button class="action-btn demo" onClick={handleLoadDemo}>
+                <FontAwesomeIcon icon={faRocket} />
+                <span>Load Demo</span>
+              </button>
             </div>
           </div>
         )
       )}
+      
+      {/* Connect to Storage dialog */}
+      <ConnectStorageDialog
+        isOpen={storageDialogOpen}
+        onClose={handleCloseStorage}
+        onConnect={handleSourceConnect}
+      />
     </div>
   );
 }

@@ -337,6 +337,7 @@ export const createPublicUrlSource = ({ baseUrl, manifestUrl, assetPaths, name, 
     name: displayName,
     createdAt: Date.now(),
     lastAccessed: Date.now(),
+    isDefault: false,
     config: {
       baseUrl: baseUrl || '',
       manifestUrl: manifestUrl || '',
