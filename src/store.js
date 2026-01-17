@@ -65,6 +65,9 @@ export const useStore = create(
   animationIntensity: 'medium',
   animationDirection: 'left',
   slideMode: 'horizontal',
+  slideshowMode: false,
+  slideshowDuration: 3,
+  slideshowPlaying: false,
   
   // Custom animation settings (used when intensity is 'custom')
   customAnimation: {
@@ -162,6 +165,15 @@ export const useStore = create(
   
   /** Sets slide transition mode */
   setSlideMode: (mode) => set({ slideMode: mode }),
+  
+  /** Enables/disables slideshow mode */
+  setSlideshowMode: (enabled) => set({ slideshowMode: enabled }),
+  
+  /** Sets slideshow hold duration in seconds */
+  setSlideshowDuration: (duration) => set({ slideshowDuration: duration }),
+  
+  /** Sets slideshow playing state */
+  setSlideshowPlaying: (playing) => set({ slideshowPlaying: playing }),
   
   /** Updates custom animation settings (merges with existing) */
   setCustomAnimation: (settings) => set((state) => ({

@@ -1254,6 +1254,54 @@ button, a, input, .sidebar-btn, .panel-toggle {
   transform: scale(0.95);
 }
 
+/* Slideshow buttons */
+.slideshow-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+.slideshow-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+.slideshow-btn:active {
+  transform: scale(0.95);
+}
+.slideshow-btn.play-btn {
+  border-color: rgba(110, 231, 255, 0.35);
+  color: rgba(110, 231, 255, 0.9);
+}
+.slideshow-btn.play-btn:hover {
+  background: rgba(110, 231, 255, 0.15);
+  border-color: rgba(110, 231, 255, 0.5);
+  color: #6ee7ff;
+}
+.slideshow-btn.stop-btn {
+  border-color: rgba(255, 140, 140, 0.35);
+  color: rgba(255, 140, 140, 0.9);
+}
+.slideshow-btn.stop-btn:hover {
+  background: rgba(255, 140, 140, 0.15);
+  border-color: rgba(255, 140, 140, 0.5);
+  color: #ff8c8c;
+}
+
+.slideshow-controls {
+  margin-top: 4px;
+}
+
 @keyframes focus-pulse {
   0%, 100% {
     box-shadow: 0 0 8px rgba(110, 231, 255, 0.2);

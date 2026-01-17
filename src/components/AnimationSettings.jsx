@@ -6,11 +6,12 @@
 
 import { useCallback } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown, faRotateRight } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faRotateRight, faPlay, faStop } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
 import { setLoadAnimationEnabled, setLoadAnimationIntensity, setLoadAnimationDirection, startLoadZoomAnimation } from '../cameraAnimations';
 import { saveAnimationSettings, savePreviewBlob } from '../fileStorage';
 import { scene, renderer, composer, THREE, currentMesh } from '../viewer';
+import { startSlideshow, stopSlideshow } from '../slideshowController';
 
 const PREVIEW_TARGET_HEIGHT = 128;
 const PREVIEW_WEBP_QUALITY = 0.18;
@@ -60,6 +61,9 @@ function AnimationSettings() {
   const animationIntensity = useStore((state) => state.animationIntensity);
   const animationDirection = useStore((state) => state.animationDirection);
   const slideMode = useStore((state) => state.slideMode);
+  const slideshowMode = useStore((state) => state.slideshowMode);
+  const slideshowDuration = useStore((state) => state.slideshowDuration);
+  const slideshowPlaying = useStore((state) => state.slideshowPlaying);
   const animSettingsExpanded = useStore((state) => state.animSettingsExpanded);
   const customAnimation = useStore((state) => state.customAnimation);
   const currentFileName = useStore((state) => state.fileInfo?.name);
@@ -69,6 +73,8 @@ function AnimationSettings() {
   const setAnimationIntensityStore = useStore((state) => state.setAnimationIntensity);
   const setAnimationDirectionStore = useStore((state) => state.setAnimationDirection);
   const setSlideModeStore = useStore((state) => state.setSlideMode);
+  const setSlideshowModeStore = useStore((state) => state.setSlideshowMode);
+  const setSlideshowDurationStore = useStore((state) => state.setSlideshowDuration);
   const setCustomAnimation = useStore((state) => state.setCustomAnimation);
   const toggleAnimSettingsExpanded = useStore((state) => state.toggleAnimSettingsExpanded);
 
@@ -243,37 +249,52 @@ function AnimationSettings() {
         class="group-content" 
         style={{ display: animSettingsExpanded ? 'flex' : 'none' }}
       >
-        {/* Enable/disable toggle */}
-        <div class="control-row animate-toggle-row">
-          <span class="control-label">Animate on load</span>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label class="switch">
-              <input
-                type="checkbox"
-                checked={animationEnabled}
-                onChange={handleToggleAnimation}
-              />
-              <span class="switch-track" aria-hidden="true" />
-            </label>
-            <button
-              class="replay-btn"
-              onClick={handleReplayAnimation}
-              title="Replay animation"
-              aria-label="Replay animation"
-            >
-              <FontAwesomeIcon icon={faRotateRight} style={{fontSize: "12px"}} />
-            </button>
+        {/* Hidden settings group - not displayed but preserved for future use */}
+        <div style={{ display: 'none' }}>
+          {/* Enable/disable toggle */}
+          <div class="control-row animate-toggle-row">
+            <span class="control-label">Animate on load</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  checked={animationEnabled}
+                  onChange={handleToggleAnimation}
+                />
+                <span class="switch-track" aria-hidden="true" />
+              </label>
+              <button
+                class="replay-btn"
+                onClick={handleReplayAnimation}
+                title="Replay animation"
+                aria-label="Replay animation"
+              >
+                <FontAwesomeIcon icon={faRotateRight} style={{fontSize: "12px"}} />
+              </button>
+            </div>
           </div>
-        </div>
-        
-        {/* Intensity selector */}
-        <div class="control-row select-row">
-          <span class="control-label">Style</span>
-          <select value={animationIntensity} onChange={handleIntensityChange}>
-            {INTENSITY_OPTIONS.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+          
+          {/* Intensity selector */}
+          <div class="control-row select-row">
+            <span class="control-label">Style</span>
+            <select value={animationIntensity} onChange={handleIntensityChange}>
+              {INTENSITY_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Direction selector - hidden in custom mode */}
+          {animationIntensity !== 'custom' && (
+            <div class="control-row select-row">
+              <span class="control-label">Direction</span>
+              <select value={animationDirection} onChange={handleDirectionChange}>
+                {DIRECTION_OPTIONS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Slide mode selector */}
@@ -285,16 +306,65 @@ function AnimationSettings() {
             ))}
           </select>
         </div>
-        
-        {/* Direction selector - hidden in custom mode */}
-        {animationIntensity !== 'custom' && (
-          <div class="control-row select-row">
-            <span class="control-label">Direction</span>
-            <select value={animationDirection} onChange={handleDirectionChange}>
-              {DIRECTION_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
+
+        {/* Slideshow mode toggle */}
+        <div class="control-row animate-toggle-row">
+          <span class="control-label">Slideshow Mode</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={slideshowMode}
+              onChange={(e) => setSlideshowModeStore(e.target.checked)}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        {/* Slideshow duration - only shown when slideshow mode is enabled */}
+        {slideshowMode && (
+          <div class="control-row">
+            <span class="control-label">Hold Time</span>
+            <div class="control-track">
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={slideshowDuration}
+                onInput={(e) => setSlideshowDurationStore(Number(e.target.value))}
+              />
+              <span class="control-value">{slideshowDuration}s</span>
+            </div>
+          </div>
+        )}
+
+        {/* Slideshow playback controls - only shown when slideshow mode is enabled */}
+        {slideshowMode && (
+          <div class="control-row slideshow-controls">
+            <span class="control-label">Playback</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              {slideshowPlaying ? (
+                <button
+                  class="slideshow-btn stop-btn"
+                  onClick={stopSlideshow}
+                  title="Stop slideshow"
+                  aria-label="Stop slideshow"
+                >
+                  <FontAwesomeIcon icon={faStop} style={{fontSize: "12px"}} />
+                  <span>Stop</span>
+                </button>
+              ) : (
+                <button
+                  class="slideshow-btn play-btn"
+                  onClick={startSlideshow}
+                  title="Start slideshow"
+                  aria-label="Start slideshow"
+                >
+                  <FontAwesomeIcon icon={faPlay} style={{fontSize: "12px"}} />
+                  <span>Play</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
