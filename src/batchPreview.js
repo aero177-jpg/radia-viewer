@@ -19,7 +19,7 @@ import {
   clearMetadataCamera,
 } from './cameraUtils.js';
 import { updateViewerAspectRatio, resize, isNavigationLockedRef, setNavigationLocked } from './fileLoader.js';
-import { setCurrentMesh, setOriginalImageAspect, requestRender, forceRenderNow, spark, scene, renderer } from './viewer.js';
+import { setCurrentMesh, setOriginalImageAspect, requestRender, spark, scene } from './viewer.js';
 
 const getStoreState = () => useStore.getState();
 
@@ -84,30 +84,17 @@ const loadSplatFileFast = async (asset) => {
 
     saveHomeView();
 
-    // Wait for resize/layout to settle - DOM reflow needs multiple frames
-    // especially when aspect ratio changes between assets
-    const LAYOUT_SETTLE_FRAMES = 4;
-    for (let i = 0; i < LAYOUT_SETTLE_FRAMES; i++) {
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-
-    // Force resize after layout settle to ensure correct dimensions
-    updateViewerAspectRatio();
-    resize();
-
-    // Wait one more frame for the resize to take effect
+    // Wait for resize/layout to settle before warmup (DOM needs 1-2 frames)
+    requestRender();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
     // Warmup frames for splat rendering to stabilize at correct size
-    // Use forced renders to bypass frame rate limiting during batch mode
-    const FAST_WARMUP_FRAMES = 16;
+    const FAST_WARMUP_FRAMES = 12;
     for (let i = 0; i < FAST_WARMUP_FRAMES; i++) {
-      forceRenderNow();
+      requestRender();
       await new Promise((resolve) => requestAnimationFrame(resolve));
     }
-
-    // Final forced render to ensure the frame is complete
-    forceRenderNow();
 
     store.setFileInfo({
       name: asset.name,
