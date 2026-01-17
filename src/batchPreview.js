@@ -132,7 +132,7 @@ export const generateAllPreviews = async (options = {}) => {
 
   store.setAnimationEnabled(false);
   try {
-    const { setLoadAnimationEnabled } = await import('./cameraAnimations.js');
+    const { setLoadAnimationEnabled } = await import('./customAnimations.js');
     setLoadAnimationEnabled(false);
   } catch (err) {
     console.warn('Failed to disable load animation:', err);
@@ -210,7 +210,7 @@ export const generateAllPreviews = async (options = {}) => {
 
     store.setAnimationEnabled(originalAnimationEnabled);
     try {
-      const { setLoadAnimationEnabled } = await import('./cameraAnimations.js');
+      const { setLoadAnimationEnabled } = await import('./customAnimations.js');
       setLoadAnimationEnabled(originalAnimationEnabled);
     } catch (err) {
       console.warn('Failed to restore load animation:', err);

@@ -10,7 +10,7 @@
 
 import { camera, controls, requestRender, THREE } from './viewer.js';
 import { useStore } from './store.js';
-import { setLoadAnimationEnabled } from './cameraAnimations.js';
+import { setLoadAnimationEnabled } from './customAnimations.js';
 
 // State
 let isActive = false;

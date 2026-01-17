@@ -175,7 +175,7 @@ const syncStoredAnimationSettings = async (animationSettings, wasImmersiveModeAc
       setLoadAnimationEnabled,
       setLoadAnimationIntensity,
       setLoadAnimationDirection,
-    } = await import("./cameraAnimations.js");
+    } = await import("./customAnimations.js");
     setLoadAnimationEnabled(enabled);
     setLoadAnimationIntensity(intensity);
     setLoadAnimationDirection(direction);

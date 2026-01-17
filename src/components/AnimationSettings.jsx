@@ -8,7 +8,7 @@ import { useCallback } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faRotateRight, faPlay, faStop } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
-import { setLoadAnimationEnabled, setLoadAnimationIntensity, setLoadAnimationDirection, startLoadZoomAnimation } from '../cameraAnimations';
+import { setLoadAnimationEnabled, setLoadAnimationIntensity, setLoadAnimationDirection, startLoadZoomAnimation } from '../customAnimations';
 import { saveAnimationSettings, savePreviewBlob } from '../fileStorage';
 import { scene, renderer, composer, THREE, currentMesh } from '../viewer';
 import { startSlideshow, stopSlideshow } from '../slideshowController';

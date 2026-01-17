@@ -21,7 +21,8 @@ import {
   SplatMesh,
 } from '../viewer';
 import { restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
-import { cancelLoadZoomAnimation, startAnchorTransition } from '../cameraAnimations';
+import { startAnchorTransition } from '../cameraAnimations';
+import { cancelLoadZoomAnimation } from '../customAnimations';
 import { loadNextAsset, loadPrevAsset, resize, initDragDrop } from '../fileLoader';
 
 
