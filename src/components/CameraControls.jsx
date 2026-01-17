@@ -425,12 +425,13 @@ function CameraControls() {
   useEffect(() => {
     if (!controls || !rangeSliderRef.current) return;
 
+    // Set slider to match the default degrees
     const initialSliderValue = degreesToSliderValue(DEFAULT_CAMERA_RANGE_DEGREES);
     rangeSliderRef.current.value = String(initialSliderValue.toFixed(1));
 
-    const degrees = sliderValueToDegrees(initialSliderValue);
-    setCameraRange(degrees);
-    applyCameraRangeDegrees(degrees);
+    // Use the constant directly instead of converting back
+    setCameraRange(DEFAULT_CAMERA_RANGE_DEGREES);
+    applyCameraRangeDegrees(DEFAULT_CAMERA_RANGE_DEGREES);
   }, [setCameraRange]);
 
   // Pause immersive mode during pinch-zoom gestures on viewer
@@ -562,6 +563,10 @@ function CameraControls() {
 
     try {
       if (enabled) {
+        // Hide background images when entering stereo mode
+        const bgContainers = document.querySelectorAll('.bg-image-container');
+        bgContainers.forEach(el => el.classList.add('stereo-hidden'));
+        
         if (document.fullscreenElement !== viewerEl) {
           await viewerEl.requestFullscreen();
         }
@@ -570,6 +575,10 @@ function CameraControls() {
         resize();
         addLog('Side-by-side stereo enabled');
       } else {
+        // Restore background images when exiting stereo mode
+        const bgContainers = document.querySelectorAll('.bg-image-container');
+        bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
+        
         setStereoEffectEnabled(false);
         setStereoEnabled(false);
         requestRender();
@@ -580,6 +589,10 @@ function CameraControls() {
         addLog('Stereo mode disabled');
       }
     } catch (err) {
+      // Restore background images on error
+      const bgContainers = document.querySelectorAll('.bg-image-container');
+      bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
+      
       setStereoEffectEnabled(false);
       setStereoEnabled(false);
       e.target.checked = false;
@@ -594,6 +607,9 @@ function CameraControls() {
       const viewerEl = document.getElementById('viewer');
       const inFullscreen = document.fullscreenElement === viewerEl;
       if (stereoEnabled && !inFullscreen) {
+          // Restore background images on error
+      const bgContainers = document.querySelectorAll('.bg-image-container');
+      bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
         setStereoEffectEnabled(false);
         setStereoEnabled(false);
         requestRender();

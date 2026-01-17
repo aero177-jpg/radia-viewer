@@ -160,18 +160,22 @@ button, a, input, .sidebar-btn, .panel-toggle {
   opacity: 1;
   transition: filter 0.5s ease-in, opacity 0.5s ease-in;
 }
+.bg-image-container.stereo-hidden {
+  opacity: 0!important;
+}
 
 /* Background image fades with canvas during transitions */
 
 .viewer.slide-out .bg-image-container {
   opacity: 0;
-  transition: opacity 0.45s ease-out;
+  transition: opacity 0.2s ease-out;
 }
 
 /* During slide-in, let .active class control visibility so bg fades in with canvas */
 .viewer.slide-in .bg-image-container {
   /* Transition matches canvas fade-in for sync */
-  transition: opacity 0.5s ease-in;
+  /* Add slight delay so canvas starts fading before the background (tiny visual polish) */
+  transition: opacity 0.3s ease-in 80ms;
 }
 
 .viewer.slide-in .bg-image-container:not(.active) {
@@ -1047,6 +1051,8 @@ button, a, input, .sidebar-btn, .panel-toggle {
 #viewer:fullscreen .bg-image-container,
 #viewer:-webkit-full-screen .bg-image-container {
   background-size: auto 100%;
+  transform: scaleX(130%);
+  filter: blur(40px)!important;
 }
 
 /* Fullscreen: UI elements moved inside viewer need explicit positioning and z-index */

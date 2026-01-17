@@ -3,7 +3,7 @@
  */
 import { loadPreviewBlob } from "./fileStorage.js";
 import { setCapturePreviewFn } from "./assetManager.js";
-import { scene, renderer, composer, currentMesh, THREE } from "./viewer.js";
+import { scene, renderer, composer, currentMesh, forceRenderNow, THREE } from "./viewer.js";
 
 /** Target height for generated previews (width auto-calculated) */
 const PREVIEW_TARGET_HEIGHT = 128;
@@ -76,7 +76,10 @@ const capturePreviewBlob = async () => {
   // Render with clear background for preview capture
   scene.background = null;
   renderer.setClearColor(0x000000, 0);
-  composer.render();
+  
+  // Force an immediate render to ensure we capture the current state
+  // This bypasses frame rate limiting that could cause stale frames
+  forceRenderNow();
 
   const sourceCanvas = renderer.domElement;
   const scale = PREVIEW_TARGET_HEIGHT / Math.max(1, sourceCanvas.height);

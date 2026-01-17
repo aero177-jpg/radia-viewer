@@ -44,6 +44,7 @@ export let dollyZoomBaseFov = null;
 // Background capture state
 export let bgImageUrl = null;
 export let bgImageContainer = null;
+export let bgImageAspect = null;
 let bgActivateRaf = null;
 let pendingBg = null;
 // FPS overlay element
@@ -145,6 +146,35 @@ const renderStereo = () => {
 
 export const requestRender = () => {
   needsRender = true;
+};
+
+/**
+ * Force an immediate render, bypassing frame rate limiting.
+ * Useful for batch operations where timing is critical.
+ */
+export const forceRenderNow = () => {
+  if (!renderer || !composer || !camera) return;
+  if (stereoEnabled && stereoCamera) {
+    // For stereo, call the stereo render path
+    if (scene.matrixWorldAutoUpdate === true) scene.updateMatrixWorld();
+    if (camera.parent === null && camera.matrixWorldAutoUpdate === true) camera.updateMatrixWorld();
+    stereoCamera.update(camera);
+    const size = renderer.getSize(new THREE.Vector2());
+    renderer.autoClear = false;
+    renderer.clear();
+    renderer.setScissorTest(true);
+    renderer.setScissor(0, 0, size.width / 2, size.height);
+    renderer.setViewport(0, 0, size.width / 2, size.height);
+    renderer.render(scene, stereoCamera.cameraL);
+    renderer.setScissor(size.width / 2, 0, size.width / 2, size.height);
+    renderer.setViewport(size.width / 2, 0, size.width / 2, size.height);
+    renderer.render(scene, stereoCamera.cameraR);
+    renderer.setScissorTest(false);
+    renderer.autoClear = true;
+  } else {
+    composer.render();
+  }
+  needsRender = false;
 };
 
 export const suspendRenderLoop = () => {
