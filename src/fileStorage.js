@@ -27,6 +27,7 @@ const PREVIEW_VERSION = 1;
  * @property {number} lastModified - Timestamp of last update
  * @property {AnimationSettings} [animation] - Load animation preferences
  * @property {number} [focusDistance] - Optional user-set focus distance override
+ * @property {CustomCameraMetadata} [customMetadata] - Optional user-set camera metadata override
  */
 
 /**
@@ -37,6 +38,26 @@ const PREVIEW_VERSION = 1;
  * @property {string} direction - 'left' | 'right' | 'up' | 'down' | 'none'
  * @property {number} [duration] - Animation duration override in ms
  * @property {string} [easing] - Easing function override
+ */
+
+/**
+ * Custom camera metadata schema (stored when no camera metadata exists in file).
+ * @typedef {Object} CustomCameraMetadata
+ * @property {number} version - Schema version for this custom metadata
+ * @property {Object} cameraPose - Camera pose info
+ * @property {number[]} cameraPose.position - [x, y, z]
+ * @property {number[]} cameraPose.quaternion - [x, y, z, w]
+ * @property {number} cameraPose.fov - Field of view in degrees
+ * @property {number} cameraPose.near - Near clip
+ * @property {number} cameraPose.far - Far clip
+ * @property {number} cameraPose.zoom - Camera zoom
+ * @property {number[]} cameraPose.target - Orbit target [x, y, z]
+ * @property {Object} [model] - Model overrides
+ * @property {boolean} [model.flipX] - Rotate 180° around X axis
+ * @property {boolean} [model.flipY] - Rotate 180° around Y axis
+ * @property {number} [model.modelScale] - Scalar scale multiplier
+ * @property {Object} [orbit] - Orbit control overrides
+ * @property {boolean} [orbit.fullOrbit] - Allow full 360° azimuth with 180° polar
  */
 
 /** Current schema version */
@@ -185,6 +206,52 @@ export const saveAnimationSettings = async (fileName, animation) => {
  */
 export const saveFocusDistance = async (fileName, focusDistance) => {
   return await saveFileSettings(fileName, { focusDistance });
+};
+
+/**
+ * Saves custom camera metadata for a file.
+ * @param {string} fileName - File name
+ * @param {CustomCameraMetadata} customMetadata - Custom metadata to store
+ * @returns {Promise<boolean>} Success status
+ */
+export const saveCustomMetadata = async (fileName, customMetadata) => {
+  return await saveFileSettings(fileName, { customMetadata });
+};
+
+/**
+ * Loads custom camera metadata for a file.
+ * @param {string} fileName - File name
+ * @returns {Promise<CustomCameraMetadata|null>} Custom metadata or null
+ */
+export const loadCustomMetadata = async (fileName) => {
+  const settings = await loadFileSettings(fileName);
+  return settings?.customMetadata ?? null;
+};
+
+/**
+ * Clears custom camera metadata for a file.
+ * @param {string} fileName - File name
+ * @returns {Promise<boolean>} Success status
+ */
+export const clearCustomMetadata = async (fileName) => {
+  try {
+    const existing = await loadFileSettings(fileName);
+    if (existing && existing.customMetadata !== undefined) {
+      delete existing.customMetadata;
+      const db = await openDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.put(existing);
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(new Error(`Failed to clear custom metadata for ${fileName}`));
+      });
+    }
+    return true;
+  } catch (error) {
+    console.error(`Failed to clear custom metadata for ${fileName}:`, error);
+    return false;
+  }
 };
 
 /**

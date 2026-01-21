@@ -88,6 +88,11 @@ export const useStore = create(
   hasCustomFocus: false,
   focusDistanceOverride: null,
   focusSettingActive: false,
+  // Custom camera metadata state
+  metadataMissing: false,
+  customMetadataAvailable: false,
+  customMetadataControlsVisible: false,
+  customModelScale: 1,
   // Show FPS counter overlay
   showFps: false,
 
@@ -199,6 +204,12 @@ export const useStore = create(
   setHasCustomFocus: (hasCustomFocus) => set({ hasCustomFocus }),
   setFocusDistanceOverride: (focusDistanceOverride) => set({ focusDistanceOverride }),
   setFocusSettingActive: (focusSettingActive) => set({ focusSettingActive }),
+
+  /** Custom metadata flags */
+  setMetadataMissing: (metadataMissing) => set({ metadataMissing }),
+  setCustomMetadataAvailable: (customMetadataAvailable) => set({ customMetadataAvailable }),
+  setCustomMetadataControlsVisible: (customMetadataControlsVisible) => set({ customMetadataControlsVisible }),
+  setCustomModelScale: (customModelScale) => set({ customModelScale }),
   
   /** Updates file info (merges with existing) */
   setFileInfo: (info) => set((state) => ({ 

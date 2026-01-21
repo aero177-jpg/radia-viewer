@@ -249,7 +249,6 @@ function App() {
 
   const handlePickFile = useCallback(() => {
     (async () => {
-      setLandingVisible(false);
       await new Promise((r) => setTimeout(r, PANEL_TRANSITION_MS));
       fileInputRef.current?.click();
     })();

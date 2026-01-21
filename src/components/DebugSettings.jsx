@@ -11,7 +11,8 @@ import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '
 import { savePreviewBlob } from '../fileStorage';
 import { clearSupabaseManifestCache } from '../storage/supabaseSettings.js';
 import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
-import { setDebugForceZoomOut } from '../fileLoader';
+import { setDebugForceZoomOut, reloadCurrentAsset } from '../fileLoader';
+import { clearCustomMetadataForAsset } from '../customMetadata.js';
 
 let erudaInitPromise = null;
 
@@ -79,7 +80,17 @@ function DebugSettings() {
   const setDebugFpsLimitEnabled = useStore((state) => state.setDebugFpsLimitEnabled);
   const debugSparkMaxStdDev = useStore((state) => state.debugSparkMaxStdDev);
   const setDebugSparkMaxStdDev = useStore((state) => state.setDebugSparkMaxStdDev);
+  const customMetadataAvailable = useStore((state) => state.customMetadataAvailable);
+  const setCustomMetadataAvailable = useStore((state) => state.setCustomMetadataAvailable);
+  const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
   const devtoolsUserApprovedRef = useRef(false);
+
+  const {
+    currentAssetName,
+    currentAssetHasCustomMetadata,
+    setCurrentAssetHasCustomMetadata,
+    resetCustomMetadataState,
+  } = useStore();
 
   const [wipingDb, setWipingDb] = useState(false);
   const [clearingSupabaseCache, setClearingSupabaseCache] = useState(false);
@@ -87,6 +98,7 @@ function DebugSettings() {
   const [batchProgress, setBatchProgress] = useState(null); // { current, total, name }
   const [generatingBatch, setGeneratingBatch] = useState(false);
   const [debugZoomOut, setDebugZoomOut] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const refreshAssets = useCallback(() => {
     const assets = getAssetList();
@@ -131,6 +143,22 @@ function DebugSettings() {
     const value = Number(e.target.value);
     setDebugSparkMaxStdDev(Number.isFinite(value) ? value : Math.sqrt(5));
   }, [setDebugSparkMaxStdDev]);
+
+  const handleClearCustomMetadata = useCallback(async () => {
+    if (!currentAssetName || isClearing) return;
+    
+    setIsClearing(true);
+    try {
+      await clearCustomMetadataForAsset(currentAssetName);
+      setCurrentAssetHasCustomMetadata(false);
+      resetCustomMetadataState();
+      console.log(`Cleared custom metadata for ${currentAssetName}`);
+    } catch (err) {
+      console.error("Failed to clear custom metadata:", err);
+    } finally {
+      setIsClearing(false);
+    }
+  }, [currentAssetName, isClearing, setCurrentAssetHasCustomMetadata, resetCustomMetadataState]);
 
   /** Wipes IndexedDB image store and reloads */
   const handleWipeDb = useCallback(async () => {
@@ -405,6 +433,20 @@ function DebugSettings() {
             {generatingPreview ? 'Capturing...' : 'Capture'}
           </button>
         </div>
+
+        {currentAssetHasCustomMetadata && (
+          <div class="control-row">
+            <span class="control-label">Clear custom metadata</span>
+            <button
+              type="button"
+              class="secondary danger"
+              onClick={handleClearCustomMetadata}
+              disabled={isClearing}
+            >
+              {isClearing ? 'Clearing...' : '🗑️ Clear Custom Metadata'}
+            </button>
+          </div>
+        )}
 
         <div class="control-row">
           <span class="control-label">Debug zoom-out</span>

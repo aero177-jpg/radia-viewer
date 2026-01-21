@@ -142,6 +142,24 @@ button, a, input, .sidebar-btn, .panel-toggle {
   transition: filter 0.8s ease, opacity 0.8s ease;
 }
 
+.metadata-warning {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 12;
+  padding: 8px 10px;
+  background: rgba(12, 16, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
 /* Slide transition blur and fade classes */
 .viewer.slide-out canvas {
   /* filter: blur(20px); */
@@ -678,6 +696,16 @@ button, a, input, .sidebar-btn, .panel-toggle {
   cursor: pointer;
 }
 
+.camera-range-controls.is-disabled .control-label,
+.camera-range-controls.is-disabled .control-value {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.camera-range-controls.is-disabled .control-track input[type="range"] {
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .control-track input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   width: 18px;
@@ -686,6 +714,11 @@ button, a, input, .sidebar-btn, .panel-toggle {
   background: linear-gradient(120deg, var(--faded-blue), #7c3aed);
   cursor: pointer;
   transition: transform 0.15s ease;
+}
+
+.camera-range-controls.is-disabled .control-track input[type="range"]::-webkit-slider-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
 }
 
 .control-track input[type="range"]::-webkit-slider-thumb:hover {
@@ -704,6 +737,11 @@ button, a, input, .sidebar-btn, .panel-toggle {
   border: none;
   cursor: pointer;
   transition: transform 0.15s ease;
+}
+
+.camera-range-controls.is-disabled .control-track input[type="range"]::-moz-range-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
 }
 
 .control-track input[type="range"]::-moz-range-thumb:hover {
@@ -3262,3 +3300,103 @@ select option {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* Metadata missing overlay */
+.metadata-missing-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.metadata-missing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 180, 0, 0.9);
+  border-radius: 6px;
+  color: #1a1a1a;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.metadata-missing-icon {
+  font-size: 14px;
+}
+
+.metadata-missing-hint {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 11px;
+}
+/* Custom metadata section */
+.custom-metadata-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 180, 0, 0.1);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  border-radius: 8px;
+}
+
+.custom-metadata-section .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.custom-metadata-section .section-title {
+  font-weight: 600;
+  color: #ffb400;
+}
+
+.custom-metadata-section .section-hint {
+  font-size: 11px;
+  color: #888;
+}
+
+.custom-metadata-section .control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.custom-metadata-section .control-label {
+  font-size: 13px;
+  color: #ccc;
+}
+
+.custom-metadata-section input[type="range"] {
+  width: 120px;
+}
+
+.save-view-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #ffb400;
+  border: none;
+  border-radius: 6px;
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-view-button:hover:not(:disabled) {
+  background: #ffc733;
+}
+
+.save-view-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

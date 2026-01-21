@@ -16,7 +16,17 @@ import { updateFocusDistanceInCache, clearFocusDistanceInCache } from '../splatM
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
 import { resize, loadSplatFile } from '../fileLoader';
+import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
+import { savePreviewBlob } from '../fileStorage';
+import {
+  applyCustomModelTransform,
+  captureCustomMetadataPayload,
+  saveCustomMetadataForAsset,
+  applyFullOrbitConstraints,
+  restoreOrbitConstraints,
+} from "../customMetadata.js";
 import { enterVrSession } from '../vrMode';
+
 /** Default orbit range in degrees */
 const DEFAULT_CAMERA_RANGE_DEGREES = 26;
 const MIN_IMMERSIVE_RANGE_DEGREES = 10;
@@ -133,6 +143,7 @@ function CameraControls() {
   const hasCustomFocus = useStore((state) => state.hasCustomFocus);
   const setHasCustomFocus = useStore((state) => state.setHasCustomFocus);
   const setFocusSettingActive = useStore((state) => state.setFocusSettingActive);
+  const updateAssetPreview = useStore((state) => state.updateAssetPreview);
   const stereoEnabled = useStore((state) => state.stereoEnabled);
   const setStereoEnabled = useStore((state) => state.setStereoEnabled);
   const stereoEyeSep = useStore((state) => state.stereoEyeSep);
@@ -142,6 +153,13 @@ function CameraControls() {
   const vrSupported = useStore((state) => state.vrSupported);
   const vrSessionActive = useStore((state) => state.vrSessionActive);
   const hasAssetLoaded = useStore((state) => state.fileInfo?.name && state.fileInfo.name !== '-');
+  const customMetadataControlsVisible = useStore((state) => state.customMetadataControlsVisible);
+  const customMetadataAvailable = useStore((state) => state.customMetadataAvailable);
+  const metadataMissing = useStore((state) => state.metadataMissing);
+  const customModelScale = useStore((state) => state.customModelScale);
+  const setCustomModelScale = useStore((state) => state.setCustomModelScale);
+  const setCustomMetadataAvailable = useStore((state) => state.setCustomMetadataAvailable);
+  const setMetadataMissing = useStore((state) => state.setMetadataMissing);
 
   // Ref for camera range slider to avoid DOM queries
   const rangeSliderRef = useRef(null);
@@ -480,6 +498,17 @@ function CameraControls() {
     };
   }, [isMobile]);
 
+  const orbitLimitsDisabled = customMetadataAvailable || metadataMissing;
+
+  // Enable full orbit while custom metadata controls are shown
+  useEffect(() => {
+    if (customMetadataControlsVisible) {
+      applyFullOrbitConstraints();
+    } else {
+      restoreOrbitConstraints(cameraRange);
+    }
+  }, [customMetadataControlsVisible, cameraRange]);
+
   /**
    * Handles toggling immersive mode.
    * Enables device orientation camera control.
@@ -537,6 +566,53 @@ function CameraControls() {
       }
     }
   }, [setImmersiveSensitivity, cameraRange, setCameraRange]);
+
+  const handleCustomModelScaleChange = useCallback((e) => {
+    const value = Number.parseFloat(e.target.value);
+    if (!Number.isFinite(value)) return;
+    setCustomModelScale(value);
+    // Apply scale with CV→GL flip always enabled for non-ML Sharp splats
+    applyCustomModelTransform(currentMesh, {
+      applyCoordinateFlip: true,
+      modelScale: value,
+    });
+  }, [setCustomModelScale]);
+
+  const handleSaveCustomMetadata = useCallback(async () => {
+    if (!currentFileName || currentFileName === '-') {
+      addLog('No active file to save metadata');
+      return;
+    }
+
+    const payload = captureCustomMetadataPayload({
+      modelScale: customModelScale,
+    });
+
+    const saved = await saveCustomMetadataForAsset(currentFileName, payload);
+    if (!saved) {
+      addLog('Failed to save custom metadata');
+      return;
+    }
+
+    const previewResult = await captureCurrentAssetPreview();
+    if (previewResult?.blob) {
+      const asset = assets[currentAssetIndex];
+      if (asset?.name) {
+        await savePreviewBlob(asset.name, previewResult.blob, {
+          width: previewResult.width,
+          height: previewResult.height,
+          format: previewResult.format,
+        });
+      }
+      if (currentAssetIndex >= 0) {
+        updateAssetPreview(currentAssetIndex, previewResult.dataUrl);
+      }
+    }
+
+    setCustomMetadataAvailable(true);
+    setMetadataMissing(false);
+    addLog('Custom metadata saved');
+  }, [currentFileName, customModelScale, addLog, assets, currentAssetIndex, updateAssetPreview, setCustomMetadataAvailable, setMetadataMissing]);
 
   /**
    * Resets view with immersive mode support.
@@ -598,9 +674,9 @@ function CameraControls() {
       const viewerEl = document.getElementById('viewer');
       const inFullscreen = document.fullscreenElement === viewerEl;
       if (stereoEnabled && !inFullscreen) {
-          // Restore background images on error
-      const bgContainers = document.querySelectorAll('.bg-image-container');
-      bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
+        // Restore background images on exit
+        const bgContainers = document.querySelectorAll('.bg-image-container');
+        bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
         setStereoEffectEnabled(false);
         setStereoEnabled(false);
         requestRender();
@@ -631,20 +707,6 @@ function CameraControls() {
         {/* Immersive mode toggle - mobile only */}
         {isMobile && (
           <>
-            {/*
-            <div class="control-row animate-toggle-row">
-              <span class="control-label">Immersive mode</span>
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  checked={immersiveMode}
-                  onChange={handleImmersiveToggle}
-                />
-                <span class="switch-track" aria-hidden="true" />
-              </label>
-            </div>
-            */}
-
             {/* Immersive sensitivity slider - shown when immersive mode is active */}
             {immersiveMode && (
               <>
@@ -669,7 +731,7 @@ function CameraControls() {
           </>
         )}
 
-        {/* Orbit range control */}
+        {/* Stereo toggle */}
         <div class="control-row">
           <span class="control-label">Side-by-side stereo</span>
           <label class="switch">
@@ -758,7 +820,8 @@ function CameraControls() {
           </>
         )}
 
-        <div class="control-row camera-range-controls">
+        {/* Orbit range control */}
+        <div class={`control-row camera-range-controls ${orbitLimitsDisabled ? 'is-disabled' : ''}`}>
           <span class="control-label">Orbit range</span>
           <div class="control-track">
             <input
@@ -769,6 +832,7 @@ function CameraControls() {
               step="0.1"
               value={degreesToSliderValue(cameraRange)}
               onInput={handleCameraRangeChange}
+              disabled={orbitLimitsDisabled}
             />
             <span class="control-value">
               {formatDegrees(cameraRange)}°
@@ -805,6 +869,40 @@ function CameraControls() {
             </span>
           </div>
         </div>
+
+        {/* Custom metadata controls - shown when metadata is missing */}
+        {customMetadataControlsVisible && (
+          <div class="custom-metadata-section">
+            <div class="section-header">
+              <span class="section-title">Custom View Settings</span>
+              <span class="section-hint">Position camera, then save</span>
+            </div>
+            
+            <div class="control-row">
+              <span class="control-label">Model scale</span>
+              <div class="control-track">
+                <input
+                  type="range"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  value={customModelScale}
+                  onInput={handleCustomModelScaleChange}
+                />
+                <span class="control-value">
+                  {customModelScale.toFixed(1)}×
+                </span>
+              </div>
+            </div>
+
+            <button 
+              class="save-view-button"
+              onClick={handleSaveCustomMetadata}
+            >
+              Save View
+            </button>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div class="settings-footer">
