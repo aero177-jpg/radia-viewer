@@ -1,5 +1,5 @@
 {
-  "name": "browser-sharp",
+  "name": "radia-viewer",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -22,6 +22,7 @@
     "@tweakpane/plugin-essentials": "^0.2.1",
     "eruda": "^3.4.3",
     "eruda-indexeddb": "^0.1.1",
+    "fflate": "^0.8.2",
     "gsap": "^3.14.2",
     "interactjs": "^1.10.27",
     "preact": "^10.26.0",

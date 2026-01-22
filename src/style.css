@@ -1653,6 +1653,30 @@ button, a, input, .sidebar-btn, .panel-toggle {
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.settings-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 2px;
+  color: rgba(133, 164, 189, 0.498);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+
+}
+
+.settings-divider span {
+  white-space: nowrap;
+}
+
+.settings-divider::before,
+.settings-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .group-content[hidden] {
   display: none;
 }

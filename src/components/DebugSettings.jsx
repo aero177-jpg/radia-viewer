@@ -4,8 +4,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faDownload, faTimes, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
 import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
@@ -14,6 +15,7 @@ import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
 import { setDebugForceZoomOut, reloadCurrentAsset, resize } from '../fileLoader';
 import { clearCustomMetadataForAsset } from '../customMetadata.js';
 import { requestRender, setStereoEffectEnabled } from '../viewer';
+import { buildTransferBundle, importTransferBundle } from '../utils/debugTransfer.js';
 
 let erudaInitPromise = null;
 
@@ -103,6 +105,19 @@ function DebugSettings() {
   const [generatingBatch, setGeneratingBatch] = useState(false);
   const [debugZoomOut, setDebugZoomOut] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferOptions, setTransferOptions] = useState({
+    includeUrlCollections: true,
+    includeCloudGpuSettings: true,
+    includeSupabaseCollections: true,
+    includeSupabaseSettings: true,
+    includeFilePreviews: true,
+    includeFileSettings: true,
+  });
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [transferError, setTransferError] = useState(null);
+  const transferFileInputRef = useRef(null);
 
   const refreshAssets = useCallback(() => {
     const assets = getAssetList();
@@ -362,6 +377,75 @@ function DebugSettings() {
     addLog('[BatchPreview] Abort requested');
   }, [addLog]);
 
+  const hasTransferSelection = Object.values(transferOptions).some(Boolean);
+
+  const updateTransferOption = useCallback((key) => (e) => {
+    const enabled = Boolean(e.target.checked);
+    setTransferOptions((prev) => ({
+      ...prev,
+      [key]: enabled,
+    }));
+  }, []);
+
+  const downloadBlob = useCallback((blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, []);
+
+  const handleExportTransfer = useCallback(async () => {
+    if (!hasTransferSelection || transferBusy) return;
+    setTransferBusy(true);
+    setTransferError(null);
+    try {
+      const { blob, manifest } = await buildTransferBundle(transferOptions);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `radia-viewer-transfer-${stamp}.zip`;
+      downloadBlob(blob, filename);
+      const previewCount = manifest?.data?.previews?.length ?? 0;
+      addLog(`[Debug] Transfer bundle exported (${previewCount} previews)`);
+    } catch (err) {
+      const message = err?.message || 'Export failed';
+      setTransferError(message);
+      addLog(`[Debug] Transfer export failed: ${message}`);
+    } finally {
+      setTransferBusy(false);
+    }
+  }, [addLog, downloadBlob, hasTransferSelection, transferBusy, transferOptions]);
+
+  const handleImportPick = useCallback(() => {
+    transferFileInputRef.current?.click();
+  }, []);
+
+  const handleImportFileChange = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportBusy(true);
+    setTransferError(null);
+    try {
+      const { summary } = await importTransferBundle(file);
+      addLog(
+        `[Debug] Transfer import complete: ${summary.sourcesImported} sources, ` +
+          `${summary.fileSettingsImported} settings, ${summary.previewsImported} previews`
+      );
+      if (summary.warnings?.length) {
+        addLog(`[Debug] Transfer import warnings: ${summary.warnings.join(' | ')}`);
+      }
+    } catch (err) {
+      const message = err?.message || 'Import failed';
+      setTransferError(message);
+      addLog(`[Debug] Transfer import failed: ${message}`);
+    } finally {
+      setImportBusy(false);
+    }
+  }, [addLog]);
+
   // React to devtools preference changes — require explicit user approval to initialize
   useEffect(() => {
     if (mobileDevtoolsEnabled) {
@@ -400,20 +484,25 @@ function DebugSettings() {
   }, [stereoEnabled, setStereoEnabled]);
 
   return (
-    <div class="settings-group">
-      <button
-        class="group-toggle"
-        aria-expanded={debugSettingsExpanded}
-        onClick={toggleDebugSettingsExpanded}
-      >
-        <span class="settings-eyebrow">Debug Settings</span>
-        <FontAwesomeIcon icon={faChevronDown} className="chevron" />
-      </button>
+    <>
+      <div class="settings-group">
+        <button
+          class="group-toggle"
+          aria-expanded={debugSettingsExpanded}
+          onClick={toggleDebugSettingsExpanded}
+        >
+          <span class="settings-eyebrow">Debug Settings</span>
+          <FontAwesomeIcon icon={faChevronDown} className="chevron" />
+        </button>
 
-      <div
-        class="group-content"
-        style={{ display: debugSettingsExpanded ? 'flex' : 'none' }}
-      >
+        <div
+          class="group-content"
+          style={{ display: debugSettingsExpanded ? 'flex' : 'none' }}
+        >
+        <div class="settings-divider">
+          <span>Viewer</span>
+        </div>
+
         <div class="control-row">
           <span class="control-label">Show FPS</span>
           <label class="switch">
@@ -421,50 +510,6 @@ function DebugSettings() {
               type="checkbox"
               checked={showFps}
               onChange={handleFpsToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Mobile devtools</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={mobileDevtoolsEnabled}
-              onChange={handleDevtoolsToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Stochastic rendering</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugStochasticRendering}
-              onChange={handleStochasticToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <button
-          class="secondary"
-          type="button"
-          onClick={handleForceViewerRefresh}
-        >
-          Force viewer refresh
-        </button>
-
-        <div class="control-row">
-          <span class="control-label">Limit FPS (60)</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugFpsLimitEnabled}
-              onChange={handleFpsLimitToggle}
             />
             <span class="switch-track" aria-hidden="true" />
           </label>
@@ -483,42 +528,30 @@ function DebugSettings() {
         </div>
 
         <div class="control-row">
-          <span class="control-label">Splat width</span>
+          <span class="control-label">Image glow</span>
           <div class="control-track">
             <input
               type="range"
-              min="0.5"
-              max="8"
-              step="0.1"
-              value={debugSparkMaxStdDev}
-              onInput={handleSparkStdDevChange}
+              min="0"
+              max="40"
+              step="1"
+              value={bgBlur}
+              onInput={(e) => setBgBlur(Number(e.target.value) || 0)}
             />
-            <span class="control-value">{debugSparkMaxStdDev.toFixed(2)}</span>
+            <span class="control-value">{bgBlur}px</span>
           </div>
         </div>
 
-        <div class="control-row">
-          <span class="control-label">Delete image store</span>
-          <button
-            type="button"
-            class={`secondary danger ${wipingDb ? 'is-busy' : ''}`}
-            onClick={handleWipeDb}
-            disabled={wipingDb}
-          >
-            {wipingDb ? 'Deleting...' : 'Delete'}
-          </button>
-        </div>
+        <button
+          class="secondary"
+          type="button"
+          onClick={handleForceViewerRefresh}
+        >
+          Force viewer refresh
+        </button>
 
-        <div class="control-row">
-          <span class="control-label">Clear Supabase cache</span>
-          <button
-            type="button"
-            class={`secondary ${clearingSupabaseCache ? 'is-busy' : ''}`}
-            onClick={handleClearSupabaseCache}
-            disabled={clearingSupabaseCache}
-          >
-            {clearingSupabaseCache ? 'Clearing...' : 'Clear'}
-          </button>
+        <div class="settings-divider">
+          <span>Cache</span>
         </div>
 
         <div class="control-row">
@@ -546,37 +579,6 @@ function DebugSettings() {
             </button>
           </div>
         )}
-
-        <div class="control-row">
-          <span class="control-label">Debug zoom-out</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugZoomOut}
-              onChange={(e) => {
-                const enabled = Boolean(e.target.checked);
-                setDebugZoomOut(enabled);
-                setDebugForceZoomOut(enabled);
-              }}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Image glow</span>
-          <div class="control-track">
-            <input
-              type="range"
-              min="0"
-              max="40"
-              step="1"
-              value={bgBlur}
-              onInput={(e) => setBgBlur(Number(e.target.value) || 0)}
-            />
-            <span class="control-value">{bgBlur}px</span>
-          </div>
-        </div>
 
         <div class="control-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -624,9 +626,240 @@ function DebugSettings() {
             </div>
           )}
         </div>
+
+        <div class="control-row">
+          <span class="control-label">Delete image store</span>
+          <button
+            type="button"
+            class={`secondary danger ${wipingDb ? 'is-busy' : ''}`}
+            onClick={handleWipeDb}
+            disabled={wipingDb}
+          >
+            {wipingDb ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Clear Supabase cache</span>
+          <button
+            type="button"
+            class={`secondary ${clearingSupabaseCache ? 'is-busy' : ''}`}
+            onClick={handleClearSupabaseCache}
+            disabled={clearingSupabaseCache}
+          >
+            {clearingSupabaseCache ? 'Clearing...' : 'Clear'}
+          </button>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Transfer bundle</span>
+          <button
+            type="button"
+            class="secondary"
+            onClick={() => setTransferModalOpen(true)}
+          >
+            Open
+          </button>
+        </div>
+
+        <div class="settings-divider">
+          <span>Render debug</span>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Mobile devtools</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={mobileDevtoolsEnabled}
+              onChange={handleDevtoolsToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Stochastic rendering</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugStochasticRendering}
+              onChange={handleStochasticToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Limit FPS (60)</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugFpsLimitEnabled}
+              onChange={handleFpsLimitToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Splat width</span>
+          <div class="control-track">
+            <input
+              type="range"
+              min="0.5"
+              max="8"
+              step="0.1"
+              value={debugSparkMaxStdDev}
+              onInput={handleSparkStdDevChange}
+            />
+            <span class="control-value">{debugSparkMaxStdDev.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Debug zoom-out</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugZoomOut}
+              onChange={(e) => {
+                const enabled = Boolean(e.target.checked);
+                setDebugZoomOut(enabled);
+                setDebugForceZoomOut(enabled);
+              }}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+        </div>
       </div>
-    </div>
+
+      {transferModalOpen && createPortal(
+        <div
+          class="modal-overlay storage-dialog-overlay"
+          onClick={() => setTransferModalOpen(false)}
+        >
+          <div
+            class="modal-content storage-dialog"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '460px' }}
+          >
+            <button class="modal-close" onClick={() => setTransferModalOpen(false)}>
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+
+            <h2>Transfer bundle</h2>
+            <p class="dialog-subtitle">
+              Choose what to include in the export bundle.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+              <label class="control-row" style={{ justifyContent: 'space-between' }}>
+                <span class="control-label">URL collections</span>
+                <input
+                  type="checkbox"
+                  checked={transferOptions.includeUrlCollections}
+                  onChange={updateTransferOption('includeUrlCollections')}
+                />
+              </label>
+              <label class="control-row" style={{ justifyContent: 'space-between' }}>
+                <span class="control-label">Cloud GPU settings</span>
+                <input
+                  type="checkbox"
+                  checked={transferOptions.includeCloudGpuSettings}
+                  onChange={updateTransferOption('includeCloudGpuSettings')}
+                />
+              </label>
+              <label class="control-row" style={{ justifyContent: 'space-between' }}>
+                <span class="control-label">Supabase collections</span>
+                <input
+                  type="checkbox"
+                  checked={transferOptions.includeSupabaseCollections}
+                  onChange={updateTransferOption('includeSupabaseCollections')}
+                />
+              </label>
+              <label class="control-row" style={{ justifyContent: 'space-between' }}>
+                <span class="control-label">Supabase settings</span>
+                <input
+                  type="checkbox"
+                  checked={transferOptions.includeSupabaseSettings}
+                  onChange={updateTransferOption('includeSupabaseSettings')}
+                />
+              </label>
+              <label class="control-row" style={{ justifyContent: 'space-between' }}>
+                <span class="control-label">File previews</span>
+                <input
+                  type="checkbox"
+                  checked={transferOptions.includeFilePreviews}
+                  onChange={updateTransferOption('includeFilePreviews')}
+                />
+              </label>
+              <label class="control-row" style={{ justifyContent: 'space-between' }}>
+                <span class="control-label">File settings</span>
+                <input
+                  type="checkbox"
+                  checked={transferOptions.includeFileSettings}
+                  onChange={updateTransferOption('includeFileSettings')}
+                />
+              </label>
+            </div>
+
+            <div class="form-info" style={{ marginTop: '12px' }}>
+              <p style={{ fontSize: '0.9em', color: 'var(--text-muted, #888)' }}>
+                Import merges by file name and overwrites matching previews/settings.
+              </p>
+            </div>
+
+            {transferError && (
+              <div class="form-error" style={{ marginTop: '8px' }}>
+                {transferError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', marginTop: '20px', alignItems: 'center' }}>
+              <button
+                class="secondary-button"
+                onClick={handleImportPick}
+                disabled={importBusy}
+                style={{ height: '36px', padding: '0 16px' }}
+              >
+                <FontAwesomeIcon icon={faUpload} />
+                {' '}Import ZIP
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  class="secondary-button"
+                  onClick={() => setTransferModalOpen(false)}
+                  style={{ height: '36px', padding: '0 16px' }}
+                >
+                  Close
+                </button>
+                <button
+                  class="primary-button"
+                  onClick={handleExportTransfer}
+                  disabled={!hasTransferSelection || transferBusy}
+                  style={{ height: '36px', padding: '0 16px' }}
+                >
+                  <FontAwesomeIcon icon={faDownload} />
+                  {' '}{transferBusy ? 'Exporting...' : 'Export ZIP'}
+                </button>
+              </div>
+            </div>
+
+            <input
+              ref={transferFileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              style={{ display: 'none' }}
+              onChange={handleImportFileChange}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
-
 export default DebugSettings;

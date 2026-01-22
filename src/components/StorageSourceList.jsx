@@ -182,7 +182,8 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
 
     try {
       const results = await testSharpCloud(files, {
-        prefix: collectionPrefix,
+        prefix: source.type === 'supabase-storage' ? collectionPrefix : undefined,
+        returnMode: source.type === 'supabase-storage' ? undefined : 'direct',
         onProgress: (progress) => {
           console.log('convert progress', progress);
           setUploadProgress(progress);
@@ -191,7 +192,7 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
       const failures = results.filter((r) => !r.ok);
 
       const anySuccess = results.some((r) => r.ok);
-      if (anySuccess) {
+      if (anySuccess && source.type === 'supabase-storage') {
         await refreshAssets();
       }
 
@@ -205,10 +206,10 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
       setIsUploading(false);
       setUploadProgress(null);
     }
-  }, [collectionPrefix, refreshAssets]);
+  }, [collectionPrefix, refreshAssets, source.type]);
 
   const handleFilesForMode = useCallback(async (mode, files) => {
-    if (!files?.length || source.type !== 'supabase-storage') return;
+    if (!files?.length) return;
 
     if (mode === 'images') {
       const imageFiles = files.filter(isImageFile);
@@ -220,12 +221,15 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
       return;
     }
 
+    if (source.type !== 'supabase-storage') {
+      alert('Asset uploads are only supported for Supabase collections.');
+      return;
+    }
+
     await processUploads(files);
   }, [handleImageConvert, isImageFile, processUploads, source.type]);
 
   const openPickerForMode = useCallback(async (mode) => {
-    if (source.type !== 'supabase-storage') return;
-
     setUploadMode(mode);
 
     if (typeof window.showOpenFilePicker === 'function') {
@@ -252,7 +256,7 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
     requestAnimationFrame(() => {
       uploadInputRef.current?.click();
     });
-  }, [handleFilesForMode, source.type, supportedExtensions]);
+  }, [handleFilesForMode, supportedExtensions]);
 
   // Check connection status on mount
   useEffect(() => {
@@ -413,9 +417,12 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
 
   const handleUploadClick = useCallback(async (e) => {
     e.stopPropagation();
-    if (source.type !== 'supabase-storage') return;
-    setShowUploadChoiceModal(true);
-  }, [source.type]);
+    if (source.type === 'supabase-storage') {
+      setShowUploadChoiceModal(true);
+      return;
+    }
+    openPickerForMode('images');
+  }, [openPickerForMode, source.type]);
 
   const handleUploadChange = useCallback(async (e) => {
     e.stopPropagation();
@@ -605,18 +612,14 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
               <span>Edit</span>
             </button>
           )}
-          {source.type === 'supabase-storage' && (
-            <>
-              <button
-                class="source-action-btn"
-                onClick={handleUploadClick}
-                title="Upload files to Supabase"
-              >
-                <FontAwesomeIcon icon={faUpload} />
-                <span>Upload</span>
-              </button>
-            </>
-          )}
+          <button
+            class="source-action-btn"
+            onClick={handleUploadClick}
+            title={source.type === 'supabase-storage' ? 'Upload files to Supabase' : 'Convert images with Cloud GPU'}
+          >
+            <FontAwesomeIcon icon={faUpload} />
+            <span>Upload</span>
+          </button>
           <button 
             class="source-action-btn danger" 
             onClick={handleRemove}
