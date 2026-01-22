@@ -29,11 +29,71 @@ const getPersistedBoolean = (key, fallback = false) => {
   }
 };
 
-/** Default state for mobile devtools (on for mobile, persisted if set) */
-const defaultDevtoolsEnabled = (() => {
-  const isProbablyMobile = typeof navigator !== 'undefined' && /Mobi|Android|iP(ad|hone|od)/i.test(navigator.userAgent);
-  return getPersistedBoolean('mobileDevtoolsEnabled', isProbablyMobile);
-})();
+/** Safely load a persisted string from localStorage */
+const getPersistedString = (key, fallback = '') => {
+  if (typeof window === 'undefined' || !window.localStorage) return fallback;
+  try {
+    const stored = window.localStorage.getItem(key);
+    if (stored === null) return fallback;
+    return stored;
+  } catch (err) {
+    console.warn(`[Store] Failed to read ${key} from localStorage`, err);
+    return fallback;
+  }
+};
+
+/** Safely load a persisted number from localStorage */
+const getPersistedNumber = (key, fallback = 0) => {
+  if (typeof window === 'undefined' || !window.localStorage) return fallback;
+  try {
+    const stored = window.localStorage.getItem(key);
+    if (stored === null) return fallback;
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  } catch (err) {
+    console.warn(`[Store] Failed to read ${key} from localStorage`, err);
+    return fallback;
+  }
+};
+
+/** Default state for mobile devtools.
+ * - Default: OFF (safety-first)
+ * - Persisted user preference is still respected, but Eruda will not auto-init
+ *   on app startup — explicit user toggle (approval) is required to initialize.
+ */
+const defaultDevtoolsEnabled = getPersistedBoolean('mobileDevtoolsEnabled', false);
+
+const QUALITY_PRESET_KEY = 'qualityPreset';
+const DEBUG_STOCHASTIC_KEY = 'debugStochasticRendering';
+const DEBUG_SPARK_STDDEV_KEY = 'debugSparkMaxStdDev';
+const DEBUG_FPS_LIMIT_KEY = 'debugFpsLimitEnabled';
+
+const QUALITY_PRESETS = {
+  high: { stdDev: 7, stochastic: false, fpsLimit: true },
+  default: { stdDev: 5, stochastic: false, fpsLimit: true },
+  performance: { stdDev: 2.5, stochastic: false, fpsLimit: false },
+  experimental: { stdDev: 1.8, stochastic: true, fpsLimit: false },
+};
+
+const persistedQualityPreset = getPersistedString(QUALITY_PRESET_KEY, 'default');
+const persistedCustomStdDev = getPersistedNumber(DEBUG_SPARK_STDDEV_KEY, Math.sqrt(5));
+const persistedCustomStochastic = getPersistedBoolean(DEBUG_STOCHASTIC_KEY, false);
+const persistedCustomFpsLimit = getPersistedBoolean(DEBUG_FPS_LIMIT_KEY, true);
+
+const resolveInitialQuality = (preset) => {
+  if (QUALITY_PRESETS[preset]) return QUALITY_PRESETS[preset];
+  if (preset === 'debug-custom') {
+    return {
+      stdDev: persistedCustomStdDev,
+      stochastic: persistedCustomStochastic,
+      fpsLimit: persistedCustomFpsLimit,
+    };
+  }
+  return QUALITY_PRESETS.default;
+};
+
+const initialQuality = resolveInitialQuality(persistedQualityPreset);
+
 
 /** Maximum number of log entries to keep */
 const MAX_LOG_ENTRIES = 14;
@@ -53,6 +113,7 @@ export const useStore = create(
   fov: 60,
   cameraRange: 8,
   dollyZoomEnabled: true,
+  viewerFovSlider: false,
   stereoEnabled: false,
   stereoEyeSep: 0.064,
   stereoAspect: 1.0,
@@ -84,6 +145,12 @@ export const useStore = create(
   // Custom focus state
   hasCustomFocus: false,
   focusDistanceOverride: null,
+  focusSettingActive: false,
+  // Custom camera metadata state
+  metadataMissing: false,
+  customMetadataAvailable: false,
+  customMetadataControlsVisible: false,
+  customModelScale: 1,
   // Show FPS counter overlay
   showFps: false,
 
@@ -117,19 +184,29 @@ export const useStore = create(
   isPortrait: typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
   immersiveMode: false,
   immersiveSensitivity: 1.0,
-  rotationEnabled: true,    // Enable tilt rotation by default
-  touchPanEnabled: true,    // Enable touch panning by default
   mobileDevtoolsEnabled: defaultDevtoolsEnabled,
   bgBlur: 40,
   
   // Debug
   debugLoadingMode: false,
   debugSettingsExpanded: false,
+  debugStochasticRendering: initialQuality.stochastic,
+  debugFpsLimitEnabled: initialQuality.fpsLimit,
+  debugSparkMaxStdDev: initialQuality.stdDev,
+  qualityPreset: (QUALITY_PRESETS[persistedQualityPreset] || persistedQualityPreset === 'debug-custom')
+    ? persistedQualityPreset
+    : 'default',
 
   // ============ Actions ============
   
   /** Sets camera field of view */
   setFov: (fov) => set({ fov }),
+
+  /** Shows/hides the viewer FOV slider overlay */
+  setViewerFovSlider: (visible) => set({ viewerFovSlider: visible }),
+
+  /** Toggles the viewer FOV slider overlay */
+  toggleViewerFovSlider: () => set((state) => ({ viewerFovSlider: !state.viewerFovSlider })),
   
   /** Sets camera orbit range in degrees */
   setCameraRange: (range) => set({ cameraRange: range }),
@@ -187,6 +264,13 @@ export const useStore = create(
   /** Sets custom focus state */
   setHasCustomFocus: (hasCustomFocus) => set({ hasCustomFocus }),
   setFocusDistanceOverride: (focusDistanceOverride) => set({ focusDistanceOverride }),
+  setFocusSettingActive: (focusSettingActive) => set({ focusSettingActive }),
+
+  /** Custom metadata flags */
+  setMetadataMissing: (metadataMissing) => set({ metadataMissing }),
+  setCustomMetadataAvailable: (customMetadataAvailable) => set({ customMetadataAvailable }),
+  setCustomMetadataControlsVisible: (customMetadataControlsVisible) => set({ customMetadataControlsVisible }),
+  setCustomModelScale: (customModelScale) => set({ customModelScale }),
   
   /** Updates file info (merges with existing) */
   setFileInfo: (info) => set((state) => ({ 
@@ -281,12 +365,6 @@ export const useStore = create(
   /** Sets immersive mode sensitivity multiplier */
   setImmersiveSensitivity: (sensitivity) => set({ immersiveSensitivity: sensitivity }),
 
-  /** Sets touch panning enabled/disabled */
-  setTouchPanEnabled: (enabled) => set({ touchPanEnabled: enabled }),
-
-  /** Sets rotation (orientation-based orbit) enabled/disabled */
-  setRotationEnabled: (enabled) => set({ rotationEnabled: enabled }),
-
   /** Sets visibility of FPS counter overlay */
   setShowFps: (show) => set({ showFps: show }),
 
@@ -304,6 +382,73 @@ export const useStore = create(
 
   /** Sets blur amount for background container */
   setBgBlur: (bgBlur) => set({ bgBlur }),
+
+  /** Enables/disables stochastic rendering in Spark */
+  setDebugStochasticRendering: (enabled) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(DEBUG_STOCHASTIC_KEY, String(enabled));
+      } catch (err) {
+        console.warn('[Store] Failed to persist debugStochasticRendering', err);
+      }
+    }
+    set({ debugStochasticRendering: enabled });
+  },
+
+  /** Enables/disables FPS limiting in the render loop */
+  setDebugFpsLimitEnabled: (enabled) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(DEBUG_FPS_LIMIT_KEY, String(enabled));
+      } catch (err) {
+        console.warn('[Store] Failed to persist debugFpsLimitEnabled', err);
+      }
+    }
+    set({ debugFpsLimitEnabled: enabled });
+  },
+
+  /** Sets Spark splat maxStdDev (rendering width) */
+  setDebugSparkMaxStdDev: (value) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(DEBUG_SPARK_STDDEV_KEY, String(value));
+      } catch (err) {
+        console.warn('[Store] Failed to persist debugSparkMaxStdDev', err);
+      }
+    }
+    set({ debugSparkMaxStdDev: value });
+  },
+
+  /** Sets rendering quality preset and persists it */
+  setQualityPreset: (preset) => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(QUALITY_PRESET_KEY, String(preset));
+      } catch (err) {
+        console.warn('[Store] Failed to persist qualityPreset', err);
+      }
+    }
+    if (QUALITY_PRESETS[preset]) {
+      const { stdDev, stochastic, fpsLimit } = QUALITY_PRESETS[preset];
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.setItem(DEBUG_SPARK_STDDEV_KEY, String(stdDev));
+          window.localStorage.setItem(DEBUG_STOCHASTIC_KEY, String(stochastic));
+          window.localStorage.setItem(DEBUG_FPS_LIMIT_KEY, String(fpsLimit));
+        } catch (err) {
+          console.warn('[Store] Failed to persist quality preset values', err);
+        }
+      }
+      set({
+        qualityPreset: preset,
+        debugSparkMaxStdDev: stdDev,
+        debugStochasticRendering: stochastic,
+        debugFpsLimitEnabled: fpsLimit,
+      });
+      return;
+    }
+    set({ qualityPreset: preset });
+  },
   
   /** Toggles debug loading mode */
   toggleDebugLoadingMode: () => set((state) => ({ 

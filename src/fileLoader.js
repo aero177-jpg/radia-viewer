@@ -29,6 +29,13 @@ import {
   applyFocusDistanceOverride,
   animateCameraMutation,
 } from "./cameraUtils.js";
+import {
+  loadCustomMetadataForAsset,
+  applyCustomModelTransform,
+  applyCameraPose,
+  applyFullOrbitConstraints,
+  restoreOrbitConstraints,
+} from "./customMetadata.js";
 import { slideOutAnimation, slideInAnimation } from "./cameraAnimations.js";
 import { isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode } from "./immersiveMode.js";
 import { applyIntrinsicsAspect, updateViewerAspectRatio, resize } from "./layout.js";
@@ -281,7 +288,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
   try {
     // Only clear background if not cached (avoid flash)
-    if (!wasAlreadyCached) {
+    if (!wasAlreadyCached && !asset.preview) {
       clearBackground();
       const pageEl = document.querySelector(".page");
       if (pageEl) {
@@ -363,6 +370,44 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       });
 
     const { cameraMetadata, storedSettings, focusDistanceOverride, formatLabel } = entry;
+    const customMetadata = await loadCustomMetadataForAsset(asset.name);
+    const hasCustomMetadata = Boolean(customMetadata?.cameraPose);
+
+    // For non-ML Sharp splats, always apply CV→GL coordinate flip
+    // This is the same transform ML Sharp files get automatically
+    const shouldApplyFlip = !cameraMetadata?.intrinsics;
+    const modelOverrides = {
+      applyCoordinateFlip: shouldApplyFlip,
+      modelScale: customMetadata?.model?.modelScale ?? 1,
+    };
+
+    if (shouldApplyFlip || hasCustomMetadata) {
+      applyCustomModelTransform(entry.mesh, modelOverrides);
+    }
+
+    store.setCustomModelScale(modelOverrides.modelScale);
+
+    const metadataMissing = !cameraMetadata?.intrinsics && !hasCustomMetadata;
+    store.setMetadataMissing(metadataMissing);
+    store.setCustomMetadataAvailable(hasCustomMetadata);
+    store.setCustomMetadataControlsVisible(metadataMissing);
+
+    const shouldDisableOrbitLimits = metadataMissing || hasCustomMetadata;
+    if (shouldDisableOrbitLimits) {
+      applyFullOrbitConstraints();
+    } else {
+      restoreOrbitConstraints(store.cameraRange);
+    }
+
+    const applyCameraForAsset = () => {
+      if (hasCustomMetadata && customMetadata?.cameraPose) {
+        applyCameraPose(customMetadata.cameraPose);
+      } else if (cameraMetadata) {
+        applyMetadataCamera(entry.mesh, cameraMetadata, resize);
+      } else {
+        fitViewToMesh(entry.mesh);
+      }
+    };
 
     if (storedSettings) {
       store.addLog(`Found stored settings for ${asset.name}`);
@@ -418,11 +463,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     // Otherwise use the smooth camera mutation animation
     if (slideDirection && wasAlreadyCached) {
       // Apply camera settings instantly
-      if (cameraMetadata) {
-        applyMetadataCamera(entry.mesh, cameraMetadata, resize);
-      } else {
-        fitViewToMesh(entry.mesh);
-      }
+      applyCameraForAsset();
 
       if (focusDistanceOverride !== undefined) {
         applyFocusDistanceOverride(focusDistanceOverride);
@@ -457,11 +498,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       const shouldAnimateCamera = !isFirstLoad && !wasImmersiveModeActive && store.animationEnabled;
 
       await animateCameraMutation(() => {
-        if (cameraMetadata) {
-          applyMetadataCamera(entry.mesh, cameraMetadata, resize);
-        } else {
-          fitViewToMesh(entry.mesh);
-        }
+        applyCameraForAsset();
 
         if (focusDistanceOverride !== undefined) {
           applyFocusDistanceOverride(focusDistanceOverride);
@@ -580,6 +617,9 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
                   const assetIndex = getAssetList().findIndex((a) => a.id === asset.id);
                   if (assetIndex >= 0 && asset.preview) {
                     store.updateAssetPreview(assetIndex, asset.preview);
+                    if (assetIndex === getCurrentAssetIndex()) {
+                      applyPreviewBackground(asset.preview);
+                    }
                   }
                   
                   await savePreviewBlob(asset.name, previewResult.blob, {
@@ -718,7 +758,12 @@ export const initDragDrop = () => {
     }
     
     if (files.length > 0) {
-      await handleMultipleFiles(files);
+      const hasExistingAssets = getAssetCount() > 0;
+      if (hasExistingAssets) {
+        await handleAddFiles(files, { selectFirstAdded: true });
+      } else {
+        await handleMultipleFiles(files);
+      }
     }
   });
 };
@@ -844,14 +889,9 @@ export const handleMultipleFiles = async (files) => {
 };
 
 /**
- * Loads a specific asset by index.
- * Called from AssetGallery component when user clicks a thumbnail.
- * @param {number} index - Asset index to load
- */
-/**
  * Adds files to the existing asset list.
  */
-export const handleAddFiles = async (files) => {
+export const handleAddFiles = async (files, options = {}) => {
   if (!files || files.length === 0) return;
   const store = getStoreState();
   store.clearActiveSource();
@@ -881,8 +921,20 @@ export const handleAddFiles = async (files) => {
       store.updateAssetPreview(globalIndex, asset.preview);
     }
   }
+
+  if (options.selectFirstAdded && result.newAssets.length > 0) {
+    const firstNewIndex = startIndex;
+    setCurrentAssetIndexManager(firstNewIndex);
+    store.setCurrentAssetIndex(firstNewIndex);
+    await loadSplatFile(result.newAssets[0]);
+  }
 };
 
+/**
+ * Loads a specific asset by index.
+ * Called from AssetGallery component when user clicks a thumbnail.
+ * @param {number} index - Asset index to load
+ */
 /**
  * Loads a specific asset by index.
  * Called from AssetGallery and AssetSidebar when user clicks a thumbnail.

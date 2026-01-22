@@ -4,7 +4,7 @@
  * Collapsible via toggle button.
  */
 
-import { useState, useCallback } from 'preact/hooks';
+import { useState, useCallback, useRef } from 'preact/hooks';
 import { useStore } from '../store';
 import CameraControls from './CameraControls';
 import AnimationSettings from './AnimationSettings';
@@ -24,22 +24,49 @@ function SidePanel() {
   // Store actions
   const togglePanel = useStore((state) => state.togglePanel);
 
+  const hoverOpenTimeoutRef = useRef(null);
+
   // Open the panel if it is currently closed (used for hover target)
   const openPanel = useCallback(() => {
     if (!panelOpen) {
       togglePanel();
     }
   }, [panelOpen, togglePanel]);
+
+  const handleHoverEnter = useCallback(() => {
+    if (hoverOpenTimeoutRef.current) {
+      clearTimeout(hoverOpenTimeoutRef.current);
+    }
+    hoverOpenTimeoutRef.current = setTimeout(() => {
+      openPanel();
+      hoverOpenTimeoutRef.current = null;
+    }, 500);
+  }, [openPanel]);
+
+  const handleHoverLeave = useCallback(() => {
+    if (hoverOpenTimeoutRef.current) {
+      clearTimeout(hoverOpenTimeoutRef.current);
+      hoverOpenTimeoutRef.current = null;
+    }
+  }, []);
   
   // Storage dialog state
   const [storageDialogOpen, setStorageDialogOpen] = useState(false);
+  const [storageDialogInitialTier, setStorageDialogInitialTier] = useState(null);
   
   const handleOpenStorageDialog = useCallback(() => {
+    setStorageDialogInitialTier(null);
+    setStorageDialogOpen(true);
+  }, []);
+
+  const handleOpenCloudGpuDialog = useCallback(() => {
+    setStorageDialogInitialTier('cloud-gpu');
     setStorageDialogOpen(true);
   }, []);
   
   const handleCloseStorageDialog = useCallback(() => {
     setStorageDialogOpen(false);
+    setStorageDialogInitialTier(null);
   }, []);
   
   const handleSourceConnect = useCallback((source) => {
@@ -65,9 +92,10 @@ function SidePanel() {
       </button>
       {/* Right-edge hover target to open the side panel */}
         <div
-          class="sidepanel-hover-target"
-          onMouseEnter={openPanel}
-        />
+            class="sidepanel-hover-target"
+            onMouseEnter={handleHoverEnter}
+            onMouseLeave={handleHoverLeave}
+          />
       {/* Side panel content */}
       <div class="side">
         {/* File info display - hidden on mobile */}
@@ -102,6 +130,7 @@ function SidePanel() {
         <StorageSourceList 
           onAddSource={handleOpenStorageDialog}
           onSelectSource={handleSelectSource}
+          onOpenCloudGpu={handleOpenCloudGpuDialog}
         />
         <DebugSettings />
       </div>
@@ -111,6 +140,7 @@ function SidePanel() {
         isOpen={storageDialogOpen}
         onClose={handleCloseStorageDialog}
         onConnect={handleSourceConnect}
+        initialTier={storageDialogInitialTier}
       />
     </>
   );

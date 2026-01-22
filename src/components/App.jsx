@@ -12,15 +12,16 @@ import SidePanel from './SidePanel';
 import MobileSheet from './MobileSheet';
 import AssetSidebar from './AssetSidebar';
 import AssetNavigation from './AssetNavigation';
-import { initViewer, startRenderLoop, currentMesh } from '../viewer';
+import { initViewer, startRenderLoop, currentMesh, camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE } from '../viewer';
 import { resize, loadFromStorageSource, loadNextAsset, loadPrevAsset, handleMultipleFiles } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
-import { setupFullscreenHandler, moveElementsToFullscreen } from '../fullscreenHandler';
+import { enableImmersiveMode, disableImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, syncImmersiveBaseline } from '../immersiveMode';
+import { setupFullscreenHandler } from '../fullscreenHandler';
 import useOutsideClick from '../utils/useOutsideClick';
 import useSwipe from '../utils/useSwipe';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faRotateRight } from '@fortawesome/free-solid-svg-icons';
-import { faExpand, faCompress } from '@fortawesome/free-solid-svg-icons';
+import { faExpandAlt, faCompressAlt } from '@fortawesome/free-solid-svg-icons';
+import { FocusIcon, Rotate3DIcon } from '../icons/customIcons';
 import { initVrSupport } from '../vrMode';
 import { getSourcesArray } from '../storage/index.js';
 import { getSource, createPublicUrlSource, registerSource, saveSource } from '../storage/index.js';
@@ -29,6 +30,14 @@ import ConnectStorageDialog from './ConnectStorageDialog';
 
 /** Delay before resize after panel toggle animation completes */
 const PANEL_TRANSITION_MS = 350;
+
+const updateControlSpeedsForFov = (fov) => {
+  if (!controls) return;
+  const fovScale = THREE.MathUtils.clamp(fov / defaultCamera.fov, 0.05, 2.0);
+  controls.rotateSpeed = Math.max(0.02, defaultControls.rotateSpeed * fovScale * 0.45);
+  controls.zoomSpeed = Math.max(0.05, defaultControls.zoomSpeed * fovScale * 0.8);
+  controls.panSpeed = Math.max(0.05, defaultControls.panSpeed * fovScale * 0.8);
+};
 
 function App() {
   // Store state
@@ -44,6 +53,13 @@ function App() {
   const toggleAssetSidebar = useStore((state) => state.toggleAssetSidebar);
   const setStatus = useStore((state) => state.setStatus);
   const addLog = useStore((state) => state.addLog);
+  const focusSettingActive = useStore((state) => state.focusSettingActive);
+  const fov = useStore((state) => state.fov);
+  const setFov = useStore((state) => state.setFov);
+  const viewerFovSlider = useStore((state) => state.viewerFovSlider);
+  const immersiveMode = useStore((state) => state.immersiveMode);
+  const setImmersiveMode = useStore((state) => state.setImmersiveMode);
+  const immersiveSensitivity = useStore((state) => state.immersiveSensitivity);
   
   // Local state for viewer initialization
   const [viewerReady, setViewerReady] = useState(false);
@@ -58,10 +74,10 @@ function App() {
   // File input + storage dialog state for title card actions
   const fileInputRef = useRef(null);
   const [storageDialogOpen, setStorageDialogOpen] = useState(false);
+  const [storageDialogInitialTier, setStorageDialogInitialTier] = useState(null);
 
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const controlsRef = useRef(null);
   const bottomControlsRef = useRef(null);
   const swipeTargetRef = useRef(null);
 
@@ -69,29 +85,17 @@ function App() {
   useOutsideClick(
     togglePanel,
     ['.side', '.mobile-sheet', '.panel-toggle', '.bottom-page-btn', '.bottom-controls'],
-    panelOpen
+    panelOpen && !focusSettingActive
   );
 
   // Setup fullscreen handler - re-run when controls mount
   useEffect(() => {
+    const fullscreenRoot = document.getElementById('app');
     const viewerEl = document.getElementById('viewer');
-    if (!viewerEl) return;
+    if (!fullscreenRoot || !viewerEl) return;
 
-    return setupFullscreenHandler(viewerEl, controlsRef.current, setIsFullscreen);
+    return setupFullscreenHandler(fullscreenRoot, viewerEl, setIsFullscreen);
   }, [hasMesh]); // Re-run when hasMesh changes (when controls appear/disappear)
-
-  // Ensure fullscreen UI elements are re-parented after orientation changes
-  // Use requestAnimationFrame to wait for React to render the new SidePanel/MobileSheet
-  useEffect(() => {
-    const viewerEl = document.getElementById('viewer');
-    if (!viewerEl) return;
-    if (document.fullscreenElement !== viewerEl) return;
-
-    const frameId = requestAnimationFrame(() => {
-      moveElementsToFullscreen(viewerEl, controlsRef.current);
-    });
-    return () => cancelAnimationFrame(frameId);
-  }, [isMobile, isPortrait, isFullscreen]);
 
   /**
    * Track mesh loading state with stability to prevent flickering.
@@ -163,20 +167,96 @@ function App() {
   });
 
   const handleToggleFullscreen = useCallback(async () => {
-    // Use the viewer element itself for fullscreen so the canvas expands
+    // Use the app root for fullscreen so all UI stays visible
+    const fullscreenRoot = document.getElementById('app');
     const viewerEl = document.getElementById('viewer');
-    if (!viewerEl) return;
+    if (!fullscreenRoot) return;
 
     try {
-      if (document.fullscreenElement === viewerEl) {
+      // Fade out before toggling
+      if (viewerEl) {
+        viewerEl.classList.remove('fs-fade-in');
+        viewerEl.classList.add('fs-fade-out');
+      }
+      
+      // Wait for fade-out to complete
+      await new Promise((r) => setTimeout(r, 150));
+      
+      if (document.fullscreenElement === fullscreenRoot) {
         await document.exitFullscreen();
       } else {
-        await viewerEl.requestFullscreen();
+        await fullscreenRoot.requestFullscreen();
       }
+      
+      // After fullscreen settles, resize then fade in
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          resize();
+          requestRender();
+          if (viewerEl) {
+            viewerEl.classList.remove('fs-fade-out');
+            viewerEl.classList.add('fs-fade-in');
+            // Clean up class after transition
+            setTimeout(() => viewerEl.classList.remove('fs-fade-in'), 250);
+          }
+        });
+      }, 500);
     } catch (err) {
       console.warn('Fullscreen toggle failed:', err);
+      // Ensure we restore visibility on error
+      if (viewerEl) {
+        viewerEl.classList.remove('fs-fade-out');
+        viewerEl.classList.add('fs-fade-in');
+      }
     }
   }, []);
+
+  const handleOverlayFovChange = useCallback((event) => {
+    const newFov = Number(event.target.value);
+    if (!Number.isFinite(newFov) || !camera || !controls) return;
+
+    setFov(newFov);
+
+    if (dollyZoomBaseDistance && dollyZoomBaseFov) {
+      const baseTan = Math.tan(THREE.MathUtils.degToRad(dollyZoomBaseFov / 2));
+      const newTan = Math.tan(THREE.MathUtils.degToRad(newFov / 2));
+      const newDistance = dollyZoomBaseDistance * (baseTan / newTan);
+
+      const direction = new THREE.Vector3()
+        .subVectors(camera.position, controls.target)
+        .normalize();
+      camera.position.copy(controls.target).addScaledVector(direction, newDistance);
+    }
+
+    camera.fov = newFov;
+    camera.updateProjectionMatrix();
+    updateControlSpeedsForFov(newFov);
+    controls.update();
+    if (immersiveMode) {
+      syncImmersiveBaseline();
+    }
+    requestRender();
+  }, [setFov, immersiveMode]);
+
+  const handleImmersiveToggle = useCallback(async () => {
+    if (immersiveMode) {
+      disableImmersiveMode();
+      setImmersiveMode(false);
+      addLog('Immersive mode disabled');
+      return;
+    }
+
+    setTouchPanEnabled(true);
+    setImmersiveSensitivityMultiplier(immersiveSensitivity);
+    const success = await enableImmersiveMode();
+    if (success) {
+      setImmersiveMode(true);
+      addLog('Immersive mode enabled - tilt device to orbit');
+    } else {
+      setImmersiveMode(false);
+      addLog('Could not enable immersive mode');
+    }
+  }, [immersiveMode, setImmersiveMode, addLog, immersiveSensitivity]);
 
   /**
    * Title card actions: file picker
@@ -185,7 +265,6 @@ function App() {
 
   const handlePickFile = useCallback(() => {
     (async () => {
-      setLandingVisible(false);
       await new Promise((r) => setTimeout(r, PANEL_TRANSITION_MS));
       fileInputRef.current?.click();
     })();
@@ -205,16 +284,19 @@ function App() {
   const handleOpenStorage = useCallback(() => {
     (async () => {
       await new Promise((r) => setTimeout(r, PANEL_TRANSITION_MS));
+      setStorageDialogInitialTier(null);
       setStorageDialogOpen(true);
     })();
   }, []);
 
   const handleCloseStorage = useCallback(() => {
     setStorageDialogOpen(false);
+    setStorageDialogInitialTier(null);
   }, []);
 
   const handleSourceConnect = useCallback(async (source) => {
     setStorageDialogOpen(false);
+    setStorageDialogInitialTier(null);
     try {
       await loadFromStorageSource(source);
     } catch (err) {
@@ -232,53 +314,14 @@ function App() {
       await new Promise((r) => setTimeout(r, PANEL_TRANSITION_MS));
       let demo = getSource('demo-public-url');
       if (!demo) {
-        // DEVNOTE: route demo collection to local public/demo_sog assets during development
+        // Demo collection (cloud)
         const cloudUrls = [
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF1672.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF1749.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF1891.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF2158.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF2784.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF2810-Pano.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF3354.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF7664.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/20221007203015_IMG_0329.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/APC_0678.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/IMG_9728.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/PXL_20230822_061301870.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/PXL_20240307_200213904.sog',
+          'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/splat_1/_DSF1672.sog',
+          'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/splat_1/_DSF1891.sog',
+          'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/splat_1/_DSF3354.sog',
         ];
 
-        const localUrls = [
-          '/demo_sog/_DSF1672.sog',
-          '/demo_sog/_DSF1749.sog',
-          '/demo_sog/_DSF1891.sog',
-          '/demo_sog/_DSF2158.sog',
-          '/demo_sog/_DSF2784.sog',
-          '/demo_sog/_DSF2810-Pano.sog',
-          '/demo_sog/_DSF3354.sog',
-          '/demo_sog/_DSF7664.sog',
-          '/demo_sog/20221007203015_IMG_0329.sog',
-          '/demo_sog/APC_0678.sog',
-          '/demo_sog/IMG_9728.sog',
-          '/demo_sog/PXL_20230822_061301870.sog',
-          '/demo_sog/PXL_20240307_200213904.sog',
-        ];
-
-        const checkUrlExists = async (url) => {
-          try {
-            const res = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-            return res.ok;
-          } catch {
-            return false;
-          }
-        };
-
-        const localExists = await Promise.all(localUrls.map(checkUrlExists));
-        const existingLocal = localUrls.filter((_, i) => localExists[i]);
-        const demoUrls = existingLocal.length > 0 ? existingLocal : cloudUrls;
-
-        demo = createPublicUrlSource({ id: 'demo-public-url', name: 'Demo URL collection', assetPaths: demoUrls });
+        demo = createPublicUrlSource({ id: 'demo-public-url', name: 'Demo URL collection', assetPaths: cloudUrls });
         registerSource(demo);
         try { await saveSource(demo.toJSON()); } catch (err) { console.warn('Failed to persist demo source:', err); }
       }
@@ -427,42 +470,69 @@ function App() {
             </button>
           )}
         </div>
-
+{hasMesh && assets.length > 0 && (
+  <>
         {/* Center: Navigation buttons */}
         <div class="bottom-controls-center">
-          <AssetNavigation />
+          <div class="bottom-controls-center-inner">
+            <AssetNavigation />
+            {viewerFovSlider && (
+              <div class="fov-overlay" role="group" aria-label="Viewer FOV">
+                <input
+                  class="fov-overlay-slider"
+                  type="range"
+                  min="20"
+                  max="120"
+                  step="1"
+                  value={fov}
+                  onInput={handleOverlayFovChange}
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right: Fullscreen and reset buttons */}
         <div class="bottom-controls-right">
-          {hasMesh && assets.length > 0 && (
             <>
-              <button
-                class="bottom-page-btn"
-                onClick={handleToggleFullscreen}
-                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              >
-                <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} />
-              </button>
-
+            
               <button 
                 class="bottom-page-btn" 
                 onClick={handleResetView}
                 aria-label="Reset camera view"
                 title="Reset view (R)"
               >
-                <FontAwesomeIcon icon={faRotateRight} />
+                <FocusIcon size={18} />
               </button>
+             
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleFullscreen}
+                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                <FontAwesomeIcon icon={isFullscreen ? faCompressAlt : faExpandAlt} />
+              </button>
+{isMobile && <button
+                class={`bottom-page-btn immersive-toggle ${immersiveMode ? 'is-active' : 'is-inactive'}`}
+                onClick={handleImmersiveToggle}
+                aria-pressed={immersiveMode}
+                aria-label={immersiveMode ? 'Disable immersive mode' : 'Enable immersive mode'}
+                title={immersiveMode ? 'Disable immersive mode' : 'Enable immersive mode'}
+              >
+                <Rotate3DIcon size={18} />
+              </button>}
             </>
-          )}
         </div>
+        </>
+)}
       </div>
 
       <ConnectStorageDialog
         isOpen={storageDialogOpen}
         onClose={handleCloseStorage}
         onConnect={handleSourceConnect}
+        initialTier={storageDialogInitialTier}
       />
     </div>
   );

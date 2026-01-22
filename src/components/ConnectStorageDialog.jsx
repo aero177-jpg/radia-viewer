@@ -34,6 +34,7 @@ import { loadSupabaseSettings, saveSupabaseSettings } from '../storage/supabaseS
 import { listExistingCollections, testBucketConnection } from '../storage/supabaseApi.js';
 import { getAssetList } from '../assetManager.js';
 import { getSupportedExtensions } from '../formats/index.js';
+import CloudGpuForm from './CloudGpuForm.jsx';
 
 const ICONS = {
   folder: faFolder,
@@ -446,7 +447,11 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
   }, [queuedAssets, supportedExtensions]);
   const hasQueueFiles = queueFiles.length > 0;
 
-  const initialSettings = loadSupabaseSettings() || { supabaseUrl: '', anonKey: '', bucket: '' };
+  const initialSettings = useMemo(
+    () => loadSupabaseSettings() || { supabaseUrl: '', anonKey: '', bucket: '' },
+    []
+  );
+  const [savedSettings, setSavedSettings] = useState(initialSettings);
   const [supabaseUrl, setSupabaseUrl] = useState(initialSettings.supabaseUrl);
   const [anonKey, setAnonKey] = useState(initialSettings.anonKey);
   const [bucket, setBucket] = useState(initialSettings.bucket);
@@ -464,7 +469,27 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
   const [showSupabaseConfig, setShowSupabaseConfig] = useState(false);
   const [selectedExisting, setSelectedExisting] = useState(null);
 
-  const supabaseConfigured = Boolean(supabaseUrl && anonKey && bucket);
+  const supabaseConfigured = Boolean(
+    savedSettings.supabaseUrl && savedSettings.anonKey && savedSettings.bucket
+  );
+  const trimmedSettings = useMemo(() => ({
+    supabaseUrl: supabaseUrl.trim(),
+    anonKey: anonKey.trim(),
+    bucket: bucket.trim(),
+  }), [supabaseUrl, anonKey, bucket]);
+  const trimmedSaved = useMemo(() => ({
+    supabaseUrl: savedSettings.supabaseUrl?.trim?.() || '',
+    anonKey: savedSettings.anonKey?.trim?.() || '',
+    bucket: savedSettings.bucket?.trim?.() || '',
+  }), [savedSettings]);
+  const isSettingsReady = Boolean(
+    trimmedSettings.supabaseUrl && trimmedSettings.anonKey && trimmedSettings.bucket
+  );
+  const settingsChanged =
+    trimmedSettings.supabaseUrl !== trimmedSaved.supabaseUrl ||
+    trimmedSettings.anonKey !== trimmedSaved.anonKey ||
+    trimmedSettings.bucket !== trimmedSaved.bucket;
+  const shouldFadeSaveText = !isSettingsReady || (supabaseConfigured && !settingsChanged);
 
   const slugify = useCallback((value) => {
     const slug = value
@@ -506,9 +531,9 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
     setError(null);
 
     const testResult = await testBucketConnection({
-      supabaseUrl: supabaseUrl.trim(),
-      anonKey: anonKey.trim(),
-      bucket: bucket.trim(),
+      supabaseUrl: trimmedSettings.supabaseUrl,
+      anonKey: trimmedSettings.anonKey,
+      bucket: trimmedSettings.bucket,
     });
 
     if (!testResult.success) {
@@ -518,9 +543,14 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
     }
 
     saveSupabaseSettings({
-      supabaseUrl: supabaseUrl.trim(),
-      anonKey: anonKey.trim(),
-      bucket: bucket.trim(),
+      supabaseUrl: trimmedSettings.supabaseUrl,
+      anonKey: trimmedSettings.anonKey,
+      bucket: trimmedSettings.bucket,
+    });
+    setSavedSettings({
+      supabaseUrl: trimmedSettings.supabaseUrl,
+      anonKey: trimmedSettings.anonKey,
+      bucket: trimmedSettings.bucket,
     });
 
     setStatus('idle');
@@ -704,7 +734,7 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
         <button
           class="primary-button"
           onClick={handleSaveSettings}
-          disabled={status === 'testing'}
+          disabled={status === 'testing' || !isSettingsReady}
           style={{ marginTop: '16px' }}
         >
           {status === 'testing' ? (
@@ -799,8 +829,18 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
               />
             </div>
 
-            <button class="secondary-button" onClick={handleSaveSettings}>
-              Save Supabase settings
+            <button
+              class={`secondary-button save-settings-btn ${isSettingsReady ? 'is-ready' : ''}`}
+              onClick={handleSaveSettings}
+              disabled={
+                status === 'testing' ||
+                !isSettingsReady ||
+                (supabaseConfigured && !settingsChanged)
+              }
+            >
+              <span class={`save-settings-text ${shouldFadeSaveText ? 'is-muted' : ''}`}>
+                Save Supabase settings
+              </span>
             </button>
           </div>
         )}
@@ -986,8 +1026,8 @@ function SupabaseForm({ onConnect, onBack, onClose }) {
   );
 }
 
-function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditComplete }) {
-  const [selectedTier, setSelectedTier] = useState(editSource?.type || null);
+function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditComplete, initialTier = null }) {
+  const [selectedTier, setSelectedTier] = useState(editSource?.type || initialTier || null);
   const localSupported = isFileSystemAccessSupported();
 
   useEffect(() => {
@@ -995,6 +1035,12 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
       setSelectedTier(editSource.type);
     }
   }, [editSource]);
+
+  useEffect(() => {
+    if (!editSource && isOpen) {
+      setSelectedTier(initialTier || null);
+    }
+  }, [editSource, initialTier, isOpen]);
 
   const handleConnect = useCallback((source) => {
     onConnect?.(source);
@@ -1047,6 +1093,18 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
                 onSelect={setSelectedTier}
               />
             </div>
+
+            <div class="form-divider" style={{ marginTop: '20px' }}>
+              <span>Add Cloud GPU</span>
+            </div>
+
+            <div class="storage-tiers">
+              <TierCard
+                type="cloud-gpu"
+                selected={false}
+                onSelect={setSelectedTier}
+              />
+            </div>
           </>
         ) : selectedTier === 'local-folder' ? (
           <LocalFolderForm onConnect={handleConnect} onBack={handleBack} />
@@ -1060,6 +1118,8 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
             editMode={isEditMode}
             onSaveEdit={onEditComplete || onConnect}
           />
+        ) : selectedTier === 'cloud-gpu' ? (
+          <CloudGpuForm onBack={handleBack} />
         ) : null}
       </div>
     </div>

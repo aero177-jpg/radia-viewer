@@ -5,21 +5,31 @@
 
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import { useStore } from '../store';
-import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEffectEnabled, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, getFocusDistance, calculateOptimalEyeSeparation } from '../viewer';
+import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, getFocusDistance, calculateOptimalEyeSeparation } from '../viewer';
 import { applyCameraRangeDegrees, restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
 import { currentMesh, raycaster, SplatMesh, scene } from '../viewer';
 import { updateDollyZoomBaselineFromCamera } from '../viewer';
 import { startAnchorTransition } from '../cameraAnimations';
-import { enableImmersiveMode, disableImmersiveMode, recenterInImmersiveMode, isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, setRotationEnabled } from '../immersiveMode';
+import { enableImmersiveMode, disableImmersiveMode, recenterInImmersiveMode, isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, syncImmersiveBaseline } from '../immersiveMode';
 import { saveFocusDistance, clearFocusDistance } from '../fileStorage';
 import { updateFocusDistanceInCache, clearFocusDistanceInCache } from '../splatManager';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
-import { resize, loadSplatFile } from '../fileLoader';
+import { faChevronDown, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import { loadSplatFile } from '../fileLoader';
+import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
+import { savePreviewBlob } from '../fileStorage';
+import {
+  applyCustomModelTransform,
+  captureCustomMetadataPayload,
+  saveCustomMetadataForAsset,
+  applyFullOrbitConstraints,
+  restoreOrbitConstraints,
+} from "../customMetadata.js";
 import { enterVrSession } from '../vrMode';
+
 /** Default orbit range in degrees */
 const DEFAULT_CAMERA_RANGE_DEGREES = 26;
-const MIN_IMMERSIVE_RANGE_DEGREES = 15;
+const MIN_IMMERSIVE_RANGE_DEGREES = 10;
 const MAX_IMMERSIVE_RANGE_DEGREES = 90;
 const IMMERSIVE_RANGE_PER_SENSITIVITY = 18.75; // extra degrees per +1 sensitivity (hits 90° at max sens)
 
@@ -115,6 +125,8 @@ function CameraControls() {
   // Store state and actions
   const fov = useStore((state) => state.fov);
   const setFov = useStore((state) => state.setFov);
+  const viewerFovSlider = useStore((state) => state.viewerFovSlider);
+  const toggleViewerFovSlider = useStore((state) => state.toggleViewerFovSlider);
   const cameraRange = useStore((state) => state.cameraRange);
   const setCameraRange = useStore((state) => state.setCameraRange);
   const addLog = useStore((state) => state.addLog);
@@ -125,15 +137,13 @@ function CameraControls() {
   const setImmersiveMode = useStore((state) => state.setImmersiveMode);
   const immersiveSensitivity = useStore((state) => state.immersiveSensitivity);
   const setImmersiveSensitivity = useStore((state) => state.setImmersiveSensitivity);
-  const touchPanEnabled = useStore((state) => state.touchPanEnabled);
-  const setTouchPanEnabledStore = useStore((state) => state.setTouchPanEnabled);
-  const rotationEnabled = useStore((state) => state.rotationEnabled);
-  const setRotationEnabledStore = useStore((state) => state.setRotationEnabled);
   const currentFileName = useStore((state) => state.fileInfo?.name);
   const assets = useStore((state) => state.assets);
   const currentAssetIndex = useStore((state) => state.currentAssetIndex);
   const hasCustomFocus = useStore((state) => state.hasCustomFocus);
   const setHasCustomFocus = useStore((state) => state.setHasCustomFocus);
+  const setFocusSettingActive = useStore((state) => state.setFocusSettingActive);
+  const updateAssetPreview = useStore((state) => state.updateAssetPreview);
   const stereoEnabled = useStore((state) => state.stereoEnabled);
   const setStereoEnabled = useStore((state) => state.setStereoEnabled);
   const stereoEyeSep = useStore((state) => state.stereoEyeSep);
@@ -143,6 +153,15 @@ function CameraControls() {
   const vrSupported = useStore((state) => state.vrSupported);
   const vrSessionActive = useStore((state) => state.vrSessionActive);
   const hasAssetLoaded = useStore((state) => state.fileInfo?.name && state.fileInfo.name !== '-');
+  const customMetadataControlsVisible = useStore((state) => state.customMetadataControlsVisible);
+  const customMetadataAvailable = useStore((state) => state.customMetadataAvailable);
+  const metadataMissing = useStore((state) => state.metadataMissing);
+  const customModelScale = useStore((state) => state.customModelScale);
+  const setCustomModelScale = useStore((state) => state.setCustomModelScale);
+  const setCustomMetadataAvailable = useStore((state) => state.setCustomMetadataAvailable);
+  const setMetadataMissing = useStore((state) => state.setMetadataMissing);
+  const qualityPreset = useStore((state) => state.qualityPreset);
+  const setQualityPreset = useStore((state) => state.setQualityPreset);
 
   // Ref for camera range slider to avoid DOM queries
   const rangeSliderRef = useRef(null);
@@ -165,6 +184,13 @@ function CameraControls() {
       setFocusMode(FOCUS_MODE.IDLE);
     }
   }, [hasCustomFocus, focusMode]);
+
+  // Keep store flag in sync so outside-click handler can pause
+  useEffect(() => {
+    if (focusMode !== FOCUS_MODE.SETTING) {
+      setFocusSettingActive(false);
+    }
+  }, [focusMode, setFocusSettingActive]);
 
   /**
    * Handles click during focus-setting mode.
@@ -246,10 +272,11 @@ function CameraControls() {
     
     // Transition to "set" state briefly
     setFocusMode(FOCUS_MODE.SET);
+    setFocusSettingActive(false);
     setTimeout(() => {
       setFocusMode(hasCustomFocus ? FOCUS_MODE.CUSTOM : FOCUS_MODE.IDLE);
     }, 1500);
-  }, [addLog, currentFileName, hasCustomFocus, assets, currentAssetIndex, stereoEnabled, setStereoEyeSep]);
+  }, [addLog, currentFileName, hasCustomFocus, assets, currentAssetIndex, stereoEnabled, setStereoEyeSep, setFocusSettingActive]);
 
   /**
    * Activates focus-setting mode.
@@ -261,6 +288,7 @@ function CameraControls() {
       return;
     }
     setFocusMode(FOCUS_MODE.SETTING);
+    setFocusSettingActive(true);
     addLog('Click on the model to set focus depth');
   };
 
@@ -270,9 +298,10 @@ function CameraControls() {
   const handleCancelFocusMode = useCallback(() => {
     if (focusModeRef.current === FOCUS_MODE.SETTING) {
       setFocusMode(hasCustomFocus ? FOCUS_MODE.CUSTOM : FOCUS_MODE.IDLE);
+      setFocusSettingActive(false);
       addLog('Focus mode cancelled');
     }
-  }, [addLog, hasCustomFocus]);
+  }, [addLog, hasCustomFocus, setFocusSettingActive]);
 
   /**
    * Clears custom focus distance override.
@@ -324,9 +353,6 @@ function CameraControls() {
     }
   }, [focusMode, handleFocusClick, handleCancelFocusMode]);
 
-  // Track if we're actively adjusting FOV to pause immersive mode
-  const fovAdjustTimeoutRef = useRef(null);
-
   /**
    * Handles FOV slider changes with dolly-zoom compensation.
    * Maintains the apparent size of objects at the focus point by
@@ -335,19 +361,6 @@ function CameraControls() {
   const handleFovChange = (e) => {
     const newFov = Number(e.target.value);
     if (!Number.isFinite(newFov) || !camera || !controls) return;
-
-    // Pause immersive mode during adjustment to prevent judder
-    if (isImmersiveModeActive()) {
-      pauseImmersiveMode();
-      // Clear existing timeout and set a new one
-      if (fovAdjustTimeoutRef.current) {
-        clearTimeout(fovAdjustTimeoutRef.current);
-      }
-      fovAdjustTimeoutRef.current = setTimeout(() => {
-        resumeImmersiveMode();
-        fovAdjustTimeoutRef.current = null;
-      }, 300);
-    }
 
     setFov(newFov);
 
@@ -367,6 +380,9 @@ function CameraControls() {
     camera.updateProjectionMatrix();
     updateControlSpeedsForFov(newFov);
     controls.update();
+    if (isImmersiveModeActive()) {
+      syncImmersiveBaseline();
+    }
     requestRender();
   };
 
@@ -484,6 +500,17 @@ function CameraControls() {
     };
   }, [isMobile]);
 
+  const orbitLimitsDisabled = customMetadataAvailable || metadataMissing;
+
+  // Enable full orbit while custom metadata controls are shown
+  useEffect(() => {
+    if (customMetadataControlsVisible) {
+      applyFullOrbitConstraints();
+    } else {
+      restoreOrbitConstraints(cameraRange);
+    }
+  }, [customMetadataControlsVisible, cameraRange]);
+
   /**
    * Handles toggling immersive mode.
    * Enables device orientation camera control.
@@ -491,8 +518,10 @@ function CameraControls() {
   const handleImmersiveToggle = useCallback(async (e) => {
     const enabled = e.target.checked;
     if (enabled) {
-      // Set touch pan state before enabling (so it's used during enable)
-      setTouchPanEnabled(touchPanEnabled);
+      // Touch pan is always on now
+      setTouchPanEnabled(true);
+      // Sync touch pan scaling with current sensitivity
+      setImmersiveSensitivityMultiplier(immersiveSensitivity);
       
       const success = await enableImmersiveMode();
       if (success) {
@@ -513,7 +542,7 @@ function CameraControls() {
       setImmersiveMode(false);
       addLog('Immersive mode disabled');
     }
-  }, [setImmersiveMode, addLog, cameraRange, immersiveSensitivity, setCameraRange, touchPanEnabled]);
+  }, [setImmersiveMode, addLog, cameraRange, immersiveSensitivity, setCameraRange]);
 
   /**
    * Handles immersive sensitivity slider changes.
@@ -540,25 +569,52 @@ function CameraControls() {
     }
   }, [setImmersiveSensitivity, cameraRange, setCameraRange]);
 
-  /**
-   * Handles touch panning toggle.
-   */
-  const handleTouchPanToggle = useCallback((e) => {
-    const enabled = e.target.checked;
-    setTouchPanEnabledStore(enabled);
-    setTouchPanEnabled(enabled);
-    addLog(`Touch pan ${enabled ? 'enabled' : 'disabled'}`);
-  }, [setTouchPanEnabledStore, addLog]);
+  const handleCustomModelScaleChange = useCallback((e) => {
+    const value = Number.parseFloat(e.target.value);
+    if (!Number.isFinite(value)) return;
+    setCustomModelScale(value);
+    // Apply scale with CV→GL flip always enabled for non-ML Sharp splats
+    applyCustomModelTransform(currentMesh, {
+      applyCoordinateFlip: true,
+      modelScale: value,
+    });
+  }, [setCustomModelScale]);
 
-  /**
-   * Handles rotation (tilt orbit) toggle.
-   */
-  const handleRotationToggle = useCallback((e) => {
-    const enabled = e.target.checked;
-    setRotationEnabledStore(enabled);
-    setRotationEnabled(enabled);
-    addLog(`Tilt rotation ${enabled ? 'enabled' : 'disabled'}`);
-  }, [setRotationEnabledStore, addLog]);
+  const handleSaveCustomMetadata = useCallback(async () => {
+    if (!currentFileName || currentFileName === '-') {
+      addLog('No active file to save metadata');
+      return;
+    }
+
+    const payload = captureCustomMetadataPayload({
+      modelScale: customModelScale,
+    });
+
+    const saved = await saveCustomMetadataForAsset(currentFileName, payload);
+    if (!saved) {
+      addLog('Failed to save custom metadata');
+      return;
+    }
+
+    const previewResult = await captureCurrentAssetPreview();
+    if (previewResult?.blob) {
+      const asset = assets[currentAssetIndex];
+      if (asset?.name) {
+        await savePreviewBlob(asset.name, previewResult.blob, {
+          width: previewResult.width,
+          height: previewResult.height,
+          format: previewResult.format,
+        });
+      }
+      if (currentAssetIndex >= 0) {
+        updateAssetPreview(currentAssetIndex, previewResult.dataUrl);
+      }
+    }
+
+    setCustomMetadataAvailable(true);
+    setMetadataMissing(false);
+    addLog('Custom metadata saved');
+  }, [currentFileName, customModelScale, addLog, assets, currentAssetIndex, updateAssetPreview, setCustomMetadataAvailable, setMetadataMissing]);
 
   /**
    * Resets view with immersive mode support.
@@ -567,71 +623,6 @@ function CameraControls() {
   const handleRecenterWithImmersive = useCallback(() => {
     resetViewWithImmersive();
   }, []);
-
-  /** Toggle side-by-side stereo effect; enter fullscreen when enabling */
-  const handleStereoToggle = useCallback(async (e) => {
-    const enabled = e.target.checked;
-    const viewerEl = document.getElementById('viewer');
-    if (!viewerEl) return;
-
-    try {
-      if (enabled) {
-        // Hide background images when entering stereo mode
-        const bgContainers = document.querySelectorAll('.bg-image-container');
-        bgContainers.forEach(el => el.classList.add('stereo-hidden'));
-        
-        if (document.fullscreenElement !== viewerEl) {
-          await viewerEl.requestFullscreen();
-        }
-        setStereoEffectEnabled(true);
-        setStereoEnabled(true);
-        resize();
-        addLog('Side-by-side stereo enabled');
-      } else {
-        // Restore background images when exiting stereo mode
-        const bgContainers = document.querySelectorAll('.bg-image-container');
-        bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
-        
-        setStereoEffectEnabled(false);
-        setStereoEnabled(false);
-        requestRender();
-        if (document.fullscreenElement === viewerEl) {
-          await document.exitFullscreen();
-        }
-        resize();
-        addLog('Stereo mode disabled');
-      }
-    } catch (err) {
-      // Restore background images on error
-      const bgContainers = document.querySelectorAll('.bg-image-container');
-      bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
-      
-      setStereoEffectEnabled(false);
-      setStereoEnabled(false);
-      e.target.checked = false;
-      addLog('Stereo toggle failed');
-      console.warn('Stereo toggle failed:', err);
-    }
-  }, [setStereoEnabled, addLog]);
-
-  // If fullscreen is exited while stereo is on, disable stereo to avoid misalignment
-  useEffect(() => {
-    const handleFsChange = () => {
-      const viewerEl = document.getElementById('viewer');
-      const inFullscreen = document.fullscreenElement === viewerEl;
-      if (stereoEnabled && !inFullscreen) {
-          // Restore background images on error
-      const bgContainers = document.querySelectorAll('.bg-image-container');
-      bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
-        setStereoEffectEnabled(false);
-        setStereoEnabled(false);
-        requestRender();
-        resize();
-      }
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, [stereoEnabled, setStereoEnabled]);
 
   return (
     <div class="settings-group">
@@ -653,18 +644,6 @@ function CameraControls() {
         {/* Immersive mode toggle - mobile only */}
         {isMobile && (
           <>
-            <div class="control-row animate-toggle-row">
-              <span class="control-label">Immersive mode</span>
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  checked={immersiveMode}
-                  onChange={handleImmersiveToggle}
-                />
-                <span class="switch-track" aria-hidden="true" />
-              </label>
-            </div>
-            
             {/* Immersive sensitivity slider - shown when immersive mode is active */}
             {immersiveMode && (
               <>
@@ -684,49 +663,10 @@ function CameraControls() {
                     </span>
                   </div>
                 </div>
-                
-                {/* Tilt rotation toggle - shown when immersive mode is active */}
-                <div class="control-row">
-                  <span class="control-label">Tilt rotation</span>
-                  <label class="switch">
-                    <input
-                      type="checkbox"
-                      checked={rotationEnabled}
-                      onChange={handleRotationToggle}
-                    />
-                    <span class="switch-track" aria-hidden="true" />
-                  </label>
-                </div>
-                
-                {/* Touch panning toggle - shown when immersive mode is active */}
-                <div class="control-row">
-                  <span class="control-label">Touch pan</span>
-                  <label class="switch">
-                    <input
-                      type="checkbox"
-                      checked={touchPanEnabled}
-                      onChange={handleTouchPanToggle}
-                    />
-                    <span class="switch-track" aria-hidden="true" />
-                  </label>
-                </div>
               </>
             )}
           </>
         )}
-
-        {/* Orbit range control */}
-        <div class="control-row">
-          <span class="control-label">Side-by-side stereo</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={stereoEnabled}
-              onChange={handleStereoToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
 
         {/* VR button - shown when VR is supported and an asset is loaded */}
         {vrSupported && hasAssetLoaded && (
@@ -741,6 +681,26 @@ function CameraControls() {
             </button>
           </div>
         )}
+
+        {/* Quality preset */}
+        <div class="control-row">
+          <span class="control-label">Quality</span>
+          <div class="control-track">
+            <select
+              class="quality-select"
+              value={qualityPreset}
+              onChange={(e) => setQualityPreset(e.target.value)}
+            >
+              <option value="high">High</option>
+              <option value="default">Default</option>
+              <option value="performance">Performance</option>
+              <option value="experimental">Experimental</option>
+              {qualityPreset === 'debug-custom' && (
+                <option value="debug-custom">Debug custom</option>
+              )}
+            </select>
+          </div>
+        </div>
 
         {/* Eye separation slider - shown when stereo is enabled */}
         {stereoEnabled && (
@@ -804,7 +764,8 @@ function CameraControls() {
           </>
         )}
 
-        <div class="control-row camera-range-controls">
+        {/* Orbit range control */}
+        <div class={`control-row camera-range-controls ${orbitLimitsDisabled ? 'is-disabled' : ''}`}>
           <span class="control-label">Orbit range</span>
           <div class="control-track">
             <input
@@ -815,6 +776,7 @@ function CameraControls() {
               step="0.1"
               value={degreesToSliderValue(cameraRange)}
               onInput={handleCameraRangeChange}
+              disabled={orbitLimitsDisabled}
             />
             <span class="control-value">
               {formatDegrees(cameraRange)}°
@@ -824,7 +786,19 @@ function CameraControls() {
 
         {/* FOV control */}
         <div class="control-row">
-          <span class="control-label">FOV</span>
+          <span class="control-label fov-label">
+            FOV
+            <button
+              type="button"
+              class={`fov-toggle-btn ${viewerFovSlider ? 'is-on' : 'is-off'}`}
+              onClick={toggleViewerFovSlider}
+              title={viewerFovSlider ? 'Hide viewer FOV slider' : 'Show viewer FOV slider'}
+              aria-pressed={viewerFovSlider}
+              aria-label={viewerFovSlider ? 'Hide viewer FOV slider' : 'Show viewer FOV slider'}
+            >
+              <FontAwesomeIcon icon={viewerFovSlider ? faEye : faEyeSlash} />
+            </button>
+          </span>
           <div class="control-track">
             <input
               type="range"
@@ -839,6 +813,40 @@ function CameraControls() {
             </span>
           </div>
         </div>
+
+        {/* Custom metadata controls - shown when metadata is missing */}
+        {customMetadataControlsVisible && (
+          <div class="custom-metadata-section">
+            <div class="section-header">
+              <span class="section-title">Custom View Settings</span>
+              <span class="section-hint">Position camera, then save</span>
+            </div>
+            
+            <div class="control-row">
+              <span class="control-label">Model scale</span>
+              <div class="control-track">
+                <input
+                  type="range"
+                  min="0.1"
+                  max="10"
+                  step="0.1"
+                  value={customModelScale}
+                  onInput={handleCustomModelScaleChange}
+                />
+                <span class="control-value">
+                  {customModelScale.toFixed(1)}×
+                </span>
+              </div>
+            </div>
+
+            <button 
+              class="save-view-button"
+              onClick={handleSaveCustomMetadata}
+            >
+              Save View
+            </button>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div class="settings-footer">

@@ -50,6 +50,7 @@ const formatPoint = (point) =>
 function Viewer({ viewerReady }) {
   // Store state
   const debugLoadingMode = useStore((state) => state.debugLoadingMode);
+  const metadataMissing = useStore((state) => state.metadataMissing);
   
   // Store actions
   const addLog = useStore((state) => state.addLog);
@@ -60,6 +61,8 @@ function Viewer({ viewerReady }) {
 
   const [hasMesh, setHasMesh] = useState(false);
   const hasMeshRef = useRef(false);
+
+  const { hasOriginalMetadata, customMetadataMode } = useStore();
 
   /**
    * Track mesh loading state - only update state when value changes
@@ -81,51 +84,6 @@ function Viewer({ viewerReady }) {
     return () => clearInterval(interval);
   }, []);
 
-
-  /**
-   * Load demo public URL collection (create it if missing) and open it
-   */
-  const handleLoadDemo = useCallback(async () => {
-    console.log('Loading demo URL collection...');
-    try {
-      let demo = getSource('demo-public-url');
-      if (!demo) {
-        // Fallback: create the demo source if it wasn't registered yet
-        const demoUrls = [
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF1672.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF1749.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF1891.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF2158.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF2784.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF2810-Pano.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF3354.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/_DSF7664.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/20221007203015_IMG_0329.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/APC_0678.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/IMG_9728.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/PXL_20230822_061301870.sog',
-          'https://xifbwkfsvurtuugvseqi.supabase.co/storage/v1/object/public/testbucket/sog_folder/PXL_20240307_200213904.sog',
-        ];
-        demo = createPublicUrlSource({ id: 'demo-public-url', name: 'Demo URL collection', assetPaths: demoUrls });
-        registerSource(demo);
-        try { await saveSource(demo.toJSON()); } catch (err) { console.warn('Failed to persist demo source:', err); }
-      }
-
-      // Ensure source is connected before loading
-      try {
-        await demo.connect?.();
-      } catch (err) {
-        console.warn('Demo connect failed (continuing):', err);
-      }
-
-      // Load the demo collection
-      await loadFromStorageSource(demo);
-
-    } catch (err) {
-      addLog('Failed to load demo: ' + (err?.message || err));
-      console.warn('Failed to load demo:', err);
-    }
-  }, [addLog]);
 
   /**
    * Handles reset view - uses shared function that handles immersive mode.
@@ -256,6 +214,24 @@ function Viewer({ viewerReady }) {
 
   return (
     <div id="viewer" class={`viewer ${debugLoadingMode ? 'loading' : ''}`} ref={viewerRef}>
+      {metadataMissing && (
+        <div class="metadata-warning">
+          No metadata. Adjust camera settings to save a new view.
+        </div>
+      )}
+      {!hasOriginalMetadata && customMetadataMode && (
+        <div className="metadata-missing-overlay">
+          <div className="metadata-missing-badge">
+            <span className="metadata-missing-icon">⚠️</span>
+            <span className="metadata-missing-text">
+              No metadata detected
+            </span>
+          </div>
+          <div className="metadata-missing-hint">
+            Use Camera Settings to adjust view, then save
+          </div>
+        </div>
+      )}
       <div class="loading-overlay">
         <div class="loading-spinner"></div>
       </div>

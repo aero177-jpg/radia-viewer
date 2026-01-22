@@ -3,7 +3,7 @@
  * Hosts FPS overlay toggle, mobile devtools toggle, and a DB wipe action.
  */
 
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
@@ -11,7 +11,9 @@ import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '
 import { savePreviewBlob } from '../fileStorage';
 import { clearSupabaseManifestCache } from '../storage/supabaseSettings.js';
 import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
-import { setDebugForceZoomOut } from '../fileLoader';
+import { setDebugForceZoomOut, reloadCurrentAsset, resize } from '../fileLoader';
+import { clearCustomMetadataForAsset } from '../customMetadata.js';
+import { requestRender, setStereoEffectEnabled } from '../viewer';
 
 let erudaInitPromise = null;
 
@@ -46,8 +48,17 @@ const enableMobileDevtools = async () => {
 /** Tear down Eruda devtools if present */
 const disableMobileDevtools = () => {
   const instance = typeof window !== 'undefined' ? window.eruda : null;
-  if (instance?.destroy) {
-    instance.destroy();
+  if (instance?.hide) instance.hide();
+  if (instance?.destroy) instance.destroy();
+  if (typeof window !== 'undefined') {
+    // Ensure any leftover DOM is removed
+    const erudaRoot = document.getElementById('eruda');
+    if (erudaRoot?.parentNode) {
+      erudaRoot.parentNode.removeChild(erudaRoot);
+    }
+    if (window.eruda) {
+      delete window.eruda;
+    }
   }
 };
 
@@ -64,6 +75,26 @@ function DebugSettings() {
   const addLog = useStore((state) => state.addLog);
   const bgBlur = useStore((state) => state.bgBlur);
   const setBgBlur = useStore((state) => state.setBgBlur);
+  const debugStochasticRendering = useStore((state) => state.debugStochasticRendering);
+  const setDebugStochasticRendering = useStore((state) => state.setDebugStochasticRendering);
+  const debugFpsLimitEnabled = useStore((state) => state.debugFpsLimitEnabled);
+  const setDebugFpsLimitEnabled = useStore((state) => state.setDebugFpsLimitEnabled);
+  const debugSparkMaxStdDev = useStore((state) => state.debugSparkMaxStdDev);
+  const setDebugSparkMaxStdDev = useStore((state) => state.setDebugSparkMaxStdDev);
+  const setQualityPreset = useStore((state) => state.setQualityPreset);
+  const customMetadataAvailable = useStore((state) => state.customMetadataAvailable);
+  const setCustomMetadataAvailable = useStore((state) => state.setCustomMetadataAvailable);
+  const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
+  const stereoEnabled = useStore((state) => state.stereoEnabled);
+  const setStereoEnabled = useStore((state) => state.setStereoEnabled);
+  const devtoolsUserApprovedRef = useRef(false);
+
+  const {
+    currentAssetName,
+    currentAssetHasCustomMetadata,
+    setCurrentAssetHasCustomMetadata,
+    resetCustomMetadataState,
+  } = useStore();
 
   const [wipingDb, setWipingDb] = useState(false);
   const [clearingSupabaseCache, setClearingSupabaseCache] = useState(false);
@@ -71,6 +102,7 @@ function DebugSettings() {
   const [batchProgress, setBatchProgress] = useState(null); // { current, total, name }
   const [generatingBatch, setGeneratingBatch] = useState(false);
   const [debugZoomOut, setDebugZoomOut] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const refreshAssets = useCallback(() => {
     const assets = getAssetList();
@@ -90,23 +122,118 @@ function DebugSettings() {
   /** Enable/disable mobile devtools (Eruda) */
   const handleDevtoolsToggle = useCallback((e) => {
     const enabled = Boolean(e.target.checked);
+    // mark that the user explicitly approved initialization for this session
+    devtoolsUserApprovedRef.current = true;
     setMobileDevtoolsEnabled(enabled);
+    if (!enabled) {
+      // immediate teardown so the UI responds without waiting on effects
+      disableMobileDevtools();
+    }
   }, [setMobileDevtoolsEnabled]);
+
+  /** Toggle stochastic rendering */
+  const handleStochasticToggle = useCallback((e) => {
+    const enabled = Boolean(e.target.checked);
+    setQualityPreset('debug-custom');
+    setDebugStochasticRendering(enabled);
+  }, [setDebugStochasticRendering, setQualityPreset]);
+
+  /** Toggle FPS limiting */
+  const handleFpsLimitToggle = useCallback((e) => {
+    const enabled = Boolean(e.target.checked);
+    setQualityPreset('debug-custom');
+    setDebugFpsLimitEnabled(enabled);
+  }, [setDebugFpsLimitEnabled, setQualityPreset]);
+
+  /** Force viewer refresh for fullscreen resize debugging */
+  const handleForceViewerRefresh = useCallback(async () => {
+    resize();
+    requestRender();
+    addLog('Forced viewer refresh (resize + render)');
+  }, [addLog]);
+
+  /** Toggle side-by-side stereo effect; enter fullscreen when enabling */
+  const handleStereoToggle = useCallback(async (e) => {
+    const enabled = e.target.checked;
+    const fullscreenRoot = document.getElementById('app');
+    if (!fullscreenRoot) return;
+
+    try {
+      if (enabled) {
+        // Hide background images when entering stereo mode
+        const bgContainers = document.querySelectorAll('.bg-image-container');
+        bgContainers.forEach(el => el.classList.add('stereo-hidden'));
+
+        if (document.fullscreenElement !== fullscreenRoot) {
+          await fullscreenRoot.requestFullscreen();
+        }
+        setStereoEffectEnabled(true);
+        setStereoEnabled(true);
+        resize();
+        addLog('Side-by-side stereo enabled');
+      } else {
+        // Restore background images when exiting stereo mode
+        const bgContainers = document.querySelectorAll('.bg-image-container');
+        bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
+
+        setStereoEffectEnabled(false);
+        setStereoEnabled(false);
+        requestRender();
+        if (document.fullscreenElement === fullscreenRoot) {
+          await document.exitFullscreen();
+        }
+        resize();
+        addLog('Stereo mode disabled');
+      }
+    } catch (err) {
+      // Restore background images on error
+      const bgContainers = document.querySelectorAll('.bg-image-container');
+      bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
+
+      setStereoEffectEnabled(false);
+      setStereoEnabled(false);
+      e.target.checked = false;
+      addLog('Stereo toggle failed');
+      console.warn('Stereo toggle failed:', err);
+    }
+  }, [setStereoEnabled, addLog]);
+
+  const handleSparkStdDevChange = useCallback((e) => {
+    const value = Number(e.target.value);
+    setQualityPreset('debug-custom');
+    setDebugSparkMaxStdDev(Number.isFinite(value) ? value : Math.sqrt(5));
+  }, [setDebugSparkMaxStdDev, setQualityPreset]);
+
+  const handleClearCustomMetadata = useCallback(async () => {
+    if (!currentAssetName || isClearing) return;
+    
+    setIsClearing(true);
+    try {
+      await clearCustomMetadataForAsset(currentAssetName);
+      setCurrentAssetHasCustomMetadata(false);
+      resetCustomMetadataState();
+      console.log(`Cleared custom metadata for ${currentAssetName}`);
+    } catch (err) {
+      console.error("Failed to clear custom metadata:", err);
+    } finally {
+      setIsClearing(false);
+    }
+  }, [currentAssetName, isClearing, setCurrentAssetHasCustomMetadata, resetCustomMetadataState]);
 
   /** Wipes IndexedDB image store and reloads */
   const handleWipeDb = useCallback(async () => {
-    const confirmed = window.confirm('Wipe IndexedDB "sharp-viewer-storage"? This cannot be undone.');
+    const confirmed = window.confirm('Wipe IndexedDB "radia-viewer-storage"? This cannot be undone.');
     if (!confirmed) return;
 
     setWipingDb(true);
     try {
       await new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('sharp-viewer-storage');
+        const request = indexedDB.deleteDatabase('radia-viewer-storage');
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error || new Error('Failed to delete database'));
         request.onblocked = () => console.warn('Delete blocked: close other tabs or reopen the app.');
       });
-      alert('IndexedDB sharp-viewer-storage wiped. Reloading...');
+      alert('IndexedDB radia-viewer-storage wiped. Reloading...');
       window.location.reload();
     } catch (err) {
       console.error('DB wipe failed:', err);
@@ -235,9 +362,15 @@ function DebugSettings() {
     addLog('[BatchPreview] Abort requested');
   }, [addLog]);
 
-  // React to devtools preference changes
+  // React to devtools preference changes — require explicit user approval to initialize
   useEffect(() => {
     if (mobileDevtoolsEnabled) {
+      if (!devtoolsUserApprovedRef.current) {
+        // persisted preference exists but user has not re-approved in this session;
+        // do not auto-initialize Eruda to avoid surprises.
+        console.info('[Devtools] Initialization deferred: user approval required (toggle to initialize).');
+        return;
+      }
       enableMobileDevtools().catch((err) => {
         console.warn('[Devtools] Failed to enable:', err);
         setMobileDevtoolsEnabled(false);
@@ -246,6 +379,25 @@ function DebugSettings() {
       disableMobileDevtools();
     }
   }, [mobileDevtoolsEnabled, setMobileDevtoolsEnabled]);
+
+  // If fullscreen is exited while stereo is on, disable stereo to avoid misalignment
+  useEffect(() => {
+    const handleFsChange = () => {
+      const fullscreenRoot = document.getElementById('app');
+      const inFullscreen = document.fullscreenElement === fullscreenRoot;
+      if (stereoEnabled && !inFullscreen) {
+        // Restore background images on exit
+        const bgContainers = document.querySelectorAll('.bg-image-container');
+        bgContainers.forEach(el => el.classList.remove('stereo-hidden'));
+        setStereoEffectEnabled(false);
+        setStereoEnabled(false);
+        requestRender();
+        resize();
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, [stereoEnabled, setStereoEnabled]);
 
   return (
     <div class="settings-group">
@@ -287,6 +439,65 @@ function DebugSettings() {
         </div>
 
         <div class="control-row">
+          <span class="control-label">Stochastic rendering</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugStochasticRendering}
+              onChange={handleStochasticToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <button
+          class="secondary"
+          type="button"
+          onClick={handleForceViewerRefresh}
+        >
+          Force viewer refresh
+        </button>
+
+        <div class="control-row">
+          <span class="control-label">Limit FPS (60)</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugFpsLimitEnabled}
+              onChange={handleFpsLimitToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Side-by-side stereo</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={stereoEnabled}
+              onChange={handleStereoToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Splat width</span>
+          <div class="control-track">
+            <input
+              type="range"
+              min="0.5"
+              max="8"
+              step="0.1"
+              value={debugSparkMaxStdDev}
+              onInput={handleSparkStdDevChange}
+            />
+            <span class="control-value">{debugSparkMaxStdDev.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="control-row">
           <span class="control-label">Delete image store</span>
           <button
             type="button"
@@ -322,6 +533,20 @@ function DebugSettings() {
           </button>
         </div>
 
+        {currentAssetHasCustomMetadata && (
+          <div class="control-row">
+            <span class="control-label">Clear custom metadata</span>
+            <button
+              type="button"
+              class="secondary danger"
+              onClick={handleClearCustomMetadata}
+              disabled={isClearing}
+            >
+              {isClearing ? 'Clearing...' : '🗑️ Clear Custom Metadata'}
+            </button>
+          </div>
+        )}
+
         <div class="control-row">
           <span class="control-label">Debug zoom-out</span>
           <label class="switch">
@@ -339,8 +564,8 @@ function DebugSettings() {
         </div>
 
         <div class="control-row">
-          <span class="control-label">BG blur</span>
-          <div class="slider-row">
+          <span class="control-label">Image glow</span>
+          <div class="control-track">
             <input
               type="range"
               min="0"
@@ -349,7 +574,7 @@ function DebugSettings() {
               value={bgBlur}
               onInput={(e) => setBgBlur(Number(e.target.value) || 0)}
             />
-            <span class="slider-value">{bgBlur}px</span>
+            <span class="control-value">{bgBlur}px</span>
           </div>
         </div>
 

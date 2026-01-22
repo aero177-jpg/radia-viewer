@@ -9,6 +9,10 @@ html,
     radial-gradient(circle at 80% 10%, rgba(0, 200, 160, 0.18), transparent 28%),
     #0b0d12;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --faded-blue: rgb(92, 133, 161);
+    -webkit-tap-highlight-color: transparent;
+
 }
 
 body {
@@ -85,10 +89,52 @@ button, a, input, .sidebar-btn, .panel-toggle {
   transition: width 220ms ease, height 220ms ease;
 }
 
-/* When viewer is fullscreen, ensure proper stacking */
-#viewer:fullscreen,
-#viewer:-webkit-full-screen {
+/* When app is fullscreen, ensure proper stacking and layout */
+#app:fullscreen #viewer,
+#app:-webkit-full-screen #viewer {
   z-index: 0;
+}
+
+#app:fullscreen .page,
+#app:-webkit-full-screen .page {
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+#app:fullscreen .viewer,
+#app:-webkit-full-screen .viewer {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+#app:fullscreen .viewer canvas,
+#app:-webkit-full-screen .viewer canvas {
+  border-radius: 0;
+}
+
+#app:fullscreen.fullscreen-ui-hidden .asset-sidebar,
+#app:fullscreen.fullscreen-ui-hidden .bottom-controls,
+#app:fullscreen.fullscreen-ui-hidden .side,
+#app:fullscreen.fullscreen-ui-hidden .panel-toggle,
+#app:fullscreen.fullscreen-ui-hidden .mobile-sheet,
+#app:fullscreen.fullscreen-ui-hidden .sidebar-hover-target,
+#app:fullscreen.fullscreen-ui-hidden .sidepanel-hover-target,
+#app:fullscreen.fullscreen-ui-hidden .bottom-swipe-target,
+#app:-webkit-full-screen.fullscreen-ui-hidden .asset-sidebar,
+#app:-webkit-full-screen.fullscreen-ui-hidden .bottom-controls,
+#app:-webkit-full-screen.fullscreen-ui-hidden .side,
+#app:-webkit-full-screen.fullscreen-ui-hidden .panel-toggle,
+#app:-webkit-full-screen.fullscreen-ui-hidden .mobile-sheet,
+#app:-webkit-full-screen.fullscreen-ui-hidden .sidebar-hover-target,
+#app:-webkit-full-screen.fullscreen-ui-hidden .sidepanel-hover-target,
+#app:-webkit-full-screen.fullscreen-ui-hidden .bottom-swipe-target {
+  opacity: 0;
+  pointer-events: none;
 }
 
 
@@ -128,7 +174,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 }
 
 .viewer.dragging {
-  border-color: #57b8cb;
+  border-color: var(--faded-blue);
   box-shadow: 0 0 0 2px rgba(110, 231, 255, 0.3);
 }
 
@@ -138,6 +184,24 @@ button, a, input, .sidebar-btn, .panel-toggle {
   display: block;
   object-fit: contain;
   transition: filter 0.8s ease, opacity 0.8s ease;
+}
+
+.metadata-warning {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 12;
+  padding: 8px 10px;
+  background: rgba(12, 16, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 
 /* Slide transition blur and fade classes */
@@ -182,6 +246,19 @@ button, a, input, .sidebar-btn, .panel-toggle {
   opacity: 0;
 }
 
+/* Fullscreen toggle fade transition */
+.viewer.fs-fade-out canvas,
+.viewer.fs-fade-out .bg-image-container {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.viewer.fs-fade-in canvas,
+.viewer.fs-fade-in .bg-image-container {
+  opacity: 1;
+  transition: opacity 200ms ease-in;
+}
+
 /* .viewer.loading canvas {
   filter: blur(5px);
   opacity: 0.1;
@@ -224,7 +301,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
   width: 40px;
   height: 40px;
   border: 3px solid rgba(110, 231, 255, 0.2);
-  border-top-color: #57b8cb;
+  border-top-color: var(--faded-blue);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -563,7 +640,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 .primary {
   appearance: none;
   border: none;
-  background: linear-gradient(120deg, #57b8cb, #7c3aed);
+  background: linear-gradient(120deg, #5896b5, #265268);
   color: #0b0d12;
   padding: 10px 16px;
   border-radius: 10px;
@@ -623,6 +700,44 @@ button, a, input, .sidebar-btn, .panel-toggle {
   color: rgba(230, 236, 248, 0.7);
 }
 
+.fov-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fov-toggle-btn {
+  font-size: .8em;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(230, 236, 248, 0.7);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.fov-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.fov-toggle-btn.is-off {
+  opacity: 0.55;
+}
+
+.fov-toggle-btn.is-on {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: rgba(255, 255, 255, 0.95);
+  opacity: 1;
+}
+
 .control-track {
   display: flex;
   align-items: center;
@@ -638,14 +753,29 @@ button, a, input, .sidebar-btn, .panel-toggle {
   cursor: pointer;
 }
 
+.camera-range-controls.is-disabled .control-label,
+.camera-range-controls.is-disabled .control-value {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.camera-range-controls.is-disabled .control-track input[type="range"] {
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .control-track input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: linear-gradient(120deg, #57b8cb, #7c3aed);
+  background: linear-gradient(120deg, #5896b5, #265268);
   cursor: pointer;
   transition: transform 0.15s ease;
+}
+
+.camera-range-controls.is-disabled .control-track input[type="range"]::-webkit-slider-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
 }
 
 .control-track input[type="range"]::-webkit-slider-thumb:hover {
@@ -660,10 +790,15 @@ button, a, input, .sidebar-btn, .panel-toggle {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: linear-gradient(120deg, #57b8cb, #7c3aed);
+  background: linear-gradient(120deg, #5896b5, #265268);
   border: none;
   cursor: pointer;
   transition: transform 0.15s ease;
+}
+
+.camera-range-controls.is-disabled .control-track input[type="range"]::-moz-range-thumb {
+  background: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
 }
 
 .control-track input[type="range"]::-moz-range-thumb:hover {
@@ -718,7 +853,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 }
 
 .select-row select:focus-visible {
-  outline: 2px solid #57b8cb;
+  outline: 2px solid var(--faded-blue);
   outline-offset: 2px;
 }
 
@@ -760,7 +895,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 }
 
 .direction-button:focus-visible {
-  outline: 2px solid #57b8cb;
+  outline: 2px solid var(--faded-blue);
   outline-offset: 2px;
 }
 
@@ -801,7 +936,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 }
 
 .switch input:checked + .switch-track {
-  background: linear-gradient(120deg, #57b8cb, #7c3aed);
+  background: rgb(61, 98, 112);
 }
 
 .switch input:checked + .switch-track::after {
@@ -810,7 +945,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 
 /* Immersive mode active indicator */
 .control-row.immersive-active .control-label {
-  color: #57b8cb;
+  color: var(--faded-blue);
 }
 
 .control-value {
@@ -1048,56 +1183,56 @@ button, a, input, .sidebar-btn, .panel-toggle {
 
 
 /* In fullscreen, enhance the glow effect with more blur and scale */
-#viewer:fullscreen .bg-image-container,
-#viewer:-webkit-full-screen .bg-image-container {
+#app:fullscreen .bg-image-container,
+#app:-webkit-full-screen .bg-image-container {
   background-size: auto 100%;
   transform: scaleX(130%);
   filter: blur(40px)!important;
 }
 
 /* Fullscreen: UI elements moved inside viewer need explicit positioning and z-index */
-#viewer:fullscreen .panel-toggle,
-#viewer:-webkit-full-screen .panel-toggle {
+#app:fullscreen .panel-toggle,
+#app:-webkit-full-screen .panel-toggle {
   position: fixed;
   z-index: 100;
 }
 
-#viewer:fullscreen .side,
-#viewer:-webkit-full-screen .side {
+#app:fullscreen .side,
+#app:-webkit-full-screen .side {
   position: fixed;
   z-index: 98;
 }
 
-#viewer:fullscreen .asset-sidebar,
-#viewer:-webkit-full-screen .asset-sidebar {
+#app:fullscreen .asset-sidebar,
+#app:-webkit-full-screen .asset-sidebar {
   position: fixed;
   z-index: 95;
 }
 
-#viewer:fullscreen .sidebar-hover-target,
-#viewer:-webkit-full-screen .sidebar-hover-target {
+#app:fullscreen .sidebar-hover-target,
+#app:-webkit-full-screen .sidebar-hover-target {
   position: fixed;
   z-index: 94;
 }
 
 
 
-#viewer:fullscreen .mobile-sheet,
-#viewer:-webkit-full-screen .mobile-sheet {
+#app:fullscreen .mobile-sheet,
+#app:-webkit-full-screen .mobile-sheet {
   position: fixed;
     background: transparent !important;
   z-index: 92;
 }
 
 /* Make bottom page buttons transparent in fullscreen for unobtrusive UI */
-#viewer:fullscreen .bottom-page-btn,
-#viewer:-webkit-full-screen .bottom-page-btn {
+#app:fullscreen .bottom-page-btn,
+#app:-webkit-full-screen .bottom-page-btn {
   background: transparent !important;
   color: rgba(217, 222, 232, 0.66) !important;
 }
 
-#viewer:fullscreen .modal-overlay,
-#viewer:-webkit-full-screen .modal-overlay {
+#app:fullscreen .modal-overlay,
+#app:-webkit-full-screen .modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 110;
@@ -1187,7 +1322,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 .focus-main-btn.is-setting {
   background: rgba(110, 231, 255, 0.15);
   border-color: rgba(110, 231, 255, 0.5);
-  color: #57b8cb;
+  color: var(--faded-blue);
   box-shadow: 0 0 12px rgba(110, 231, 255, 0.2);
   animation: focus-pulse 1.5s ease-in-out infinite;
 }
@@ -1338,7 +1473,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
 .asset-count {
   font-size: 12px;
   font-weight: 600;
-  color: rgba(110, 231, 255, 0.9);
+  color: var(--faded-blue);
   padding: 2px 8px;
   background: rgba(110, 231, 255, 0.12);
   border-radius: 10px;
@@ -1427,7 +1562,7 @@ button, a, input, .sidebar-btn, .panel-toggle {
   width: 16px;
   height: 16px;
   border: 2px solid rgba(110, 231, 255, 0.2);
-  border-top-color: #57b8cb;
+  border-top-color: var(--faded-blue);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1547,7 +1682,7 @@ select:hover {
 }
 
 select:focus {
-  border-color: #57b8cb;
+  border-color: var(--faded-blue);
 }
 
 select option {
@@ -1701,7 +1836,7 @@ select option {
   position: absolute;
   left: 0;
   top: 0;
-  bottom: 0;
+  height: calc(100% - 80px);
   width: 100px;
   background: rgba(12, 16, 26, 0.331);
   backdrop-filter: blur(6px);
@@ -1711,9 +1846,13 @@ select option {
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
+    border-radius: 0 0 12px 0;
+    overflow: hidden;
+
 }
 
 .asset-sidebar.visible {
+  transition-delay: 220ms;
   transform: translateX(0);
 }
 
@@ -1758,11 +1897,12 @@ select option {
 /* Bottom page buttons (shared styles, no positioning) */
 .bottom-page-btn {
   width: 58px;
+  height: 30px;
   background: rgba(12, 16, 26, 0.164);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.8);
-  padding: 6px 12px;
+  padding: 6px 6px;
   border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
@@ -1772,6 +1912,16 @@ select option {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+}
+
+.bottom-page-btn.immersive-toggle.is-inactive {
+  opacity: 0.55;
+}
+
+.bottom-page-btn.immersive-toggle.is-active {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
 }
 
 /* Apply hover styles only on devices that support hover (desktop, trackpads)
@@ -1828,7 +1978,7 @@ select option {
 }
 
 .asset-item-vertical.active {
-  border-color: #57b8cb;
+  border-color: var(--faded-blue);
   box-shadow: 0 0 12px rgba(110, 231, 255, 0.2);
 }
 
@@ -1851,9 +2001,6 @@ select option {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.2);
 }
-
-
-
 
 /* Keep controls visible when the viewer element is fullscreen */
 /* (Handled by .bottom-controls rules above) */
@@ -1967,7 +2114,7 @@ select option {
 }
 
 .radio-option input[type="radio"] {
-  accent-color: #57b8cb;
+  accent-color: var(--faded-blue);
   width: 16px;
   height: 16px;
   margin: 0;
@@ -1990,7 +2137,7 @@ select option {
 }
 
 .modal-checkbox input[type="checkbox"] {
-  accent-color: #57b8cb;
+  accent-color: var(--faded-blue);
   width: 16px;
   height: 16px;
   margin: 0;
@@ -2071,6 +2218,48 @@ select option {
   justify-content: center;
 }
 
+.bottom-controls-center-inner {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.fov-overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(12, 16, 26, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.fov-overlay-slider {
+  width: 220px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.fov-overlay input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(120deg, #5896b5, #265268);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
 .bottom-controls-right {
   flex: 0 0 auto;
   justify-content: flex-end;
@@ -2088,22 +2277,22 @@ select option {
 }
 
 /* Fullscreen mode adjustments */
-#viewer:fullscreen .bottom-controls,
-#viewer:-webkit-full-screen .bottom-controls {
+#app:fullscreen .bottom-controls,
+#app:-webkit-full-screen .bottom-controls {
   position: fixed;
   z-index: 10;
 }
 
 /* Mobile fullscreen adjustments */
 @media screen and (max-width: 768px) {
-  #viewer:fullscreen .bottom-controls,
-  #viewer:-webkit-full-screen .bottom-controls {
+  #app:fullscreen .bottom-controls,
+  #app:-webkit-full-screen .bottom-controls {
     bottom: 18px !important;
   }
 
   @media (orientation: portrait) {
-    #viewer:fullscreen .bottom-controls,
-    #viewer:-webkit-full-screen .bottom-controls {
+    #app:fullscreen .bottom-controls,
+    #app:-webkit-full-screen .bottom-controls {
       bottom: 70px !important;
     }
   }
@@ -2203,7 +2392,7 @@ select option {
   background: rgba(110, 231, 255, 0.1);
   border-radius: 10px;
   font-size: 18px;
-  color: #57b8cb;
+  color: var(--faded-blue);
   flex-shrink: 0;
 }
 
@@ -2232,7 +2421,7 @@ select option {
   padding: 2px 6px;
   border-radius: 4px;
   background: rgba(110, 231, 255, 0.15);
-  color: #57b8cb;
+  color: var(--faded-blue);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -2256,7 +2445,7 @@ select option {
 
 .storage-tier-card:hover:not(.disabled) .tier-arrow {
   transform: translateX(4px);
-  color: #57b8cb;
+  color: var(--faded-blue);
 }
 
 /* Storage Forms */
@@ -2272,7 +2461,7 @@ select option {
 .back-button {
   background: none;
   border: none;
-  color:#57b8cb;
+  color:var(--faded-blue);
   cursor: pointer;
   padding: 0;
   font-size: 14px;
@@ -2417,7 +2606,7 @@ select option {
   background: linear-gradient(135deg, rgba(110, 231, 255, 0.15), rgba(110, 231, 255, 0.05));
   border: 1px solid rgba(110, 231, 255, 0.3);
   border-radius: 8px;
-  color: #57b8cb;
+  color: var(--faded-blue);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -2454,6 +2643,29 @@ select option {
   justify-content: center;
   gap: 8px;
   margin-top: 8px;
+}
+
+.secondary-button.save-settings-btn.is-ready {
+  background: linear-gradient(135deg, rgba(110, 231, 255, 0.15), rgba(110, 231, 255, 0.08));
+  border-color: rgba(110, 231, 255, 0.35);
+  color: #6ee7ff;
+}
+
+.secondary-button.save-settings-btn.is-ready:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(110, 231, 255, 0.25), rgba(110, 231, 255, 0.1));
+  border-color: rgba(110, 231, 255, 0.5);
+}
+
+.secondary-button.save-settings-btn:disabled {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #e6ecf8;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-settings-text.is-muted {
+  opacity: 0.55;
 }
 
 .secondary-button:hover {
@@ -2534,7 +2746,7 @@ select option {
 }
 
 .form-note a {
-  color: #57b8cb;
+  color: var(--faded-blue);
   text-decoration: none;
   font-weight: 500;
 }
@@ -2634,7 +2846,7 @@ select option {
   background: rgba(110, 231, 255, 0.05);
   border: 1px dashed rgba(110, 231, 255, 0.3);
   border-radius: 6px;
-  color: #57b8cb;
+  color: var(--faded-blue);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -2674,7 +2886,7 @@ select option {
 
 .form-details summary {
   cursor: pointer;
-  color: #57b8cb;
+  color: var(--faded-blue);
   margin-bottom: 8px;
 }
 
@@ -2722,7 +2934,7 @@ select option {
   background: rgba(110, 231, 255, 0.1);
   border: 1px solid rgba(110, 231, 255, 0.2);
   border-radius: 6px;
-  color: #57b8cb;
+  color: var(--faded-blue);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -2775,6 +2987,12 @@ select option {
   cursor: pointer;
   transition: all 0.2s ease;
   flex-wrap: wrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.source-item:focus,
+.source-item:focus-visible {
+  outline: none;
 }
 
 .source-item:hover {
@@ -2805,7 +3023,7 @@ select option {
 }
 
 .source-expand:hover {
-  color: #57b8cb;
+  color: var(--faded-blue);
 }
 
 /* Larger invisible click target for the expand button */
@@ -2821,14 +3039,14 @@ select option {
 }
 /* When hovering the larger hit area, apply the same hover style to the button */
 .expand-wrapper .expand-hit-area:hover + .source-expand {
-  color: #57b8cb;
+  color: var(--faded-blue);
 }
 
 .status-loading {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #57b8cb;
+  color: var(--faded-blue);
 }
 
 .upload-progress {
@@ -2988,7 +3206,7 @@ select option {
   justify-content: center;
   background: rgba(110, 231, 255, 0.15);
   border-radius: 50%;
-  color: #57b8cb;
+  color: var(--faded-blue);
   flex-shrink: 0;
 }
 
@@ -3016,7 +3234,7 @@ select option {
 }
 
 .faq-steps a {
-  color: #57b8cb;
+  color: var(--faded-blue);
   text-decoration: none;
 }
 
@@ -3044,7 +3262,7 @@ select option {
 }
 
 .collections-loading {
-  color: #57b8cb;
+  color: var(--faded-blue);
 }
 
 .existing-collection-item {
@@ -3082,7 +3300,7 @@ select option {
 }
 
 .collection-icon {
-  color: #57b8cb;
+  color: var(--faded-blue);
   font-size: 16px;
   flex-shrink: 0;
 }
@@ -3145,3 +3363,103 @@ select option {
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* Metadata missing overlay */
+.metadata-missing-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.metadata-missing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 180, 0, 0.9);
+  border-radius: 6px;
+  color: #1a1a1a;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.metadata-missing-icon {
+  font-size: 14px;
+}
+
+.metadata-missing-hint {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 11px;
+}
+/* Custom metadata section */
+.custom-metadata-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 180, 0, 0.1);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  border-radius: 8px;
+}
+
+.custom-metadata-section .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.custom-metadata-section .section-title {
+  font-weight: 600;
+  color: #ffb400;
+}
+
+.custom-metadata-section .section-hint {
+  font-size: 11px;
+  color: #888;
+}
+
+.custom-metadata-section .control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.custom-metadata-section .control-label {
+  font-size: 13px;
+  color: #ccc;
+}
+
+.custom-metadata-section input[type="range"] {
+  width: 120px;
+}
+
+.save-view-button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #ffb400;
+  border: none;
+  border-radius: 6px;
+  color: #1a1a1a;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.save-view-button:hover:not(:disabled) {
+  background: #ffc733;
+}
+
+.save-view-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
