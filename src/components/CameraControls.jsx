@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import { useStore } from '../store';
 import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, getFocusDistance, calculateOptimalEyeSeparation } from '../viewer';
+import { FocusIcon } from '../icons/customIcons';
 import { applyCameraRangeDegrees, restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
 import { currentMesh, raycaster, SplatMesh, scene } from '../viewer';
 import { updateDollyZoomBaselineFromCamera } from '../viewer';
@@ -706,7 +707,26 @@ function CameraControls() {
         {stereoEnabled && (
           <>
             <div class="control-row">
-              <span class="control-label">Eye separation</span>
+              <span class="control-label" style="display: flex; align-items: center; gap: 6px;">
+                <span>Separation</span>
+                <button
+                  type="button"
+                  class="fov-toggle-btn"
+                  title="Calculate optimal separation from focus distance"
+                  onClick={() => {
+                    const focusDist = getFocusDistance();
+                    if (focusDist) {
+                      const optimal = calculateOptimalEyeSeparation(focusDist);
+                      setStereoEyeSep(optimal);
+                      setStereoEyeSeparation(optimal);
+                      addLog(`Auto eye separation: ${(optimal * 1000).toFixed(0)}mm (from ${focusDist.toFixed(2)} units)`);
+                    }
+                  }}
+                  aria-label="Auto calculate eye separation"
+                >
+                  <FocusIcon />
+                </button>
+              </span>
               <div class="control-track">
                 <input
                   type="range"
@@ -723,21 +743,7 @@ function CameraControls() {
                 <span class="control-value">
                   {(stereoEyeSep * 1000).toFixed(0)}mm
                 </span>
-                <button
-                  class="auto-btn"
-                  title="Calculate optimal separation from focus distance"
-                  onClick={() => {
-                    const focusDist = getFocusDistance();
-                    if (focusDist) {
-                      const optimal = calculateOptimalEyeSeparation(focusDist);
-                      setStereoEyeSep(optimal);
-                      setStereoEyeSeparation(optimal);
-                      addLog(`Auto eye separation: ${(optimal * 1000).toFixed(0)}mm (from ${focusDist.toFixed(2)} units)`);
-                    }
-                  }}
-                >
-                  Auto
-                </button>
+              
               </div>
             </div>
             

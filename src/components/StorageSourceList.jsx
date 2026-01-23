@@ -612,14 +612,16 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
               <span>Edit</span>
             </button>
           )}
-          <button
-            class="source-action-btn"
-            onClick={handleUploadClick}
-            title={source.type === 'supabase-storage' ? 'Upload files to Supabase' : 'Convert images with Cloud GPU'}
-          >
-            <FontAwesomeIcon icon={faUpload} />
-            <span>Upload</span>
-          </button>
+          {source.type !== 'public-url' && (
+            <button
+              class="source-action-btn"
+              onClick={handleUploadClick}
+              title={source.type === 'supabase-storage' ? 'Upload files to Supabase' : 'Convert images with Cloud GPU'}
+            >
+              <FontAwesomeIcon icon={faUpload} />
+              <span>Upload</span>
+            </button>
+          )}
           <button 
             class="source-action-btn danger" 
             onClick={handleRemove}

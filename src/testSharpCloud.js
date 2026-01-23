@@ -93,10 +93,11 @@ const downloadBlob = (blob, filename) => {
 };
 
 
-export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey, returnMode } = {}) {
+export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey, returnMode, gpuType } = {}) {
   const saved = loadCloudGpuSettings();
   const resolvedUrl = apiUrl || saved?.apiUrl 
   const resolvedKey = apiKey || saved?.apiKey 
+  const resolvedGpu = (gpuType || saved?.gpuType || 'a10').trim().toLowerCase();
 
   if (!resolvedUrl || !resolvedKey) {
     console.error('❌ Missing Cloud GPU settings: configure API URL and API key in Add Cloud GPU.');
@@ -123,6 +124,9 @@ export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey
       }
       if (returnMode) {
         formData.append('return', returnMode);
+      }
+      if (resolvedGpu) {
+        formData.append('gpu', resolvedGpu);
       }
 
       const response = await fetch(resolvedUrl, {
