@@ -179,6 +179,13 @@ export const generateAllPreviews = async (options = {}) => {
 
         await loadSplatFileFast(asset);
 
+        // Ensure viewer resizes correctly when aspect ratio changes between assets
+        updateViewerAspectRatio();
+        resize();
+        requestRender();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+
         const result = await captureCurrentAssetPreview();
         if (result?.blob) {
           await savePreviewBlob(asset.name, result.blob, {

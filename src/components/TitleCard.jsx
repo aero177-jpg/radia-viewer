@@ -7,6 +7,7 @@ import FrostedTitle from './FrostedTitle';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faFolder, faCloud, faRocket, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { testSharpCloud } from '../testSharpCloud';
+import { FolderIcon, ServerIcon, RocketIcon } from '../icons/customIcons';
 
 function TitleCard({
   show,
@@ -83,7 +84,7 @@ function TitleCard({
     <div class={overlayClass} inert={!show ? '' : undefined}>
       <div class="title-card">
         <FrostedTitle
-          backgroundImage="/neonstatic2.png"
+          backgroundImage="/neonstaticblur.jpg"
           title="Radia"
           height={520}
           maskHeight={maskHeight}
@@ -92,21 +93,21 @@ function TitleCard({
         />
         <div class="title-card__content">
           <div class={actionButtonsClass}>
-            <button class="action-btn browse" onClick={onPickFile}>
-              <FontAwesomeIcon icon={faFolder} />
-              <span>Browse Files</span>
+            <button class="action-btn " onClick={onPickFile}>
+              <FolderIcon size={16} />
+              <span>B r o w s e </span>
             </button>
-            <button class="action-btn storage" onClick={onOpenStorage}>
-              <FontAwesomeIcon icon={faCloud} />
-              <span>Connect Storage</span>
+            <button class="action-btn " onClick={onOpenStorage}>
+              <ServerIcon size={16} />
+              <span>C o n n e c t</span>
             </button>
             {/* <button class="action-btn cloud-test" onClick={handleTestCloudUpload}>
               <FontAwesomeIcon icon={faUpload} />
               <span>Test Cloud Upload</span>
             </button> */}
-            <button class="action-btn demo" onClick={onLoadDemo}>
-              <FontAwesomeIcon icon={faRocket} />
-              <span>Load Demo Data</span>
+            <button class="action-btn " onClick={onLoadDemo}>
+              <RocketIcon size={16} />
+              <span>D e m o</span>
             </button>
           </div>
         </div>

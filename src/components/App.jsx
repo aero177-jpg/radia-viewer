@@ -211,6 +211,30 @@ function App() {
     }
   }, []);
 
+  const handleDeviceRotate = useCallback(async () => {
+    const viewerEl = document.getElementById('viewer');
+    if (!viewerEl) return;
+
+    try {
+      viewerEl.classList.remove('fs-fade-in');
+      viewerEl.classList.add('fs-fade-out');
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      requestAnimationFrame(() => {
+        resize();
+        requestRender();
+        viewerEl.classList.remove('fs-fade-out');
+        viewerEl.classList.add('fs-fade-in');
+        setTimeout(() => viewerEl.classList.remove('fs-fade-in'), 250);
+      });
+    } catch (err) {
+      console.warn('Device rotation handling failed:', err);
+      viewerEl.classList.remove('fs-fade-out');
+      viewerEl.classList.add('fs-fade-in');
+    }
+  }, []);
+
   const handleOverlayFovChange = useCallback((event) => {
     const newFov = Number(event.target.value);
     if (!Number.isFinite(newFov) || !camera || !controls) return;
@@ -364,12 +388,22 @@ function App() {
     const portraitQuery = window.matchMedia?.('(orientation: portrait)');
     portraitQuery?.addEventListener?.('change', updateMobileState);
 
+    // Trigger viewer fade + resize on device orientation changes
+    const handleOrientationChange = () => {
+      handleDeviceRotate();
+    };
+
+    window.addEventListener('orientationchange', handleOrientationChange);
+    portraitQuery?.addEventListener?.('change', handleOrientationChange);
+
     return () => {
       window.removeEventListener('resize', updateMobileState);
       window.removeEventListener('orientationchange', updateMobileState);
       portraitQuery?.removeEventListener?.('change', updateMobileState);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      portraitQuery?.removeEventListener?.('change', handleOrientationChange);
     };
-  }, [setMobileState]);
+  }, [setMobileState, handleDeviceRotate]);
 
   /**
    * Initialize Three.js viewer on mount.

@@ -82,8 +82,8 @@
   position: absolute;
   inset: -30px; /* oversize to avoid edge showing when rotated */
   background-image: var(--bg);
-  background-size: 80% 80%;
-  filter: blur(14px) saturate(1.4) brightness(1) contrast(0.7);
+  background-size: 200% 220%;
+  filter: blur(40px) saturate(.8) brightness(1.8) contrast(1.2);
   transform-origin: center;
   will-change: transform, background-position;
 
@@ -97,14 +97,28 @@
   position: absolute;
   inset: -30px; /* oversize to avoid edge showing when rotated */
   background-image: var(--bg);
-  background-size: 80% 80%;
-  filter: blur(14px) saturate(0.4) brightness(2.15) contrast(1.2);
+  background-size: 200% 220%;
+  filter: blur(40px) saturate(.8) brightness(3.8) contrast(1.8);
   transform-origin: center;
   will-change: transform, background-position;
 
   /* default: none - animation applied per .frosted-hero--anim-* class */
   animation: none;
 }
+
+
+/* rotate: stronger rotation + pan */
+.frosted-hero--anim-rotate .frosted-hero__blur-layer::before {
+  animation: frosted-pan 60s ease-in-out infinite alternate-reverse, frosted-rotate 40s ease-in-out 0s infinite reverse;
+}
+.frosted-hero--anim-rotate .frosted-hero__blur-layer--stroke::before {
+  animation: frosted-pan 60s ease-in-out .3s infinite alternate-reverse, frosted-rotate 40s ease-in-out 0s infinite reverse;
+}
+
+
+
+/* ----------------------------------------------------------------- */
+
 /* pan: background panning with a tiny slow rotation */
 .frosted-hero--anim-pan .frosted-hero__blur-layer::before {
   animation: frosted-pan 1s ease-in-out 0s infinite reverse, frosted-rotate-slow 4s linear 0s infinite;
@@ -113,15 +127,6 @@
 .frosted-hero--anim-pan .frosted-hero__blur-layer--stroke::before {
   animation: frosted-pan 0s ease-in-out 0.6s infinite reverse, frosted-rotate-slow 14s linear 0.15s infinite;
 }
-
-/* rotate: stronger rotation + pan */
-.frosted-hero--anim-rotate .frosted-hero__blur-layer::before {
-  animation: frosted-pan 40s ease-in-out infinite alternate-reverse, frosted-rotate 60s linear 0s infinite;
-}
-.frosted-hero--anim-rotate .frosted-hero__blur-layer--stroke::before {
-  animation: frosted-pan 40s ease-in-out .6s infinite alternate-reverse, frosted-rotate 60s linear 0s infinite;
-}
-
 /* random: pan + slow rotation + jitter */
 .frosted-hero--anim-random .frosted-hero__blur-layer::before {
   animation: frosted-pan 3.6s cubic-bezier(.2,.8,.3,.9) 0s infinite, frosted-rotate-slow 22s linear 0s infinite, frosted-jitter 6s steps(6, end) 0s infinite;

@@ -326,6 +326,28 @@ export const listStoredFiles = async () => {
 };
 
 /**
+ * Lists all stored file settings records.
+ * @returns {Promise<FileSettings[]>}
+ */
+export const listAllFileSettings = async () => {
+  try {
+    const db = await openDatabase();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(new Error('Failed to list file settings'));
+    });
+  } catch (error) {
+    console.error('Failed to list file settings:', error);
+    return [];
+  }
+};
+
+/**
  * Clears all stored file settings.
  * @returns {Promise<number>} Number of entries deleted
  */
@@ -364,6 +386,33 @@ const normalizePreviewRecord = (record) => {
   if (!record || record.version !== PREVIEW_VERSION) return null;
   if (!record.blob || !record.blob.size) return null;
   return record;
+};
+
+/**
+ * Lists all preview records (including blobs).
+ * @returns {Promise<Array<{fileName:string, blob:Blob, width?:number, height?:number, format?:string, updated?:number, version:number}>>}
+ */
+export const listPreviewRecords = async () => {
+  try {
+    const db = await openDatabase();
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([PREVIEW_STORE_NAME], 'readonly');
+      const store = transaction.objectStore(PREVIEW_STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const records = (request.result || [])
+          .map(normalizePreviewRecord)
+          .filter(Boolean);
+        resolve(records);
+      };
+      request.onerror = () => reject(new Error('Failed to list preview records'));
+    });
+  } catch (error) {
+    console.error('Failed to list preview records:', error);
+    return [];
+  }
 };
 
 /**

@@ -18,6 +18,14 @@ import { loadCloudGpuSettings, saveCloudGpuSettings } from '../storage/cloudGpuS
 /**
  * Expandable FAQ item
  */
+const GPU_OPTIONS = [
+  { value: 't4', label: 'T4 $0.59 Budget option' },
+  { value: 'l4', label: 'L4 $0.80 Good value' },
+  { value: 'a10', label: 'A10 $1.10 Default, balanced' },
+  { value: 'a100', label: 'A100 $2.50 High performance' },
+  { value: 'h100', label: 'H100 $3.95 Fastest' },
+];
+
 function FaqItem({ question, children }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -43,27 +51,38 @@ function FaqItem({ question, children }) {
 
 function CloudGpuForm({ onBack }) {
   const initialSettings = useMemo(
-    () => loadCloudGpuSettings() || { apiUrl: '', apiKey: '' },
+    () => {
+      const saved = loadCloudGpuSettings();
+      return {
+        apiUrl: saved?.apiUrl || '',
+        apiKey: saved?.apiKey || '',
+        gpuType: saved?.gpuType || 'a10',
+      };
+    },
     []
   );
   const [savedSettings, setSavedSettings] = useState(initialSettings);
   const [apiUrl, setApiUrl] = useState(initialSettings.apiUrl);
   const [apiKey, setApiKey] = useState(initialSettings.apiKey);
+  const [gpuType, setGpuType] = useState(initialSettings.gpuType);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
 
   const trimmedSettings = useMemo(() => ({
     apiUrl: apiUrl.trim(),
     apiKey: apiKey.trim(),
-  }), [apiUrl, apiKey]);
+    gpuType: (gpuType || 'a10').trim().toLowerCase(),
+  }), [apiUrl, apiKey, gpuType]);
   const trimmedSaved = useMemo(() => ({
     apiUrl: savedSettings.apiUrl?.trim?.() || '',
     apiKey: savedSettings.apiKey?.trim?.() || '',
+    gpuType: savedSettings.gpuType?.trim?.().toLowerCase?.() || 'a10',
   }), [savedSettings]);
   const isSettingsReady = Boolean(trimmedSettings.apiUrl && trimmedSettings.apiKey);
   const settingsChanged =
     trimmedSettings.apiUrl !== trimmedSaved.apiUrl ||
-    trimmedSettings.apiKey !== trimmedSaved.apiKey;
+    trimmedSettings.apiKey !== trimmedSaved.apiKey ||
+    trimmedSettings.gpuType !== trimmedSaved.gpuType;
   const shouldFadeSaveText = !isSettingsReady || !settingsChanged;
 
   const handleSave = useCallback(() => {
@@ -78,6 +97,7 @@ function CloudGpuForm({ onBack }) {
     const ok = saveCloudGpuSettings({
       apiUrl: trimmedSettings.apiUrl,
       apiKey: trimmedSettings.apiKey,
+      gpuType: trimmedSettings.gpuType,
     });
 
     if (!ok) {
@@ -89,6 +109,7 @@ function CloudGpuForm({ onBack }) {
     setSavedSettings({
       apiUrl: trimmedSettings.apiUrl,
       apiKey: trimmedSettings.apiKey,
+      gpuType: trimmedSettings.gpuType,
     });
     setStatus('success');
     setTimeout(() => setStatus('idle'), 800);
@@ -142,6 +163,17 @@ function CloudGpuForm({ onBack }) {
             value={apiKey}
             onInput={(e) => setApiKey(e.target.value)}
           />
+        </div>
+
+        <div class="form-field">
+          <label>GPU type</label>
+          <select value={gpuType} onChange={(e) => setGpuType(e.target.value)}>
+            {GPU_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

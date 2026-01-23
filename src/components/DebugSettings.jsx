@@ -14,6 +14,7 @@ import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
 import { setDebugForceZoomOut, reloadCurrentAsset, resize } from '../fileLoader';
 import { clearCustomMetadataForAsset } from '../customMetadata.js';
 import { requestRender, setStereoEffectEnabled } from '../viewer';
+import TransferDataModal from './TransferDataModal';
 
 let erudaInitPromise = null;
 
@@ -103,6 +104,7 @@ function DebugSettings() {
   const [generatingBatch, setGeneratingBatch] = useState(false);
   const [debugZoomOut, setDebugZoomOut] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
 
   const refreshAssets = useCallback(() => {
     const assets = getAssetList();
@@ -169,6 +171,7 @@ function DebugSettings() {
         }
         setStereoEffectEnabled(true);
         setStereoEnabled(true);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
         resize();
         addLog('Side-by-side stereo enabled');
       } else {
@@ -182,6 +185,8 @@ function DebugSettings() {
         if (document.fullscreenElement === fullscreenRoot) {
           await document.exitFullscreen();
         }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        console.log('Resizing after stereo disable');
         resize();
         addLog('Stereo mode disabled');
       }
@@ -362,6 +367,7 @@ function DebugSettings() {
     addLog('[BatchPreview] Abort requested');
   }, [addLog]);
 
+
   // React to devtools preference changes — require explicit user approval to initialize
   useEffect(() => {
     if (mobileDevtoolsEnabled) {
@@ -400,20 +406,25 @@ function DebugSettings() {
   }, [stereoEnabled, setStereoEnabled]);
 
   return (
-    <div class="settings-group">
-      <button
-        class="group-toggle"
-        aria-expanded={debugSettingsExpanded}
-        onClick={toggleDebugSettingsExpanded}
-      >
-        <span class="settings-eyebrow">Debug Settings</span>
-        <FontAwesomeIcon icon={faChevronDown} className="chevron" />
-      </button>
+    <>
+      <div class="settings-group">
+        <button
+          class="group-toggle"
+          aria-expanded={debugSettingsExpanded}
+          onClick={toggleDebugSettingsExpanded}
+        >
+          <span class="settings-eyebrow">Advanced Settings</span>
+          <FontAwesomeIcon icon={faChevronDown} className="chevron" />
+        </button>
 
-      <div
-        class="group-content"
-        style={{ display: debugSettingsExpanded ? 'flex' : 'none' }}
-      >
+        <div
+          class="group-content"
+          style={{ display: debugSettingsExpanded ? 'flex' : 'none' }}
+        >
+        <div class="settings-divider">
+          <span>Viewer</span>
+        </div>
+
         <div class="control-row">
           <span class="control-label">Show FPS</span>
           <label class="switch">
@@ -421,50 +432,6 @@ function DebugSettings() {
               type="checkbox"
               checked={showFps}
               onChange={handleFpsToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Mobile devtools</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={mobileDevtoolsEnabled}
-              onChange={handleDevtoolsToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Stochastic rendering</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugStochasticRendering}
-              onChange={handleStochasticToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <button
-          class="secondary"
-          type="button"
-          onClick={handleForceViewerRefresh}
-        >
-          Force viewer refresh
-        </button>
-
-        <div class="control-row">
-          <span class="control-label">Limit FPS (60)</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugFpsLimitEnabled}
-              onChange={handleFpsLimitToggle}
             />
             <span class="switch-track" aria-hidden="true" />
           </label>
@@ -483,42 +450,30 @@ function DebugSettings() {
         </div>
 
         <div class="control-row">
-          <span class="control-label">Splat width</span>
+          <span class="control-label">Image glow</span>
           <div class="control-track">
             <input
               type="range"
-              min="0.5"
-              max="8"
-              step="0.1"
-              value={debugSparkMaxStdDev}
-              onInput={handleSparkStdDevChange}
+              min="0"
+              max="40"
+              step="1"
+              value={bgBlur}
+              onInput={(e) => setBgBlur(Number(e.target.value) || 0)}
             />
-            <span class="control-value">{debugSparkMaxStdDev.toFixed(2)}</span>
+            <span class="control-value">{bgBlur}px</span>
           </div>
         </div>
 
-        <div class="control-row">
-          <span class="control-label">Delete image store</span>
-          <button
-            type="button"
-            class={`secondary danger ${wipingDb ? 'is-busy' : ''}`}
-            onClick={handleWipeDb}
-            disabled={wipingDb}
-          >
-            {wipingDb ? 'Deleting...' : 'Delete'}
-          </button>
-        </div>
+        <button
+          class="secondary"
+          type="button"
+          onClick={handleForceViewerRefresh}
+        >
+          Force viewer refresh
+        </button>
 
-        <div class="control-row">
-          <span class="control-label">Clear Supabase cache</span>
-          <button
-            type="button"
-            class={`secondary ${clearingSupabaseCache ? 'is-busy' : ''}`}
-            onClick={handleClearSupabaseCache}
-            disabled={clearingSupabaseCache}
-          >
-            {clearingSupabaseCache ? 'Clearing...' : 'Clear'}
-          </button>
+        <div class="settings-divider">
+          <span>Cache</span>
         </div>
 
         <div class="control-row">
@@ -546,37 +501,6 @@ function DebugSettings() {
             </button>
           </div>
         )}
-
-        <div class="control-row">
-          <span class="control-label">Debug zoom-out</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugZoomOut}
-              onChange={(e) => {
-                const enabled = Boolean(e.target.checked);
-                setDebugZoomOut(enabled);
-                setDebugForceZoomOut(enabled);
-              }}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Image glow</span>
-          <div class="control-track">
-            <input
-              type="range"
-              min="0"
-              max="40"
-              step="1"
-              value={bgBlur}
-              onInput={(e) => setBgBlur(Number(e.target.value) || 0)}
-            />
-            <span class="control-value">{bgBlur}px</span>
-          </div>
-        </div>
 
         <div class="control-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -624,9 +548,121 @@ function DebugSettings() {
             </div>
           )}
         </div>
+
+        <div class="control-row">
+          <span class="control-label">Delete image store</span>
+          <button
+            type="button"
+            class={`secondary danger ${wipingDb ? 'is-busy' : ''}`}
+            onClick={handleWipeDb}
+            disabled={wipingDb}
+          >
+            {wipingDb ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Clear Supabase cache</span>
+          <button
+            type="button"
+            class={`secondary ${clearingSupabaseCache ? 'is-busy' : ''}`}
+            onClick={handleClearSupabaseCache}
+            disabled={clearingSupabaseCache}
+          >
+            {clearingSupabaseCache ? 'Clearing...' : 'Clear'}
+          </button>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Transfer bundle</span>
+          <button
+            type="button"
+            class="secondary"
+            onClick={() => setTransferModalOpen(true)}
+          >
+            Open
+          </button>
+        </div>
+
+        <div class="settings-divider">
+          <span>Render debug</span>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Mobile devtools</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={mobileDevtoolsEnabled}
+              onChange={handleDevtoolsToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Stochastic rendering</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugStochasticRendering}
+              onChange={handleStochasticToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Limit FPS (60)</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugFpsLimitEnabled}
+              onChange={handleFpsLimitToggle}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Splat width</span>
+          <div class="control-track">
+            <input
+              type="range"
+              min="0.5"
+              max="8"
+              step="0.1"
+              value={debugSparkMaxStdDev}
+              onInput={handleSparkStdDevChange}
+            />
+            <span class="control-value">{debugSparkMaxStdDev.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Debug zoom-out</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={debugZoomOut}
+              onChange={(e) => {
+                const enabled = Boolean(e.target.checked);
+                setDebugZoomOut(enabled);
+                setDebugForceZoomOut(enabled);
+              }}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+        </div>
       </div>
-    </div>
+
+      <TransferDataModal
+        isOpen={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        addLog={addLog}
+      />
+    </>
   );
 }
-
 export default DebugSettings;

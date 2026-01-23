@@ -75,7 +75,11 @@ const QUALITY_PRESETS = {
   experimental: { stdDev: 1.8, stochastic: true, fpsLimit: false },
 };
 
-const persistedQualityPreset = getPersistedString(QUALITY_PRESET_KEY, 'default');
+const isMobileInitial = typeof window !== 'undefined' && Math.min(window.innerWidth, window.innerHeight) <= 768;
+const persistedQualityPreset = getPersistedString(
+  QUALITY_PRESET_KEY,
+  isMobileInitial ? 'performance' : 'default'
+);
 const persistedCustomStdDev = getPersistedNumber(DEBUG_SPARK_STDDEV_KEY, Math.sqrt(5));
 const persistedCustomStochastic = getPersistedBoolean(DEBUG_STOCHASTIC_KEY, false);
 const persistedCustomFpsLimit = getPersistedBoolean(DEBUG_FPS_LIMIT_KEY, true);

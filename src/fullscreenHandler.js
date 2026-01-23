@@ -49,19 +49,43 @@ export function setupFullscreenHandler(fullscreenRootEl, viewerEl, onStateChange
   let transitionPromise = null;
   let rerunRequested = false;
   let uiHidden = false;
+  let tapStart = null;
+  const TAP_MAX_DURATION_MS = 220;
+  const TAP_MAX_MOVE_PX = 12;
 
   const resetUiVisibility = () => {
     uiHidden = false;
     applyVisibilityHidden(fullscreenRootEl, uiHidden);
   };
 
+  const handlePointerDown = (event) => {
+    if (event.button != null && event.button !== 0) return;
+    tapStart = {
+      time: performance.now(),
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
   const handleViewerTap = (event) => {
+    if (!tapStart) return;
+    const dt = performance.now() - tapStart.time;
+    const dx = event.clientX - tapStart.x;
+    const dy = event.clientY - tapStart.y;
+    const dist = Math.hypot(dx, dy);
+    tapStart = null;
+
+    if (dt > TAP_MAX_DURATION_MS || dist > TAP_MAX_MOVE_PX) return;
     if (!isFullscreenOrImmersive(fullscreenRootEl, viewerEl)) return;
     if (useStore.getState().focusSettingActive) return;
     if (useStore.getState().panelOpen) return;
     if (event.target.closest(VISIBILITY_TOGGLE_SELECTORS.join(','))) return;
     uiHidden = !uiHidden;
     applyVisibilityHidden(fullscreenRootEl, uiHidden);
+  };
+
+  const handlePointerCancel = () => {
+    tapStart = null;
   };
 
   const processChange = async () => {
@@ -104,10 +128,14 @@ export function setupFullscreenHandler(fullscreenRootEl, viewerEl, onStateChange
   };
 
   document.addEventListener('fullscreenchange', handleFullscreenChange);
+  fullscreenRootEl.addEventListener('pointerdown', handlePointerDown);
   fullscreenRootEl.addEventListener('pointerup', handleViewerTap);
+  fullscreenRootEl.addEventListener('pointercancel', handlePointerCancel);
   
   return () => {
     document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    fullscreenRootEl.removeEventListener('pointerdown', handlePointerDown);
     fullscreenRootEl.removeEventListener('pointerup', handleViewerTap);
+    fullscreenRootEl.removeEventListener('pointercancel', handlePointerCancel);
   };
 }
