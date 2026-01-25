@@ -47,10 +47,20 @@ const isInputElement = (target) => {
 const formatPoint = (point) => 
   `${point.x.toFixed(2)}, ${point.y.toFixed(2)}, ${point.z.toFixed(2)}`;
 
+const formatEta = (seconds) => {
+  const remaining = Math.max(0, Math.ceil(seconds));
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+};
+
 function Viewer({ viewerReady }) {
   // Store state
   const debugLoadingMode = useStore((state) => state.debugLoadingMode);
   const metadataMissing = useStore((state) => state.metadataMissing);
+  const isUploading = useStore((state) => state.isUploading);
+  const uploadProgress = useStore((state) => state.uploadProgress);
   
   // Store actions
   const addLog = useStore((state) => state.addLog);
@@ -63,6 +73,31 @@ function Viewer({ viewerReady }) {
   const hasMeshRef = useRef(false);
 
   const { hasOriginalMetadata, customMetadataMode } = useStore();
+
+  const showUploadProgress = isUploading && uploadProgress?.total;
+  const [etaSeconds, setEtaSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!showUploadProgress || !uploadProgress) {
+      setEtaSeconds(0);
+      return;
+    }
+
+    const remaining = Math.max(0, (uploadProgress.total - (uploadProgress.completed || 0)) * 40);
+    setEtaSeconds(remaining);
+
+    const intervalId = setInterval(() => {
+      setEtaSeconds((s) => {
+        if (s <= 1) {
+          clearInterval(intervalId);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [showUploadProgress, uploadProgress?.completed, uploadProgress?.total]);
 
   /**
    * Track mesh loading state - only update state when value changes
@@ -212,8 +247,25 @@ function Viewer({ viewerReady }) {
     };
   }, [viewerReady, addLog, togglePanel]);
 
+  const etaLabel = showUploadProgress ? formatEta(etaSeconds) : '';
+  const progressPercent = showUploadProgress && uploadProgress?.total
+    ? Math.min(100, Math.round(((uploadProgress.completed || 0) / uploadProgress.total) * 100))
+    : 0;
+
   return (
     <div id="viewer" class={`viewer ${debugLoadingMode ? 'loading' : ''}`} ref={viewerRef}>
+      {showUploadProgress && (
+        <div class="viewer-upload-overlay">
+          <div class="viewer-upload-title">Uploading</div>
+          <div class="viewer-upload-meta">
+            <span>{uploadProgress?.completed || 0}/{uploadProgress?.total || 0}</span>
+            {etaLabel && <span class="viewer-upload-eta">{etaLabel}</span>}
+          </div>
+          <div class="viewer-upload-bar">
+            <div class="viewer-upload-bar-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+      )}
       {metadataMissing && (
         <div class="metadata-warning">
           No metadata. Adjust camera settings to save a new view.

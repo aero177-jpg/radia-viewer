@@ -165,6 +165,10 @@ export const useStore = create(
   status: 'Waiting for file...',
   isLoading: false,
 
+  // Upload progress (global overlay)
+  isUploading: false,
+  uploadProgress: null,
+
   // Assets
   assets: [],
   currentAssetIndex: -1,
@@ -256,6 +260,12 @@ export const useStore = create(
   
   /** Sets slideshow hold duration in seconds */
   setSlideshowDuration: (duration) => set({ slideshowDuration: duration }),
+
+  /** Sets global upload state for viewer overlay */
+  setUploadState: ({ isUploading, uploadProgress }) => set({
+    isUploading: Boolean(isUploading),
+    uploadProgress: uploadProgress || null,
+  }),
   
   /** Sets slideshow playing state */
   setSlideshowPlaying: (playing) => set({ slideshowPlaying: playing }),

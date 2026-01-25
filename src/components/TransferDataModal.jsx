@@ -22,6 +22,7 @@ import {
   faUpload,
 } from '@fortawesome/free-solid-svg-icons';
 import { buildTransferBundle, importTransferBundle } from '../utils/debugTransfer.js';
+import usePortalTarget from '../utils/usePortalTarget';
 
 /**
  * Tier-style card for landing page options (Import / Export)
@@ -478,6 +479,7 @@ function ImportPage({ onBack, onClose, addLog }) {
  */
 function TransferDataModal({ isOpen, onClose, addLog }) {
   const [page, setPage] = useState(null); // null = landing, 'export', 'import'
+  const portalTarget = usePortalTarget();
 
   const handleClose = useCallback(() => {
     setPage(null);
@@ -488,7 +490,7 @@ function TransferDataModal({ isOpen, onClose, addLog }) {
     setPage(null);
   }, []);
 
-  if (!isOpen) return null;
+  if (!isOpen || !portalTarget) return null;
 
   let content;
   if (page === 'export') {
@@ -537,7 +539,7 @@ function TransferDataModal({ isOpen, onClose, addLog }) {
         {content}
       </div>
     </div>,
-    document.body
+    portalTarget
   );
 }
 

@@ -13,7 +13,7 @@ import MobileSheet from './MobileSheet';
 import AssetSidebar from './AssetSidebar';
 import AssetNavigation from './AssetNavigation';
 import { initViewer, startRenderLoop, currentMesh, camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE } from '../viewer';
-import { resize, loadFromStorageSource, loadNextAsset, loadPrevAsset, handleMultipleFiles } from '../fileLoader';
+import { resize, loadFromStorageSource, loadNextAsset, loadPrevAsset } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
 import { enableImmersiveMode, disableImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, syncImmersiveBaseline } from '../immersiveMode';
 import { setupFullscreenHandler } from '../fullscreenHandler';
@@ -25,8 +25,8 @@ import { FocusIcon, Rotate3DIcon } from '../icons/customIcons';
 import { initVrSupport } from '../vrMode';
 import { getSourcesArray } from '../storage/index.js';
 import { getSource, createPublicUrlSource, registerSource, saveSource } from '../storage/index.js';
-import { getFormatAccept } from '../formats/index';
 import ConnectStorageDialog from './ConnectStorageDialog';
+import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 
 /** Delay before resize after panel toggle animation completes */
 const PANEL_TRANSITION_MS = 350;
@@ -72,7 +72,6 @@ function App() {
   const defaultLoadAttempted = useRef(false);
 
   // File input + storage dialog state for title card actions
-  const fileInputRef = useRef(null);
   const [storageDialogOpen, setStorageDialogOpen] = useState(false);
   const [storageDialogInitialTier, setStorageDialogInitialTier] = useState(null);
 
@@ -84,7 +83,7 @@ function App() {
   // Outside click handler to close side panel
   useOutsideClick(
     togglePanel,
-    ['.side', '.mobile-sheet', '.panel-toggle', '.bottom-page-btn', '.bottom-controls'],
+    ['.side', '.mobile-sheet', '.panel-toggle', '.bottom-page-btn', '.bottom-controls', '.modal-overlay', '.modal-content'],
     panelOpen && !focusSettingActive
   );
 
@@ -285,22 +284,25 @@ function App() {
   /**
    * Title card actions: file picker
    */
-  const formatAccept = getFormatAccept();
+  const {
+    uploadInputRef,
+    uploadAccept,
+    openUploadPicker,
+    handleUploadChange,
+    uploadModal,
+  } = useCollectionUploadFlow({
+    queueAction: 'replace',
+    allowAssets: true,
+    allowImages: true,
+    onError: (message) => setStatus(message),
+  });
 
   const handlePickFile = useCallback(() => {
     (async () => {
       await new Promise((r) => setTimeout(r, PANEL_TRANSITION_MS));
-      fileInputRef.current?.click();
+      openUploadPicker();
     })();
-  }, []);
-
-  const handleFileChange = useCallback(async (event) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      await handleMultipleFiles(Array.from(files));
-      event.target.value = '';
-    }
-  }, []);
+  }, [openUploadPicker]);
 
   /**
    * Title card actions: storage dialog
@@ -473,12 +475,12 @@ function App() {
     <div class={`page ${panelOpen ? 'panel-open' : ''}`}>
       <AssetSidebar />
       <input 
-        ref={fileInputRef}
+        ref={uploadInputRef}
         type="file" 
-        accept={formatAccept} 
+        accept={uploadAccept}
         multiple 
         hidden 
-        onChange={handleFileChange}
+        onChange={handleUploadChange}
       />
       <TitleCard
         show={landingVisible && assets.length === 0}
@@ -568,6 +570,7 @@ function App() {
         onConnect={handleSourceConnect}
         initialTier={storageDialogInitialTier}
       />
+      {uploadModal}
     </div>
   );
 }

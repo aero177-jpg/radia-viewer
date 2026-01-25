@@ -2,13 +2,13 @@ import { useEffect, useState, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import useSwipe from '../utils/useSwipe';
 import { useStore } from '../store';
-import { loadAssetByIndex, handleAddFiles } from '../fileLoader';
+import { loadAssetByIndex } from '../fileLoader';
 import { removeAsset, clearAssets, getAssetList, getCurrentAssetIndex } from '../assetManager';
 import { deleteFileSettings, clearAllFileSettings, loadPreviewBlob } from '../fileStorage';
-import { getFormatAccept } from '../formats/index';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { getSource } from '../storage/index.js';
+import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 
 function AssetSidebar() {
   const assets = useStore((state) => state.assets);
@@ -19,7 +19,6 @@ function AssetSidebar() {
 
   const isVisible = useStore((state) => state.assetSidebarOpen);
   const setIsVisible = useStore((state) => state.setAssetSidebarOpen);
-  const imageAccept = '.jpg,.jpeg,.png,.webp,.avif,.tif,.tiff,.heic,image/*';
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteScope, setDeleteScope] = useState('single'); // 'single' or 'all'
   const [clearMetadata, setClearMetadata] = useState(false);
@@ -27,7 +26,6 @@ function AssetSidebar() {
   const [brokenPreviews, setBrokenPreviews] = useState(new Set()); // Track broken preview indices
   const [suppressInteractions, setSuppressInteractions] = useState(false);
   const sidebarRef = useRef(null);
-  const fileInputRef = useRef(null);
   const hoverTargetRef = useRef(null);
   const openedByHoverRef = useRef(false);
   const hideTimeoutRef = useRef(null);
@@ -35,7 +33,17 @@ function AssetSidebar() {
   const suppressTimeoutRef = useRef(null);
   const repairingRef = useRef(new Set()); // Track indices being repaired
 
-  const formatAccept = getFormatAccept();
+  const {
+    uploadInputRef,
+    uploadAccept,
+    openUploadPicker,
+    handleUploadChange,
+    uploadModal,
+  } = useCollectionUploadFlow({
+    queueAction: 'append',
+    allowAssets: true,
+    allowImages: true,
+  });
 
   // Portal target for modal - render to fullscreen-safe container
   const [portalTarget, setPortalTarget] = useState(null);
@@ -123,16 +131,8 @@ function AssetSidebar() {
     const current = assets[currentAssetIndex];
     const isSupabase = current?.sourceType === 'supabase-storage';
     console.log('[AssetSidebar] Add clicked. Supabase collection?', isSupabase, 'sourceId:', current?.sourceId);
-    fileInputRef.current?.click();
+    openUploadPicker();
     openedByHoverRef.current = false; // opened by explicit click
-  };
-
-  const handleFileChange = async (event) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      await handleAddFiles(Array.from(files));
-      event.target.value = '';
-    }
   };
 
   const handleDeleteClick = () => {
@@ -350,12 +350,12 @@ function AssetSidebar() {
   return (
     <>
       <input 
-        ref={fileInputRef}
+        ref={uploadInputRef}
         type="file" 
-        accept={`${formatAccept},${imageAccept}`} 
+        accept={uploadAccept}
         multiple 
         hidden 
-        onChange={handleFileChange}
+        onChange={handleUploadChange}
       />
 
       {/* Invisible hover target on left edge */}
@@ -560,6 +560,7 @@ function AssetSidebar() {
         </div>,
         portalTarget
       )}
+      {uploadModal}
     </>
   );
 }

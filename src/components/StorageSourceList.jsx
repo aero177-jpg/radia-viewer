@@ -5,7 +5,7 @@
  * Allows reconnecting, refreshing, and removing sources.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFolder,
@@ -33,14 +33,13 @@ import {
   cacheCollectionAssets,
   syncCollectionCache,
   clearCollectionCache,
+  loadSourceAssets,
 } from '../storage/index.js';
 import { useStore } from '../store';
 import { getAssetList } from '../assetManager.js';
 import { listCachedFileNames } from '../fileStorage.js';
-import { getSupportedExtensions, getFormatAccept } from '../formats/index.js';
-import { testSharpCloud } from '../testSharpCloud';
 import ConnectStorageDialog from './ConnectStorageDialog';
-import UploadChoiceModal from './UploadChoiceModal';
+import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 
 const TYPE_ICONS = {
   'local-folder': faFolder,
@@ -56,7 +55,6 @@ const TYPE_LABELS = {
   'public-url': 'URL',
 };
 
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.avif', '.tif', '.tiff', '.heic'];
 
 const formatEta = (seconds) => {
   const remaining = Math.max(0, Math.ceil(seconds));
@@ -75,28 +73,23 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
-  const [showUploadChoiceModal, setShowUploadChoiceModal] = useState(false);
-  const [uploadMode, setUploadMode] = useState(null); // 'images' | 'assets'
-  const uploadInputRef = useRef(null);
-  const supportedExtensions = useMemo(() => getSupportedExtensions(), []);
-  const acceptString = useMemo(() => getFormatAccept(), []);
-  const imageAccept = useMemo(() => `${IMAGE_EXTENSIONS.join(',')},image/*`, []);
-  const combinedAccept = useMemo(() => {
-    return acceptString ? `${acceptString},${imageAccept}` : imageAccept;
-  }, [acceptString, imageAccept]);
-  const uploadAccept = useMemo(() => {
-    if (source.type === 'app-storage') return acceptString || '';
-    if (uploadMode === 'images') return imageAccept;
-    if (uploadMode === 'assets') return acceptString || '';
-    return combinedAccept;
-  }, [acceptString, combinedAccept, imageAccept, uploadMode, source.type]);
-  const collectionPrefix = useMemo(() => {
-    const collectionId = source?.config?.config?.collectionId;
-    return collectionId ? `collections/${collectionId}/assets` : 'collections/default/assets';
-  }, [source?.config?.config?.collectionId]);
 
   const activeSourceId = useStore((state) => state.activeSourceId);
   const setAssets = useStore((state) => state.setAssets);
+  const setUploadState = useStore((state) => state.setUploadState);
+
+  const allowAssets = source.type !== 'local-folder';
+  const allowImages = true;
+
+  const handleAssetsUpdated = useCallback(async ({ source: updatedSource }) => {
+    if (!updatedSource || activeSourceId !== updatedSource.id) return;
+    try {
+      const adapted = await loadSourceAssets(updatedSource);
+      setAssets(adapted);
+    } catch (err) {
+      console.warn('Failed to sync assets after upload:', err);
+    }
+  }, [activeSourceId, setAssets]);
 
   const refreshCacheFlagsForSource = useCallback(async () => {
     try {
@@ -152,6 +145,26 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
     }
   }, [refreshCacheFlagsForSource, source]);
 
+  const {
+    uploadInputRef: flowInputRef,
+    uploadAccept,
+    openUploadPicker,
+    handleUploadChange: handleFlowUploadChange,
+    uploadModal,
+  } = useCollectionUploadFlow({
+    source,
+    allowAssets,
+    allowImages,
+    onOpenCloudGpu,
+    onRefreshAssets: refreshAssets,
+    onAssetsUpdated: handleAssetsUpdated,
+    onLoadingChange: setIsLoading,
+    onUploadingChange: setIsUploading,
+    onUploadProgress: setUploadProgress,
+    onUploadState: setUploadState,
+    onStatus: setStatus,
+  });
+
   const handleCacheAll = useCallback(async (e) => {
     e.stopPropagation();
     setIsLoading(true);
@@ -190,152 +203,6 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
     }
   }, [refreshCacheFlagsForSource, source.id]);
 
-  const isSupportedFile = useCallback((file) => {
-    if (!file?.name) return false;
-    const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
-    return supportedExtensions.includes(ext);
-  }, [supportedExtensions]);
-
-  const isImageFile = useCallback((file) => {
-    if (!file) return false;
-    const type = file.type || '';
-    const name = (file.name || '').toLowerCase();
-    return type.startsWith('image/') || IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext));
-  }, []);
-
-  const processUploads = useCallback(async (files) => {
-    if (!files?.length || source.type !== 'supabase-storage' || typeof source.uploadAssets !== 'function') return;
-
-    const valid = files.filter(isSupportedFile);
-    const skipped = files.length - valid.length;
-    const hasImages = valid.some(isImageFile);
-
-    if (valid.length === 0) {
-      alert(`No supported files. Supported: ${supportedExtensions.join(', ')}`);
-      return;
-    }
-
-    setIsLoading(true);
-    setIsUploading(hasImages);
-    setUploadProgress(hasImages ? { completed: 0, total: valid.length } : null);
-    console.log('upload start', { total: valid.length, showProgress: hasImages });
-    try {
-      const result = await source.uploadAssets(valid);
-      const completed = Array.isArray(result?.uploaded) ? result.uploaded.length : 0;
-      if (hasImages) {
-        setUploadProgress({ completed, total: valid.length });
-      }
-      console.log('upload api result', { completed, total: valid.length, failed: result?.failed?.length, success: result?.success });
-
-      if (!result?.success) {
-        setStatus('error');
-        return;
-      }
-
-      const refreshOk = await refreshAssets();
-      if (!refreshOk) {
-        setStatus('error');
-      }
-
-      if (skipped > 0) {
-        console.warn(`Skipped ${skipped} unsupported files during upload.`);
-      }
-    } catch (err) {
-      console.error('Upload failed:', err);
-      setStatus('error');
-    } finally {
-      setIsLoading(false);
-      setIsUploading(false);
-      setUploadProgress(null);
-      console.log('upload end');
-    }
-  }, [isImageFile, isSupportedFile, refreshAssets, source, supportedExtensions]);
-
-  const handleImageConvert = useCallback(async (files) => {
-    if (!files?.length) return;
-
-    setIsLoading(true);
-    setIsUploading(true);
-    setUploadProgress({ completed: 0, total: files.length });
-    console.log('convert start', { total: files.length });
-
-    try {
-      const results = await testSharpCloud(files, {
-        prefix: source.type === 'supabase-storage' ? collectionPrefix : undefined,
-        returnMode: source.type === 'supabase-storage' ? undefined : 'direct',
-        onProgress: (progress) => {
-          console.log('convert progress', progress);
-          setUploadProgress(progress);
-        },
-      });
-      const failures = results.filter((r) => !r.ok);
-
-      const anySuccess = results.some((r) => r.ok);
-      if (anySuccess && source.type === 'supabase-storage') {
-        await refreshAssets();
-      }
-
-      if (failures.length > 0) {
-        console.warn('Some conversions failed:', failures);
-      }
-    } catch (err) {
-      console.error('Convert/upload failed:', err);
-    } finally {
-      setIsLoading(false);
-      setIsUploading(false);
-      setUploadProgress(null);
-    }
-  }, [collectionPrefix, refreshAssets, source.type]);
-
-  const handleFilesForMode = useCallback(async (mode, files) => {
-    if (!files?.length) return;
-
-    if (mode === 'images') {
-      const imageFiles = files.filter(isImageFile);
-      if (imageFiles.length === 0) {
-        alert('No image files selected.');
-        return;
-      }
-      await handleImageConvert(imageFiles);
-      return;
-    }
-
-    if (source.type !== 'supabase-storage') {
-      alert('Asset uploads are only supported for Supabase collections.');
-      return;
-    }
-
-    await processUploads(files);
-  }, [handleImageConvert, isImageFile, processUploads, source.type]);
-
-  const openPickerForMode = useCallback(async (mode) => {
-    setUploadMode(mode);
-
-    if (typeof window.showOpenFilePicker === 'function') {
-      try {
-        const types = mode === 'images'
-          ? [{ description: 'Images', accept: { 'image/*': IMAGE_EXTENSIONS } }]
-          : [{ description: 'Supported splat assets', accept: { 'application/octet-stream': supportedExtensions } }];
-
-        const handles = await window.showOpenFilePicker({
-          multiple: true,
-          types,
-          excludeAcceptAllOption: false,
-        });
-
-        const files = await Promise.all(handles.map((handle) => handle.getFile()));
-        await handleFilesForMode(mode, files);
-        return;
-      } catch (err) {
-        if (err?.name === 'AbortError') return; // user cancelled
-        console.warn('showOpenFilePicker failed, falling back to input:', err);
-      }
-    }
-
-    requestAnimationFrame(() => {
-      uploadInputRef.current?.click();
-    });
-  }, [handleFilesForMode, supportedExtensions]);
 
   // Check connection status on mount
   useEffect(() => {
@@ -494,52 +361,21 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
     await refreshAssets();
   }, [refreshAssets, source]);
 
-  const handleUploadClick = useCallback(async (e) => {
+  const handleUploadClick = useCallback((e) => {
     e.stopPropagation();
-    if (source.type === 'supabase-storage') {
-      setShowUploadChoiceModal(true);
-      return;
-    }
-    openPickerForMode('images');
-  }, [openPickerForMode, source.type]);
+    openUploadPicker();
+  }, [openUploadPicker]);
 
   const handleUploadChange = useCallback(async (e) => {
     e.stopPropagation();
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (source.type === 'app-storage') {
-      setIsLoading(true);
-      try {
-        if (typeof source.importFiles !== 'function') return;
-        const result = await source.importFiles(files);
-        if (!result?.success) {
-          setStatus('error');
-          if (result?.error) {
-            alert(result.error);
-          }
-          return;
-        }
-        await refreshAssets();
-      } catch (err) {
-        console.error('App storage import failed:', err);
-        setStatus('error');
-      } finally {
-        setIsLoading(false);
-      }
-      return;
-    }
-    const mode = uploadMode || 'assets';
-    setUploadMode(null);
-    await handleFilesForMode(mode, files);
-  }, [handleFilesForMode, refreshAssets, source, uploadMode]);
+    await handleFlowUploadChange(e);
+  }, [handleFlowUploadChange]);
 
   const handleAppStoragePick = useCallback((e) => {
     e.stopPropagation();
     if (source.type !== 'app-storage') return;
-    requestAnimationFrame(() => {
-      uploadInputRef.current?.click();
-    });
-  }, [source.type]);
+    openUploadPicker();
+  }, [openUploadPicker, source.type]);
 
   const handleRemove = useCallback(async (e) => {
     e.stopPropagation();
@@ -609,7 +445,7 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
   return (
     <>
       <input
-        ref={uploadInputRef}
+        ref={flowInputRef}
         type="file"
         multiple
         accept={uploadAccept}
@@ -768,24 +604,7 @@ function SourceItem({ source, onSelect, onRemove, onEditSource, expanded, onTogg
       )}
       </div>
 
-      <UploadChoiceModal
-        isOpen={showUploadChoiceModal}
-        onClose={() => setShowUploadChoiceModal(false)}
-        onPickAssets={() => {
-          setShowUploadChoiceModal(false);
-          openPickerForMode('assets');
-        }}
-        onPickImages={() => {
-          setShowUploadChoiceModal(false);
-          openPickerForMode('images');
-        }}
-        onOpenCloudGpu={() => {
-          setShowUploadChoiceModal(false);
-          onOpenCloudGpu?.();
-        }}
-        imageExtensions={IMAGE_EXTENSIONS}
-        supportedExtensions={supportedExtensions}
-      />
+      {uploadModal}
     </>
   );
 }

@@ -8,7 +8,7 @@ export default defineConfig({
   // GitHub Actions sets BASE_PATH to /repo-name/
   base: process.env.BASE_PATH || '/',
   server: {
-    https: true,
+    https: false,
     host: true
   }
 })

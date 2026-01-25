@@ -98,7 +98,13 @@ const downloadBlob = (blob, filename) => {
 };
 
 
-export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey, returnMode, gpuType } = {}) {
+const extractFilenameFromDisposition = (disposition, fallback) => {
+  if (!disposition) return fallback;
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  return match?.[1] || fallback;
+};
+
+export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey, returnMode, gpuType, downloadMode } = {}) {
   const saved = loadCloudGpuSettings();
   const resolvedUrl = apiUrl || saved?.apiUrl 
   const resolvedKey = apiKey || saved?.apiKey 
@@ -155,6 +161,7 @@ export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey
         const buffer = new Uint8Array(await response.arrayBuffer());
         const parts = parseMultipartMixed(buffer, boundary);
         const downloaded = [];
+        const storedFiles = [];
 
         for (const part of parts) {
           const disposition = part.headers['content-disposition'] || '';
@@ -162,16 +169,30 @@ export async function testSharpCloud(files, { prefix, onProgress, apiUrl, apiKey
           const filename = match?.[1] || 'output.bin';
 
           const blob = new Blob([part.body], { type: part.headers['content-type'] || 'application/octet-stream' });
-          downloadBlob(blob, filename);
+          if (downloadMode === 'store') {
+            storedFiles.push(new File([blob], filename, { type: blob.type || 'application/octet-stream' }));
+          } else {
+            downloadBlob(blob, filename);
+          }
           downloaded.push(filename);
         }
 
         console.log(`✅ Downloaded ${downloaded.length} files for ${file.name}`);
-        results.push({ file: file.name, ok: true, data: { downloaded } });
+        results.push({ file: file.name, ok: true, data: { downloaded, files: storedFiles } });
       } else {
-        const result = await response.json();
-        console.log(`✅ Success for ${file.name}:`, result.url);
-        results.push({ file: file.name, ok: true, data: result });
+        const isJson = contentType.toLowerCase().includes('application/json');
+        if (downloadMode === 'store' && !isJson) {
+          const blob = await response.blob();
+          const disposition = response.headers.get('content-disposition') || '';
+          const filename = extractFilenameFromDisposition(disposition, file.name || 'output.bin');
+          const storedFile = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+          console.log(`✅ Stored ${filename} for ${file.name}`);
+          results.push({ file: file.name, ok: true, data: { downloaded: [filename], files: [storedFile] } });
+        } else {
+          const result = await response.json();
+          console.log(`✅ Success for ${file.name}:`, result.url);
+          results.push({ file: file.name, ok: true, data: result });
+        }
       }
     } catch (err) {
       console.error(`❌ Upload failed for ${file.name}:`, err.message);

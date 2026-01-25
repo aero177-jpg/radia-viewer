@@ -1,0 +1,403 @@
+/**
+ * Collection upload flow hook
+ *
+ * Provides a unified file picker + modal flow for assets and image conversion,
+ * and routes actions based on the active collection type.
+ */
+
+import { h } from 'preact';
+import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
+import { getFormatAccept, getSupportedExtensions } from '../formats/index.js';
+import { isAndroidUserAgent, testSharpCloud } from '../testSharpCloud.js';
+import { handleAddFiles, handleMultipleFiles } from '../fileLoader.js';
+import { useStore } from '../store.js';
+import { getSource } from '../storage/index.js';
+import UploadChoiceModal from './UploadChoiceModal.jsx';
+
+// Constants moved outside hook to avoid recreating each render
+export const DEFAULT_IMAGE_EXTENSIONS = [
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.avif',
+  '.tif',
+  '.tiff',
+  '.heic',
+];
+
+const SUPPORTED_EXTENSIONS = getSupportedExtensions();
+const FORMAT_ACCEPT = getFormatAccept();
+const IMAGE_ACCEPT = `${DEFAULT_IMAGE_EXTENSIONS.join(',')},image/*`;
+const IS_ANDROID = isAndroidUserAgent();
+
+// Helper functions moved outside hook - no dependencies on hook state
+const isSupportedFile = (file) => {
+  if (!file?.name) return false;
+  const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+  return SUPPORTED_EXTENSIONS.includes(ext);
+};
+
+const isImageFile = (file) => {
+  if (!file) return false;
+  const type = file.type || '';
+  const name = (file.name || '').toLowerCase();
+  return type.startsWith('image/') || DEFAULT_IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext));
+};
+
+const getCollectionUploadCopy = (source) => {
+  const collectionName = source?.name || 'this collection';
+  const type = source?.type || 'none';
+
+  if (type === 'supabase-storage') {
+    return {
+      title: 'Upload to Supabase',
+      subtitle: `Choose what you want to upload to "${collectionName}".`,
+      assetTitle: '3dgs asset upload',
+      assetSubtitle: 'Uploads supported 3DGS assets to Supabase storage.',
+      imageTitle: 'Images to convert',
+      imageSubtitle: 'Sends images to Cloud GPU and uploads the results to Supabase.',
+      note: '',
+    };
+  }
+
+  if (type === 'app-storage') {
+    return {
+      title: 'Add to app storage',
+      subtitle: `Choose what you want to add to "${collectionName}".`,
+      assetTitle: '3dgs asset import',
+      assetSubtitle: 'Saves supported 3DGS assets into app storage.',
+      imageTitle: 'Images to convert',
+      imageSubtitle: 'Sends images to Cloud GPU and saves results into app storage.',
+      note: '',
+    };
+  }
+
+  if (type === 'local-folder') {
+    return {
+      title: 'Add files',
+      subtitle: 'Local folders are read-only. Converted images will download.',
+      assetTitle: '3dgs assets',
+      assetSubtitle: 'Adds supported 3DGS assets to the temporary queue.',
+      imageTitle: 'Images to convert',
+      imageSubtitle: 'Sends images to Cloud GPU and downloads the results.',
+      note: 'Files added here are temporary unless saved to a storage collection.',
+    };
+  }
+
+  return {
+    title: 'Add files',
+    subtitle: 'Choose what to add to the local queue.',
+    assetTitle: '3dgs assets',
+    assetSubtitle: 'Adds supported 3DGS assets to the temporary queue.',
+    imageTitle: 'Images to convert',
+    imageSubtitle: 'Sends images to Cloud GPU and adds converted assets to the queue.',
+    note: 'Files added here are temporary unless saved to a storage collection.',
+  };
+};
+
+const getCollectionPrefix = (source) => {
+  if (!source) return undefined;
+  const collectionId = source?.config?.collectionId || source?.config?.config?.collectionId;
+  return collectionId ? `collections/${collectionId}/assets` : 'collections/default/assets';
+};
+
+export function useCollectionUploadFlow({
+  source,
+  queueAction = 'replace',
+  selectFirstAdded = false,
+  allowAssets = true,
+  allowImages = true,
+  prepareOnly = false,
+  onPreparedFiles,
+  onOpenCloudGpu,
+  onRefreshAssets,
+  onAssetsUpdated,
+  onLoadingChange,
+  onUploadingChange,
+  onUploadProgress,
+  onUploadState,
+  onStatus,
+  onError,
+}) {
+  // Simple error reporter - inlined default behavior
+  const reportError = (message) => {
+    onError?.(message) ?? (message && alert(message));
+  };
+
+  const activeSourceId = useStore((state) => state.activeSourceId);
+  const setUploadState = useStore((state) => state.setUploadState);
+  const resolvedSource = useMemo(
+    () => source || (activeSourceId ? getSource(activeSourceId) : null),
+    [source, activeSourceId]
+  );
+
+  const [showUploadChoiceModal, setShowUploadChoiceModal] = useState(false);
+  const uploadModeRef = useRef(null);
+  const uploadInputRef = useRef(null);
+
+  // Compute accept strings based on allowed modes
+  const combinedAccept = useMemo(() => {
+    if (allowAssets && allowImages) return FORMAT_ACCEPT ? `${FORMAT_ACCEPT},${IMAGE_ACCEPT}` : IMAGE_ACCEPT;
+    if (allowImages) return IMAGE_ACCEPT;
+    return FORMAT_ACCEPT || '';
+  }, [allowAssets, allowImages]);
+
+  const uploadAccept = useMemo(() => {
+    const mode = uploadModeRef.current;
+    if (IS_ANDROID && mode === 'assets') return '';
+    if (mode === 'images') return IMAGE_ACCEPT;
+    if (mode === 'assets') return FORMAT_ACCEPT || '';
+    return combinedAccept;
+  }, [combinedAccept]);
+
+
+  const handleQueueAssets = useCallback(async (files) => {
+    if (queueAction === 'append') {
+      await handleAddFiles(files, { selectFirstAdded });
+    } else {
+      await handleMultipleFiles(files);
+    }
+  }, [queueAction, selectFirstAdded]);
+
+  const handleAssets = useCallback(async (files) => {
+    const valid = files.filter(isSupportedFile);
+    if (valid.length === 0) {
+      onStatus?.('error');
+      reportError(`No supported files. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`);
+      return;
+    }
+
+    if (prepareOnly) {
+      onPreparedFiles?.(valid, 'assets');
+      return;
+    }
+
+    const type = resolvedSource?.type;
+
+    onLoadingChange?.(true);
+    try {
+      if (type === 'supabase-storage' && typeof resolvedSource?.uploadAssets === 'function') {
+        const result = await resolvedSource.uploadAssets(valid);
+        if (!result?.success) {
+          onStatus?.('error');
+          reportError(result?.error || 'Upload failed');
+          return;
+        }
+        await onRefreshAssets?.();
+        await onAssetsUpdated?.({ mode: 'assets', source: resolvedSource, files: valid });
+        return;
+      }
+
+      if (type === 'app-storage' && typeof resolvedSource?.importFiles === 'function') {
+        const result = await resolvedSource.importFiles(valid);
+        if (!result?.success) {
+          onStatus?.('error');
+          reportError(result?.error || 'Import failed');
+          return;
+        }
+        await onRefreshAssets?.();
+        await onAssetsUpdated?.({ mode: 'assets', source: resolvedSource, files: valid });
+        return;
+      }
+
+      await handleQueueAssets(valid);
+    } catch (err) {
+      onStatus?.('error');
+      reportError(err?.message || String(err));
+    } finally {
+      onLoadingChange?.(false);
+    }
+  }, [handleQueueAssets, onAssetsUpdated, onLoadingChange, onPreparedFiles, onRefreshAssets, onStatus, prepareOnly, resolvedSource]);
+
+  const handleImages = useCallback(async (files) => {
+    const imageFiles = files.filter(isImageFile);
+    if (imageFiles.length === 0) {
+      onStatus?.('error');
+      reportError('No image files selected.');
+      return;
+    }
+
+    const type = resolvedSource?.type;
+    const prefix = type === 'supabase-storage' ? getCollectionPrefix(resolvedSource) : undefined;
+    const returnMode = type === 'supabase-storage' ? undefined : 'direct';
+    const downloadMode = type === 'app-storage' || (!resolvedSource && !prepareOnly) || prepareOnly ? 'store' : undefined;
+
+    onLoadingChange?.(true);
+    onUploadingChange?.(true);
+    const reportUploadState = (state) => {
+      onUploadState?.(state);
+      setUploadState?.(state);
+    };
+
+    onUploadProgress?.({ completed: 0, total: imageFiles.length });
+    reportUploadState({ isUploading: true, uploadProgress: { completed: 0, total: imageFiles.length } });
+
+    try {
+      const results = await testSharpCloud(imageFiles, {
+        prefix,
+        returnMode,
+        downloadMode,
+        onProgress: (progress) => {
+          onUploadProgress?.(progress);
+          reportUploadState({ isUploading: true, uploadProgress: progress });
+        },
+      });
+
+      const storedFiles = results.flatMap((result) => result?.data?.files || []);
+      const anySuccess = results.some((r) => r.ok);
+
+      if (prepareOnly) {
+        if (storedFiles.length > 0) {
+          onPreparedFiles?.(storedFiles, 'images');
+        } else if (!anySuccess) {
+          onStatus?.('error');
+          reportError('Image conversion failed.');
+        }
+        return;
+      }
+
+      if (type === 'app-storage' && storedFiles.length > 0 && typeof resolvedSource?.importFiles === 'function') {
+        const importResult = await resolvedSource.importFiles(storedFiles);
+        if (!importResult?.success) {
+          onStatus?.('error');
+          reportError(importResult?.error || 'Failed to import converted files');
+        } else {
+          await onRefreshAssets?.();
+        }
+        await onAssetsUpdated?.({ mode: 'images', source: resolvedSource, files: storedFiles });
+        return;
+      }
+
+      if (type === 'supabase-storage' && anySuccess) {
+        await onRefreshAssets?.();
+        await onAssetsUpdated?.({ mode: 'images', source: resolvedSource, files: imageFiles });
+        return;
+      }
+
+      if (!resolvedSource && storedFiles.length > 0) {
+        await handleQueueAssets(storedFiles);
+        return;
+      }
+
+      if (!anySuccess) {
+        onStatus?.('error');
+        reportError('Image conversion failed.');
+      }
+    } catch (err) {
+      onStatus?.('error');
+      reportError(err?.message || String(err));
+    } finally {
+      onLoadingChange?.(false);
+      onUploadingChange?.(false);
+      onUploadProgress?.(null);
+      reportUploadState({ isUploading: false, uploadProgress: null });
+    }
+  }, [handleQueueAssets, onAssetsUpdated, onLoadingChange, onPreparedFiles, onRefreshAssets, onStatus, onUploadProgress, onUploadState, onUploadingChange, prepareOnly, resolvedSource, setUploadState]);
+
+  const handleFilesForMode = useCallback(async (mode, files) => {
+    if (!files?.length) return;
+
+    if (mode === 'images') {
+      if (!allowImages) return;
+      await handleImages(files);
+      return;
+    }
+
+    if (!allowAssets) return;
+    await handleAssets(files);
+  }, [allowAssets, allowImages, handleAssets, handleImages]);
+
+  const openPickerForMode = useCallback(async (mode) => {
+    uploadModeRef.current = mode;
+
+    if (IS_ANDROID && mode === 'assets') {
+      requestAnimationFrame(() => {
+        uploadInputRef.current?.click();
+      });
+      return;
+    }
+
+    if (typeof window.showOpenFilePicker === 'function') {
+      try {
+        const types = mode === 'images'
+          ? [{ description: 'Images', accept: { 'image/*': DEFAULT_IMAGE_EXTENSIONS } }]
+          : [{ description: 'Supported 3DGS assets', accept: { 'application/octet-stream': SUPPORTED_EXTENSIONS } }];
+
+        const handles = await window.showOpenFilePicker({
+          multiple: true,
+          types,
+          excludeAcceptAllOption: false,
+        });
+
+        const files = await Promise.all(handles.map((handle) => handle.getFile()));
+        await handleFilesForMode(mode, files);
+        return;
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        console.warn('showOpenFilePicker failed, falling back to input:', err);
+      }
+    }
+
+    requestAnimationFrame(() => {
+      uploadInputRef.current?.click();
+    });
+  }, [handleFilesForMode]);
+
+  const openUploadPicker = useCallback(() => {
+    if (allowAssets && allowImages) {
+      setShowUploadChoiceModal(true);
+      return;
+    }
+
+    if (allowImages) {
+      openPickerForMode('images');
+      return;
+    }
+
+    openPickerForMode('assets');
+  }, [allowAssets, allowImages, openPickerForMode]);
+
+  const handleUploadChange = useCallback(async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    const mode = uploadModeRef.current || (allowAssets ? 'assets' : 'images');
+    uploadModeRef.current = null;
+    await handleFilesForMode(mode, files);
+  }, [allowAssets, handleFilesForMode]);
+
+  const uploadCopy = useMemo(() => getCollectionUploadCopy(resolvedSource), [resolvedSource]);
+
+  const uploadModal = h(UploadChoiceModal, {
+    isOpen: showUploadChoiceModal,
+    onClose: () => setShowUploadChoiceModal(false),
+    onPickAssets: () => {
+      setShowUploadChoiceModal(false);
+      openPickerForMode('assets');
+    },
+    onPickImages: () => {
+      setShowUploadChoiceModal(false);
+      openPickerForMode('images');
+    },
+    onOpenCloudGpu,
+    imageExtensions: DEFAULT_IMAGE_EXTENSIONS,
+    supportedExtensions: SUPPORTED_EXTENSIONS,
+    title: uploadCopy.title,
+    subtitle: uploadCopy.subtitle,
+    assetTitle: uploadCopy.assetTitle,
+    assetSubtitle: uploadCopy.assetSubtitle,
+    imageTitle: uploadCopy.imageTitle,
+    imageSubtitle: uploadCopy.imageSubtitle,
+    note: uploadCopy.note,
+  });
+
+  return {
+    uploadInputRef,
+    uploadAccept,
+    openUploadPicker,
+    openPickerForMode,
+    handleUploadChange,
+    uploadModal,
+    supportedExtensions: SUPPORTED_EXTENSIONS,
+  };
+}

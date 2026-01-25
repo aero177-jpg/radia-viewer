@@ -204,6 +204,58 @@ button, a, input, .sidebar-btn, .panel-toggle {
   pointer-events: none;
 }
 
+.viewer-upload-overlay {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 13;
+  min-width: 140px;
+  padding: 8px 10px 10px;
+  background: rgba(12, 16, 24, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.viewer-upload-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: rgba(200, 220, 255, 0.9);
+  margin-bottom: 4px;
+}
+
+.viewer-upload-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.viewer-upload-eta {
+  color: rgba(180, 205, 255, 0.85);
+}
+
+.viewer-upload-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.viewer-upload-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(82, 164, 255, 0.9), rgba(110, 231, 255, 0.9));
+  border-radius: inherit;
+  transition: width 160ms ease;
+}
+
 /* Slide transition blur and fade classes */
 .viewer.slide-out canvas {
   /* filter: blur(20px); */
@@ -3366,6 +3418,7 @@ select option {
 }
 
 .collection-meta {
+  max-width: 95%;
   font-size: 12px;
   color: #718096;
   display: flex;

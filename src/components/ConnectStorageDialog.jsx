@@ -4,7 +4,7 @@
  * Modal dialog for adding new collections backed by Local Folder or Supabase Storage.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'preact/hooks';
+import { useState, useCallback, useEffect, useMemo } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -35,9 +35,11 @@ import {
 import { loadSupabaseSettings, saveSupabaseSettings } from '../storage/supabaseSettings.js';
 import { listExistingCollections, testBucketConnection } from '../storage/supabaseApi.js';
 import { getAssetList } from '../assetManager.js';
-import { getFormatAccept, getSupportedExtensions } from '../formats/index.js';
+import { getSupportedExtensions } from '../formats/index.js';
 import CloudGpuForm from './CloudGpuForm.jsx';
+import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 import { Capacitor } from '@capacitor/core';
+import usePortalTarget from '../utils/usePortalTarget';
 
 const ICONS = {
   folder: faFolder,
@@ -98,7 +100,6 @@ function LocalFolderForm({ onConnect, onBack }) {
         registerSource(source);
         setStatus('success');
         setTimeout(() => onConnect(source), 500);
-      } else {
         setError(result.error || 'Failed to connect');
         setStatus('error');
       }
@@ -179,18 +180,25 @@ function AppStorageForm({ onConnect, onBack }) {
   const [error, setError] = useState(null);
   const [collectionName, setCollectionName] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const fileInputRef = useRef(null);
-  const acceptString = useMemo(() => getFormatAccept() || '', []);
   const supportedExtensions = useMemo(() => getSupportedExtensions(), []);
 
-  const handlePickFiles = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  const {
+    uploadInputRef,
+    uploadAccept,
+    openUploadPicker,
+    handleUploadChange,
+    uploadModal,
+  } = useCollectionUploadFlow({
+    prepareOnly: true,
+    allowAssets: true,
+    allowImages: true,
+    onPreparedFiles: (files) => setSelectedFiles(files),
+    onError: (message) => setError(message),
+  });
 
-  const handleFileChange = useCallback((event) => {
-    const files = Array.from(event.target.files || []);
-    setSelectedFiles(files);
-  }, []);
+  const handlePickFiles = useCallback(() => {
+    openUploadPicker();
+  }, [openUploadPicker]);
 
   const handleCreate = useCallback(async () => {
     setStatus('connecting');
@@ -270,12 +278,12 @@ function AppStorageForm({ onConnect, onBack }) {
       <div class="form-field">
         <label>Import assets (optional)</label>
         <input
-          ref={fileInputRef}
+          ref={uploadInputRef}
           type="file"
-          accept={acceptString}
+          accept={uploadAccept}
           multiple
           style={{ display: 'none' }}
-          onChange={handleFileChange}
+          onChange={handleUploadChange}
         />
         <button class="secondary-button" onClick={handlePickFiles} type="button" style={{ marginTop: '8px' }}>
           {selectedFiles.length > 0 ? `Selected ${selectedFiles.length} file(s)` : 'Pick files'}
@@ -316,6 +324,7 @@ function AppStorageForm({ onConnect, onBack }) {
       <p class="form-note">
         Collections are stored in the app’s private storage and remain available offline.
       </p>
+      {uploadModal}
     </div>
   );
 }
@@ -1180,6 +1189,7 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
   const [selectedTier, setSelectedTier] = useState(editSource?.type || initialTier || null);
   const localSupported = isFileSystemAccessSupported();
   const appStorageSupported = Capacitor?.isNativePlatform?.() || false;
+  const portalTarget = usePortalTarget();
 
   useEffect(() => {
     if (editSource) {
@@ -1208,7 +1218,7 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
     setSelectedTier(null);
   }, [onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !portalTarget) return null;
 
   const isEditMode = Boolean(editSource && editSource.type === 'public-url');
 
@@ -1284,7 +1294,7 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
     </div>
   );
 
-  return createPortal(content, document.body);
+  return createPortal(content, portalTarget);
 }
 
 export default ConnectStorageDialog;

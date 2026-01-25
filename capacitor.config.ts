@@ -4,7 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.radiaviewer.app',
   appName: 'Radia',
   webDir: 'dist',
-  bundledWebRuntime: false,
+  // server: {
+  //   url: 'http://192.168.0.231:5173/',
+  //   cleartext: true
+  // },
   plugins: {
     StatusBar: {
       overlaysWebView: true,

@@ -25,6 +25,8 @@ const VISIBILITY_TOGGLE_SELECTORS = [
   '.sidebar-hover-target',
   '.sidepanel-hover-target',
   '.bottom-swipe-target',
+  '.modal-overlay',
+  '.modal-content',
 ];
 
 const IMMERSIVE_CLASSES = ['immersive-active', 'immersive-mode', 'xr-immersive'];
