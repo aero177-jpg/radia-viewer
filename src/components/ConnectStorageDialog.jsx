@@ -41,7 +41,6 @@ import { getAssetList } from '../assetManager.js';
 import { getSupportedExtensions } from '../formats/index.js';
 import CloudGpuForm from './CloudGpuForm.jsx';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
-import { Capacitor } from '@capacitor/core';
 import usePortalTarget from '../utils/usePortalTarget';
 
 const ICONS = {
@@ -1872,7 +1871,7 @@ function R2Form({ onConnect, onBack, onClose, onSwitchProvider }) {
 function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditComplete, initialTier = null }) {
   const [selectedTier, setSelectedTier] = useState(editSource?.type || initialTier || null);
   const localSupported = isFileSystemAccessSupported();
-  const appStorageSupported = Capacitor?.isNativePlatform?.() || false;
+  const appStorageSupported = false;
   const portalTarget = usePortalTarget();
 
   useEffect(() => {

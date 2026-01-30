@@ -1,74 +1,26 @@
 /**
  * App Storage Source Adapter
  *
- * Stores collections inside the app's private filesystem (Capacitor Filesystem).
- * Collections persist across launches and work offline.
+ * Stores collections inside the app's private filesystem in native builds.
+ * Not available in the web-only build.
  */
 
 import { AssetSource } from './AssetSource.js';
-import { createSourceId, MANIFEST_VERSION, SUPPORTED_MANIFEST_VERSIONS } from './types.js';
+import { createSourceId, MANIFEST_VERSION } from './types.js';
 import { saveSource } from './sourceManager.js';
-import { getSupportedExtensions } from '../formats/index.js';
-import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
-import { Capacitor } from '@capacitor/core';
 
 const BASE_DIR = 'radia';
 const COLLECTIONS_DIR = `${BASE_DIR}/collections`;
 
 const stripLeadingSlash = (value) => (value || '').replace(/^\/+/, '');
 
-const getExtension = (filename) => {
-  const parts = filename.split('.');
-  return parts.length > 1 ? `.${parts.pop().toLowerCase()}` : '';
-};
-
 const getFilename = (path) => {
   const parts = path.split('/');
   return parts[parts.length - 1] || path;
 };
 
-const base64ToArrayBuffer = (base64) => {
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
-};
-
-const fileToBase64 = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== 'string') {
-        reject(new Error('Unexpected file reader result'));
-        return;
-      }
-      const base64 = result.split(',')[1] || '';
-      resolve(base64);
-    };
-    reader.readAsDataURL(file);
-  });
-};
-
-const ensureDirectory = async (path) => {
-  if (!path) return;
-  try {
-    await Filesystem.mkdir({
-      path,
-      directory: Directory.Data,
-      recursive: true,
-    });
-  } catch (err) {
-    const message = err?.message || '';
-    if (message.includes('EEXIST') || message.includes('exists')) {
-      return;
-    }
-    throw err;
-  }
+const base64ToArrayBuffer = () => {
+  throw new Error('App storage is not available in the web build');
 };
 
 export class AppStorageSource extends AssetSource {
@@ -110,60 +62,16 @@ export class AppStorageSource extends AssetSource {
   }
 
   async connect() {
-    try {
-      if (!Capacitor.isNativePlatform() && typeof Filesystem?.readdir !== 'function') {
-        return { success: false, error: 'App storage is not available in this environment' };
-      }
-
-      await ensureDirectory(COLLECTIONS_DIR);
-      await ensureDirectory(this._collectionRoot());
-      await ensureDirectory(this._assetsRoot());
-
-      await this._loadManifest();
-      await this._ensureManifestLoaded();
-
-      this._connected = true;
-      await saveSource(this.toJSON());
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    this._connected = false;
+    return { success: false, error: 'App storage is not available in the web build' };
   }
 
   async _loadManifest() {
-    try {
-      const { data } = await Filesystem.readFile({
-        path: this._manifestPath(),
-        directory: Directory.Data,
-        encoding: Encoding.UTF8,
-      });
-
-      const manifest = JSON.parse(data || '{}');
-      if (!SUPPORTED_MANIFEST_VERSIONS.includes(manifest.version)) {
-        throw new Error(`Unsupported manifest version: ${manifest.version}`);
-      }
-
-      this._manifest = manifest;
-
-      if (manifest.name) {
-        this.name = manifest.name;
-        this.config.name = manifest.name;
-      }
-      return manifest;
-    } catch (error) {
-      this._manifest = null;
-      return null;
-    }
+    this._manifest = null;
+    return null;
   }
 
   async _saveManifest(manifest) {
-    const payload = JSON.stringify(manifest, null, 2);
-    await Filesystem.writeFile({
-      path: this._manifestPath(),
-      directory: Directory.Data,
-      data: payload,
-      encoding: Encoding.UTF8,
-    });
     this._manifest = manifest;
     await saveSource(this.toJSON());
   }
@@ -181,76 +89,13 @@ export class AppStorageSource extends AssetSource {
   }
 
   async listAssets() {
-    if (!this._connected) {
-      throw new Error('Not connected');
-    }
-
-    await this._ensureManifestLoaded();
-    const supportedExtensions = getSupportedExtensions();
-    const assets = [];
-
-    if (this._manifest?.assets?.length) {
-      for (const item of this._manifest.assets) {
-        const ext = getExtension(item.path);
-        if (!supportedExtensions.includes(ext)) continue;
-
-        assets.push({
-          id: `${this.id}/${item.path}`,
-          name: item.name || getFilename(item.path),
-          path: item.path,
-          sourceId: this.id,
-          sourceType: this.type,
-          size: item.size,
-          preview: item.preview || null,
-          previewSource: item.preview ? 'local' : null,
-          metadata: item.metadata,
-          loaded: false,
-        });
-      }
-    } else {
-      try {
-        const result = await Filesystem.readdir({
-          path: this._assetsRoot(),
-          directory: Directory.Data,
-        });
-
-        for (const entry of result.files || []) {
-          const name = typeof entry === 'string' ? entry : entry.name;
-          if (!name) continue;
-          const ext = getExtension(name);
-          if (!supportedExtensions.includes(ext)) continue;
-
-          assets.push({
-            id: `${this.id}/${name}`,
-            name,
-            path: this._remotePathForFileName(name),
-            sourceId: this.id,
-            sourceType: this.type,
-            preview: null,
-            previewSource: null,
-            loaded: false,
-          });
-        }
-      } catch (error) {
-        console.warn('Failed to list app storage assets:', error);
-      }
-    }
-
-    this._assets = assets;
-    return assets;
+    this._assets = [];
+    return this._assets;
   }
 
   async fetchAssetData(asset) {
-    const fsPath = this._assetFsPath(asset.path);
-    const { data } = await Filesystem.readFile({
-      path: fsPath,
-      directory: Directory.Data,
-    });
-    const base64 = typeof data === 'string' ? data : data?.data;
-    if (!base64) {
-      throw new Error(`Failed to read asset data: ${asset.path}`);
-    }
-    return base64ToArrayBuffer(base64);
+    void asset;
+    return base64ToArrayBuffer();
   }
 
   async fetchAssetFile(asset) {
@@ -266,48 +111,12 @@ export class AppStorageSource extends AssetSource {
    * @returns {Promise<{success: boolean, removed?: string[], failed?: Array}>}
    */
   async deleteAssets(items) {
-    if (!this._connected) {
-      const result = await this.connect();
-      if (!result.success) return result;
-    }
-
-    const manifest = this._manifest;
     const toDelete = (Array.isArray(items) ? items : [items])
       .map(item => typeof item === 'string' ? item : item?.path)
       .filter(Boolean)
       .map(p => stripLeadingSlash(p));
 
-    const removed = [];
-    const failed = [];
-
-    for (const path of toDelete) {
-      try {
-        await Filesystem.deleteFile({
-          path: this._assetFsPath(path),
-          directory: Directory.Data,
-        });
-        removed.push(path);
-      } catch (err) {
-        // File may not exist; still remove from manifest
-        if (!err?.message?.includes('ENOENT')) {
-          failed.push({ path, error: err?.message });
-        }
-        removed.push(path);
-      }
-    }
-
-    if (removed.length) {
-      const removedSet = new Set(removed);
-      manifest.assets = manifest.assets.filter(
-        a => !removedSet.has(stripLeadingSlash(a.path))
-      );
-      await this._saveManifest(manifest);
-      this._assets = this._assets.filter(
-        a => !removedSet.has(stripLeadingSlash(a.path))
-      );
-    }
-
-    return { success: failed.length === 0, removed, failed };
+    return { success: false, removed: [], failed: toDelete.map(path => ({ path, error: 'App storage is not available in the web build' })) };
   }
 
   /**
@@ -316,57 +125,8 @@ export class AppStorageSource extends AssetSource {
    * @returns {Promise<{success: boolean, error?: string, imported?: number}>}
    */
   async importFiles(files) {
-    try {
-      if (!files?.length) return { success: true, imported: 0 };
-      if (!this._connected) {
-        const result = await this.connect();
-        if (!result.success) return result;
-      }
-
-      const supportedExtensions = getSupportedExtensions();
-      const valid = files.filter((file) => supportedExtensions.includes(getExtension(file.name)));
-      if (valid.length === 0) {
-        return { success: false, error: 'No supported files selected.' };
-      }
-
-      const manifest = this._manifest;
-
-      const updatedAssets = Array.isArray(manifest.assets) ? [...manifest.assets] : [];
-
-      for (const file of valid) {
-        const base64 = await fileToBase64(file);
-        const remotePath = this._remotePathForFileName(file.name);
-        const fsPath = this._assetFsPath(remotePath);
-
-        await Filesystem.writeFile({
-          path: fsPath,
-          directory: Directory.Data,
-          data: base64,
-        });
-
-        const existingIndex = updatedAssets.findIndex((item) => item.path === remotePath);
-        const entry = {
-          path: remotePath,
-          name: file.name,
-          size: file.size,
-        };
-
-        if (existingIndex >= 0) {
-          updatedAssets.splice(existingIndex, 1, entry);
-        } else {
-          updatedAssets.push(entry);
-        }
-      }
-
-      manifest.assets = updatedAssets;
-      if (!manifest.name) {
-        manifest.name = this.config.config.collectionName || this.config.name;
-      }
-      await this._saveManifest(manifest);
-      return { success: true, imported: valid.length };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+    void files;
+    return { success: false, error: 'App storage is not available in the web build' };
   }
 }
 

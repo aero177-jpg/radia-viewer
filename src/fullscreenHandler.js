@@ -6,8 +6,6 @@
 import { resize } from './fileLoader.js';
 import { requestRender, suspendRenderLoop, resumeRenderLoop } from './viewer.js';
 import { useStore } from './store.js';
-import { Capacitor } from '@capacitor/core';
-import { StatusBar } from '@capacitor/status-bar';
 
 const waitForNextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
@@ -36,19 +34,7 @@ const applyVisibilityHidden = (fullscreenRootEl, hidden) => {
   fullscreenRootEl.classList.toggle('fullscreen-ui-hidden', hidden);
 };
 
-const setMobileSystemUiHidden = async (hidden) => {
-  if (!Capacitor?.isNativePlatform?.()) return;
-
-  try {
-    if (hidden) {
-      await StatusBar.hide();
-    } else {
-      await StatusBar.show();
-    }
-  } catch {
-    // ignore
-  }
-};
+const setMobileSystemUiHidden = async () => {};
 
 const isFullscreenOrImmersive = (fullscreenRootEl, viewerEl) =>
   document.fullscreenElement === fullscreenRootEl ||
