@@ -102,6 +102,7 @@ function LocalFolderForm({ onConnect, onBack }) {
         registerSource(source);
         setStatus('success');
         setTimeout(() => onConnect(source), 500);
+      } else {
         setError(result.error || 'Failed to connect');
         setStatus('error');
       }

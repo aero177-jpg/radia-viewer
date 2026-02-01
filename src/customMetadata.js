@@ -21,6 +21,7 @@ const CUSTOM_METADATA_VERSION = 2;
 const MIN_MODEL_SCALE = 0.1;
 const MAX_MODEL_SCALE = 10.0;
 const DEFAULT_MODEL_SCALE = 1.0;
+const DEFAULT_ASPECT_RATIO = null;
 
 /**
  * Clamp scale to valid range
@@ -29,6 +30,12 @@ const clampScale = (value) => {
   const num = Number(value);
   if (!Number.isFinite(num)) return DEFAULT_MODEL_SCALE;
   return Math.max(MIN_MODEL_SCALE, Math.min(MAX_MODEL_SCALE, num));
+};
+
+const normalizeAspectRatio = (value) => {
+  if (value === null) return DEFAULT_ASPECT_RATIO;
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : DEFAULT_ASPECT_RATIO;
 };
 
 /**
@@ -198,6 +205,9 @@ export const captureCustomMetadataPayload = (overrides = {}) => {
   return {
     version: CUSTOM_METADATA_VERSION,
     cameraPose: pose,
+    view: {
+      aspectRatio: normalizeAspectRatio(overrides.aspectRatio),
+    },
     model: {
       applyCoordinateFlip: true, // Always apply for non-ML Sharp splats
       modelScale: clampScale(overrides.modelScale ?? DEFAULT_MODEL_SCALE),

@@ -69,9 +69,9 @@ const DEBUG_SPARK_STDDEV_KEY = 'debugSparkMaxStdDev';
 const DEBUG_FPS_LIMIT_KEY = 'debugFpsLimitEnabled';
 
 const QUALITY_PRESETS = {
-  high: { stdDev: 7, stochastic: false, fpsLimit: true },
-  default: { stdDev: 5, stochastic: false, fpsLimit: true },
-  performance: { stdDev: 2.5, stochastic: false, fpsLimit: false },
+  high: { stdDev: 5, stochastic: false, fpsLimit: true },
+  default: { stdDev: 2.5, stochastic: false, fpsLimit: true },
+  performance: { stdDev: 1.8, stochastic: false, fpsLimit: false },
   experimental: { stdDev: 1.8, stochastic: true, fpsLimit: false },
 };
 
@@ -158,6 +158,7 @@ export const useStore = create(
   customMetadataAvailable: false,
   customMetadataControlsVisible: false,
   customModelScale: 1,
+  customAspectRatio: 'full',
   // Show FPS counter overlay
   showFps: false,
 
@@ -294,6 +295,7 @@ export const useStore = create(
   setCustomMetadataAvailable: (customMetadataAvailable) => set({ customMetadataAvailable }),
   setCustomMetadataControlsVisible: (customMetadataControlsVisible) => set({ customMetadataControlsVisible }),
   setCustomModelScale: (customModelScale) => set({ customModelScale }),
+  setCustomAspectRatio: (customAspectRatio) => set({ customAspectRatio }),
   
   /** Updates file info (merges with existing) */
   setFileInfo: (info) => set((state) => ({ 

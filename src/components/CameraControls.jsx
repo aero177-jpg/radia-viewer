@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import { useStore } from '../store';
-import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, getFocusDistance, calculateOptimalEyeSeparation } from '../viewer';
+import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, getFocusDistance, calculateOptimalEyeSeparation, setOriginalImageAspect } from '../viewer';
 import { FocusIcon } from '../icons/customIcons';
 import { applyCameraRangeDegrees, restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
 import { currentMesh, raycaster, SplatMesh, scene } from '../viewer';
@@ -23,16 +23,32 @@ import {
   applyCustomModelTransform,
   captureCustomMetadataPayload,
   saveCustomMetadataForAsset,
+  clearCustomMetadataForAsset,
   applyFullOrbitConstraints,
   restoreOrbitConstraints,
 } from "../customMetadata.js";
 import { enterVrSession } from '../vrMode';
+import { updateViewerAspectRatio, resize } from '../layout.js';
 
 /** Default orbit range in degrees */
 const DEFAULT_CAMERA_RANGE_DEGREES = 26;
 const MIN_IMMERSIVE_RANGE_DEGREES = 10;
 const MAX_IMMERSIVE_RANGE_DEGREES = 90;
 const IMMERSIVE_RANGE_PER_SENSITIVITY = 18.75; // extra degrees per +1 sensitivity (hits 90° at max sens)
+
+const ASPECT_OPTIONS = [
+  { value: 'full', label: 'Full', ratio: null },
+  { value: '1:1', label: '1:1', ratio: 1 },
+  { value: '16:9', label: '16:9', ratio: 16 / 9 },
+  { value: '9:16', label: '9:16', ratio: 9 / 16 },
+  { value: '4:3', label: '4:3', ratio: 4 / 3 },
+  { value: '3:4', label: '3:4', ratio: 3 / 4 },
+];
+
+const aspectKeyToRatio = (key) => {
+  const option = ASPECT_OPTIONS.find((opt) => opt.value === key);
+  return option ? option.ratio : null;
+};
 
 /** Focus mode states */
 const FOCUS_MODE = {
@@ -162,8 +178,11 @@ function CameraControls() {
   const metadataMissing = useStore((state) => state.metadataMissing);
   const customModelScale = useStore((state) => state.customModelScale);
   const setCustomModelScale = useStore((state) => state.setCustomModelScale);
+  const customAspectRatio = useStore((state) => state.customAspectRatio);
+  const setCustomAspectRatio = useStore((state) => state.setCustomAspectRatio);
   const setCustomMetadataAvailable = useStore((state) => state.setCustomMetadataAvailable);
   const setMetadataMissing = useStore((state) => state.setMetadataMissing);
+  const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
   const qualityPreset = useStore((state) => state.qualityPreset);
   const setQualityPreset = useStore((state) => state.setQualityPreset);
 
@@ -179,6 +198,7 @@ function CameraControls() {
   const [focusMode, setFocusMode] = useState(FOCUS_MODE.IDLE);
   const focusModeRef = useRef(focusMode);
   focusModeRef.current = focusMode;
+  const [isClearingCustomMetadata, setIsClearingCustomMetadata] = useState(false);
 
   // Sync focus mode with custom focus state from store
   useEffect(() => {
@@ -634,6 +654,30 @@ function CameraControls() {
     });
   }, [setCustomModelScale]);
 
+  const handleCustomAspectRatioChange = useCallback((e) => {
+    const value = e.target.value;
+    setCustomAspectRatio(value);
+    const ratio = aspectKeyToRatio(value);
+    const viewerEl = document.getElementById('viewer');
+    if (viewerEl) {
+      viewerEl.classList.add('slide-out-fast');
+      viewerEl.classList.remove('slide-in');
+    }
+    setOriginalImageAspect(ratio);
+    updateViewerAspectRatio();
+    setTimeout(() => {
+      resize();
+      requestRender();
+      if (viewerEl) {
+        viewerEl.classList.remove('slide-out-fast');
+        viewerEl.classList.add('slide-in');
+        setTimeout(() => {
+          viewerEl.classList.remove('slide-in');
+        }, 550);
+      }
+    }, 500);
+  }, [setCustomAspectRatio]);
+
   const handleSaveCustomMetadata = useCallback(async () => {
     if (!currentFileName || currentFileName === '-') {
       addLog('No active file to save metadata');
@@ -642,6 +686,7 @@ function CameraControls() {
 
     const payload = captureCustomMetadataPayload({
       modelScale: customModelScale,
+      aspectRatio: aspectKeyToRatio(customAspectRatio),
     });
 
     const saved = await saveCustomMetadataForAsset(currentFileName, payload);
@@ -667,8 +712,49 @@ function CameraControls() {
 
     setCustomMetadataAvailable(true);
     setMetadataMissing(false);
+    setCustomMetadataControlsVisible(false);
     addLog('Custom metadata saved');
-  }, [currentFileName, customModelScale, addLog, assets, currentAssetIndex, updateAssetPreview, setCustomMetadataAvailable, setMetadataMissing]);
+  }, [currentFileName, customModelScale, customAspectRatio, addLog, assets, currentAssetIndex, updateAssetPreview, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible]);
+
+  const handleClearCustomMetadata = useCallback(async () => {
+    if (!currentFileName || currentFileName === '-' || isClearingCustomMetadata) return;
+
+    setIsClearingCustomMetadata(true);
+    try {
+      const cleared = await clearCustomMetadataForAsset(currentFileName);
+      if (!cleared) {
+        addLog('Failed to clear custom metadata');
+        return;
+      }
+
+      setCustomMetadataAvailable(false);
+      setMetadataMissing(true);
+      setCustomMetadataControlsVisible(true);
+      setCustomModelScale(1);
+      setCustomAspectRatio('full');
+      setOriginalImageAspect(null);
+      updateViewerAspectRatio();
+      resize();
+      addLog('Custom metadata cleared');
+
+      const asset = assets[currentAssetIndex];
+      if (asset) {
+        if (currentFileName && currentFileName !== '-') {
+          const focusCleared = await clearFocusDistance(currentFileName);
+          if (focusCleared && asset?.id) {
+            clearFocusDistanceInCache(asset.id);
+          }
+          setHasCustomFocus(false);
+          setFocusMode(FOCUS_MODE.IDLE);
+        }
+        loadSplatFile(asset, { slideDirection: null }).catch((err) => {
+          console.warn('Failed to reload asset after clearing custom metadata:', err);
+        });
+      }
+    } finally {
+      setIsClearingCustomMetadata(false);
+    }
+  }, [currentFileName, isClearingCustomMetadata, addLog, assets, currentAssetIndex, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible, setCustomModelScale, setCustomAspectRatio]);
 
   /**
    * Resets view with immersive mode support.
@@ -898,11 +984,41 @@ function CameraControls() {
               </div>
             </div>
 
+            <div class="control-row">
+              <span class="control-label">Aspect ratio</span>
+              <div class="control-track">
+                <select
+                  class="quality-select"
+                  value={customAspectRatio}
+                  onChange={handleCustomAspectRatioChange}
+                >
+                  {ASPECT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <button 
               class="save-view-button"
               onClick={handleSaveCustomMetadata}
             >
               Save View
+            </button>
+          </div>
+        )}
+
+        {customMetadataAvailable && !customMetadataControlsVisible && (
+          <div class="control-row clear-custom-row">
+            <button
+              type="button"
+              class="clear-custom-btn"
+              onClick={handleClearCustomMetadata}
+              disabled={isClearingCustomMetadata}
+            >
+              {isClearingCustomMetadata ? 'Clearing...' : 'Clear custom camera'}
             </button>
           </div>
         )}

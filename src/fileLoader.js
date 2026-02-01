@@ -428,16 +428,39 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       store.setFocusDistanceOverride(null);
     }
 
+    // Extract custom aspect ratio from metadata (for non-ML Sharp assets)
+    const customAspectRatio = customMetadata?.view?.aspectRatio;
+
     if (cameraMetadata?.intrinsics) {
       const { intrinsics } = cameraMetadata;
-      setOriginalImageAspect(intrinsics.imageWidth / intrinsics.imageHeight);
+      const aspect = intrinsics.imageWidth / intrinsics.imageHeight;
+      setOriginalImageAspect(aspect);
+      // console.log(`[Aspect] ${asset.name}: ${aspect.toFixed(4)} (${intrinsics.imageWidth}x${intrinsics.imageHeight})`);
       store.addLog(
         `${formatLabel ?? "3DGS"} camera: fx=${intrinsics.fx.toFixed(1)}, fy=${intrinsics.fy.toFixed(1)}, ` +
           `cx=${intrinsics.cx.toFixed(1)}, cy=${intrinsics.cy.toFixed(1)}, ` +
           `img=${intrinsics.imageWidth}x${intrinsics.imageHeight}`,
       );
+    } else if (customAspectRatio && customAspectRatio > 0) {
+      // Apply custom aspect ratio from saved metadata
+      setOriginalImageAspect(customAspectRatio);
+      console.log(`[Aspect] ${asset.name}: custom override ${customAspectRatio.toFixed(4)}`);
+      
+      // Sync dropdown state - convert ratio to key
+      const aspectRatioToKey = (ratio) => {
+        if (!ratio || ratio === null) return 'full';
+        const tolerance = 0.01;
+        if (Math.abs(ratio - 1) < tolerance) return '1:1';
+        if (Math.abs(ratio - 16/9) < tolerance) return '16:9';
+        if (Math.abs(ratio - 9/16) < tolerance) return '9:16';
+        if (Math.abs(ratio - 4/3) < tolerance) return '4:3';
+        if (Math.abs(ratio - 3/4) < tolerance) return '3:4';
+        return 'full'; // fallback for custom ratios not in list
+      };
+      store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
     } else {
       setOriginalImageAspect(null);
+      store.setCustomAspectRatio('full');
     }
 
     // slide-out class was already added at the start of loadSplatFile for first load
@@ -447,6 +470,13 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     }
 
     updateViewerAspectRatio();
+
+    // For custom aspect ratio on non-first loads, wait for CSS transition then resize renderer
+    if (customAspectRatio && !isFirstLoad) {
+      await waitForViewerResizeTransition();
+      resize();
+      requestRender();
+    }
 
     // For first load, wait for aspect ratio transition then prepare for fade-in
     if (isFirstLoad) {

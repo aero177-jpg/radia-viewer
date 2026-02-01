@@ -280,12 +280,16 @@ export const fitViewToMesh = (mesh) => {
   box.getSize(size);
   box.getCenter(center);
 
-  const radius = Math.max(size.length() * 0.5, 0.5);
+  // Use a tighter fit based on the visible plane (X/Y) to avoid zooming out too far
+  const visibleRadius = Math.max(size.x, size.y) * 0.5;
+  const radius = Math.max(visibleRadius, 0.5);
   const dist = radius / Math.tan((camera.fov * Math.PI) / 360);
 
-  camera.position.copy(center).add(new THREE.Vector3(dist, dist, dist));
+  // Align camera straight down the forward axis for consistency with ML-Sharp views
+  camera.up.set(0, 1, 0);
+  camera.position.copy(center).add(new THREE.Vector3(0, 0, dist));
   camera.near = Math.max(0.01, radius * 0.01);
-  camera.far = Math.max(dist * 4, radius * 8);
+  camera.far = Math.max(dist * 4, Math.max(size.z, radius) * 8);
   camera.updateProjectionMatrix();
 
   controls.target.copy(center);

@@ -326,7 +326,7 @@ export const slideOutAnimation = (direction, { duration = 1200, amount = 0.45, f
       return;
     }
 
-    console.log(`[SlideOut] START - duration: ${durationSec}s, mode: ${mode}`);
+    // console.log(`[SlideOut] START - duration: ${durationSec}s, mode: ${mode}`);
 
     const geometry = calculateSlideGeometry(mode, direction, amount, true);
     const { startPosition, endPosition, startTarget, endTarget, orbitAxis, orbitAngle } = geometry;
@@ -382,7 +382,7 @@ export const slideOutAnimation = (direction, { duration = 1200, amount = 0.45, f
         requestRender();
       },
       onComplete: () => {
-        console.log(`[SlideOut] END`);
+        // console.log(`[SlideOut] END`);
         currentGsapTween = null;
         slideAnimationState = null;
         resolve();
@@ -415,7 +415,7 @@ export const slideInAnimation = (direction, { duration = 1200, amount = 0.45, mo
       return;
     }
 
-    console.log(`[SlideIn] START - duration: ${durationSec}s, mode: ${mode}`);
+    // console.log(`[SlideIn] START - duration: ${durationSec}s, mode: ${mode}`);
 
     const geometry = calculateSlideGeometry(mode, direction, amount, false);
     const { startPosition, endPosition, startTarget, endTarget, orbitAxis, startOrbitAngle } = geometry;
@@ -468,7 +468,7 @@ export const slideInAnimation = (direction, { duration = 1200, amount = 0.45, mo
         requestRender();
       },
       onComplete: () => {
-        console.log(`[SlideIn] END`);
+        // console.log(`[SlideIn] END`);
         currentGsapTween = null;
         slideAnimationState = null;
 

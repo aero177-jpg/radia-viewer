@@ -41,6 +41,7 @@ function AssetSidebar() {
     uploadModal,
   } = useCollectionUploadFlow({
     queueAction: 'append',
+    selectFirstAdded: true,
     allowAssets: true,
     allowImages: true,
   });

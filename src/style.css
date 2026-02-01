@@ -265,6 +265,14 @@ button, a, input, .sidebar-btn, .panel-toggle {
   transition: filter 0.35s ease-out, opacity 0.45s ease-out;
 }
 
+.viewer.slide-out-fast canvas {
+  /* filter: blur(20px); */
+
+  opacity: 0;
+  /* Heavy blur and fade at end - controlled by JS adding this class late */
+  transition: filter 0.35s ease-out, opacity 0.15s ease-out;
+}
+
 .viewer.slide-out.slide-in canvas {
   /* Hold the outgoing opacity/blur until slide-out is removed */
   opacity: 0;
@@ -3538,6 +3546,32 @@ select option {
 
 .custom-metadata-section input[type="range"] {
   width: 120px;
+}
+
+.clear-custom-row {
+  justify-content: flex-end;
+}
+
+.clear-custom-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.clear-custom-btn:hover:not(:disabled) {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.4);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.clear-custom-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .save-view-button {

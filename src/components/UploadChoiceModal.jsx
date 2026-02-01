@@ -16,7 +16,7 @@ import { CubeIcon, ImageIcon } from '../icons/customIcons';
 import { loadCloudGpuSettings } from '../storage/cloudGpuSettings.js';
 import usePortalTarget from '../utils/usePortalTarget';
 
-function UploadOptionItem({ title, subtitle, icon: Icon, selected, onSelect, disabled }) {
+function UploadOptionItem({ title, subtitle, icon: Icon, selected, onSelect, onConfirm, disabled }) {
   const selectedStyle = selected ? {
     borderColor: 'rgba(110, 231, 255, 0.4)',
     background: 'rgba(110, 231, 255, 0.1)',
@@ -30,10 +30,19 @@ function UploadOptionItem({ title, subtitle, icon: Icon, selected, onSelect, dis
   } : {};
   const combinedStyle = { ...selectedStyle, ...disabledStyle };
 
+  const handleClick = () => {
+    if (disabled) return;
+    if (selected) {
+      onConfirm?.();
+      return;
+    }
+    onSelect?.();
+  };
+
   return (
     <button
       class={`existing-collection-item ${selected ? 'selected' : ''}`}
-      onClick={disabled ? undefined : onSelect}
+      onClick={handleClick}
       type="button"
       style={combinedStyle}
       disabled={disabled}
@@ -116,6 +125,7 @@ function UploadChoiceModal({
             icon={CubeIcon}
             selected={mode === 'assets'}
             onSelect={() => setMode('assets')}
+            onConfirm={handleUpload}
           />
           <UploadOptionItem
             title={imageTitle}
@@ -123,6 +133,7 @@ function UploadChoiceModal({
             icon={ImageIcon}
             selected={mode === 'images'}
             onSelect={() => setMode('images')}
+            onConfirm={handleUpload}
             disabled={!isCloudGpuConfigured}
           />
         </div>
