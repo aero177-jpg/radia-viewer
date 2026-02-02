@@ -367,6 +367,27 @@ function App() {
   }, [addLog]);
 
   /**
+   * Handle selecting a source from the collections modal
+   */
+  const handleSelectSource = useCallback(async (source) => {
+    try {
+      setLandingVisible(false);
+      await loadFromStorageSource(source);
+    } catch (err) {
+      addLog('Failed to load from source: ' + (err?.message || err));
+      console.warn('Failed to load from source:', err);
+    }
+  }, [addLog]);
+
+  /**
+   * Handle opening cloud GPU dialog from collections modal
+   */
+  const handleOpenCloudGpu = useCallback(() => {
+    setStorageDialogInitialTier('cloud-gpu');
+    setStorageDialogOpen(true);
+  }, []);
+
+  /**
    * Detects mobile device and orientation.
    * Uses orientationchange event and matchMedia for reliable mobile detection.
    */
@@ -490,6 +511,8 @@ function App() {
         onPickFile={handlePickFile}
         onOpenStorage={handleOpenStorage}
         onLoadDemo={handleLoadDemo}
+        onSelectSource={handleSelectSource}
+        onOpenCloudGpu={handleOpenCloudGpu}
       />
         <Viewer viewerReady={viewerReady} />
       {/* Separate swipe target near bottom controls (debug green) */}

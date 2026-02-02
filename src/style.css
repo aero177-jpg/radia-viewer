@@ -1033,6 +1033,18 @@ button, a, input, .sidebar-btn, .panel-toggle {
   width: 100%;
 }
 
+.recenter-btn {
+  position: relative;
+}
+
+.recenter-hint {
+  font-size: 10px;
+  color: rgba(230, 236, 248, 0.35);
+  text-align: left;
+  margin-top: 0px;
+  user-select: none;
+}
+
 .debug {
   display: grid;
   gap: 6px;

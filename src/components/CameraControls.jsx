@@ -15,7 +15,7 @@ import { enableImmersiveMode, disableImmersiveMode, recenterInImmersiveMode, isI
 import { saveFocusDistance, clearFocusDistance } from '../fileStorage';
 import { updateFocusDistanceInCache, clearFocusDistanceInCache } from '../splatManager';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown, faEye, faEyeSlash } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faEye, faEyeSlash, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { loadSplatFile } from '../fileLoader';
 import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
@@ -452,6 +452,10 @@ function CameraControls() {
   // Track if we're actively adjusting camera range to pause immersive mode
   const rangeAdjustTimeoutRef = useRef(null);
 
+  // Hold-to-refresh state for recenter button
+  const [isHoldingRecenter, setIsHoldingRecenter] = useState(false);
+  const recenterHoldTimeoutRef = useRef(null);
+
   /**
    * Handles orbit range slider changes.
    * Converts linear slider value to non-linear degrees for intuitive control.
@@ -764,6 +768,48 @@ function CameraControls() {
     resetViewWithImmersive();
   }, []);
 
+  /**
+   * Handles hold-to-refresh: starts a 1s timer on press.
+   * If held long enough, triggers a full viewer refresh.
+   */
+  const handleRecenterPointerDown = useCallback(() => {
+    setIsHoldingRecenter(true);
+    recenterHoldTimeoutRef.current = setTimeout(() => {
+      // Held for 1 second - recenter then trigger refresh
+      handleRecenterWithImmersive();
+      resize();
+      requestRender();
+      addLog('Forced viewer refresh (recenter + resize + render)');
+      setIsHoldingRecenter(false);
+    }, 1000);
+  }, [addLog, handleRecenterWithImmersive]);
+
+  /**
+   * Cancels hold timer and triggers normal recenter if released early.
+   */
+  const handleRecenterPointerUp = useCallback(() => {
+    if (recenterHoldTimeoutRef.current) {
+      clearTimeout(recenterHoldTimeoutRef.current);
+      recenterHoldTimeoutRef.current = null;
+      // Only recenter if we were holding (not already triggered refresh)
+      if (isHoldingRecenter) {
+        handleRecenterWithImmersive();
+      }
+    }
+    setIsHoldingRecenter(false);
+  }, [isHoldingRecenter, handleRecenterWithImmersive]);
+
+  /**
+   * Cancels hold timer if pointer leaves button.
+   */
+  const handleRecenterPointerLeave = useCallback(() => {
+    if (recenterHoldTimeoutRef.current) {
+      clearTimeout(recenterHoldTimeoutRef.current);
+      recenterHoldTimeoutRef.current = null;
+    }
+    setIsHoldingRecenter(false);
+  }, []);
+
   return (
     <div class="settings-group">
       {/* Collapsible header */}
@@ -1025,8 +1071,30 @@ function CameraControls() {
 
         {/* Action buttons */}
         <div class="settings-footer">
-          <button class="secondary" onClick={handleRecenterWithImmersive}>
+          <span class="recenter-hint">hold to refresh</span>
+          <button
+            class="secondary recenter-btn"
+            onPointerDown={handleRecenterPointerDown}
+            onPointerUp={handleRecenterPointerUp}
+            onPointerLeave={handleRecenterPointerLeave}
+            onPointerCancel={handleRecenterPointerLeave}
+            style={{ position: 'relative' }}
+          >
             Recenter view
+            {isHoldingRecenter && (
+              <FontAwesomeIcon
+                icon={faSpinner}
+                spin
+                style={{
+                   position: 'absolute',
+                  right: '10px',
+                  top: '10px',
+                  transform: 'translateY(-50%)',
+                  fontSize: '12px',
+                  opacity: 0.7,
+                }}
+              />
+            )}
           </button>
           
           <div class="focus-control">

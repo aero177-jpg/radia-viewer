@@ -1,73 +1,31 @@
 /**
  * Debug settings dropdown for the side panel.
- * Hosts FPS overlay toggle, mobile devtools toggle, and a DB wipe action.
+ * Hosts FPS overlay toggle and viewer debug controls.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
 import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
-import { clearSupabaseManifestCache } from '../storage/supabaseSettings.js';
 import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
-import { setDebugForceZoomOut, reloadCurrentAsset, resize } from '../fileLoader';
+import { resize } from '../fileLoader';
 import { clearCustomMetadataForAsset } from '../customMetadata.js';
 import { requestRender, setStereoEffectEnabled } from '../viewer';
+import { formatBytes } from '../previewManager.js';
+import { getSource, isSourceAsset, loadAssetFile } from '../storage/index.js';
+import { zipSync } from 'fflate';
 import TransferDataModal from './TransferDataModal';
+import ExportChoiceModal from './ExportChoiceModal';
 
-let erudaInitPromise = null;
-
-/** Lazily load and enable Eruda devtools */
-const enableMobileDevtools = async () => {
-  if (typeof window === 'undefined') return false;
-
-  if (window.eruda) {
-    window.eruda.show?.();
-    return true;
-  }
-
-  if (!erudaInitPromise) {
-    erudaInitPromise = import('eruda')
-      .then(({ default: erudaLib }) =>
-        import('eruda-indexeddb').then(({ default: erudaIndexedDB }) => {
-          erudaLib.init();
-          erudaLib.add(erudaIndexedDB);
-          return erudaLib;
-        })
-      )
-      .catch((err) => {
-        erudaInitPromise = null;
-        throw err;
-      });
-  }
-
-  await erudaInitPromise;
-  return true;
-};
-
-/** Tear down Eruda devtools if present */
-const disableMobileDevtools = () => {
-  const instance = typeof window !== 'undefined' ? window.eruda : null;
-  if (instance?.hide) instance.hide();
-  if (instance?.destroy) instance.destroy();
-  if (typeof window !== 'undefined') {
-    // Ensure any leftover DOM is removed
-    const erudaRoot = document.getElementById('eruda');
-    if (erudaRoot?.parentNode) {
-      erudaRoot.parentNode.removeChild(erudaRoot);
-    }
-    if (window.eruda) {
-      delete window.eruda;
-    }
-  }
-};
 
 function DebugSettings() {
   const showFps = useStore((state) => state.showFps);
   const setShowFps = useStore((state) => state.setShowFps);
-  const mobileDevtoolsEnabled = useStore((state) => state.mobileDevtoolsEnabled);
-  const setMobileDevtoolsEnabled = useStore((state) => state.setMobileDevtoolsEnabled);
+  const assets = useStore((state) => state.assets);
+  const currentAssetIndex = useStore((state) => state.currentAssetIndex);
+  const activeSourceId = useStore((state) => state.activeSourceId);
   const debugSettingsExpanded = useStore((state) => state.debugSettingsExpanded);
   const toggleDebugSettingsExpanded = useStore((state) => state.toggleDebugSettingsExpanded);
   const updateAssetPreview = useStore((state) => state.updateAssetPreview);
@@ -88,7 +46,6 @@ function DebugSettings() {
   const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
   const stereoEnabled = useStore((state) => state.stereoEnabled);
   const setStereoEnabled = useStore((state) => state.setStereoEnabled);
-  const devtoolsUserApprovedRef = useRef(false);
 
   const {
     currentAssetName,
@@ -97,14 +54,38 @@ function DebugSettings() {
     resetCustomMetadataState,
   } = useStore();
 
-  const [wipingDb, setWipingDb] = useState(false);
-  const [clearingSupabaseCache, setClearingSupabaseCache] = useState(false);
   const [generatingPreview, setGeneratingPreview] = useState(false);
   const [batchProgress, setBatchProgress] = useState(null); // { current, total, name }
   const [generatingBatch, setGeneratingBatch] = useState(false);
-  const [debugZoomOut, setDebugZoomOut] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+
+  const currentAsset = assets[currentAssetIndex] || null;
+  const currentAssetSize = currentAsset?.file?.size ?? currentAsset?.size ?? null;
+
+  const collectionInfo = useMemo(() => {
+    const source = activeSourceId ? getSource(activeSourceId) : null;
+    const collectionName = source?.name || source?.config?.collectionName || 'Current collection';
+    const totalAssets = assets.length;
+    const sizeValues = assets.map((asset) => asset?.file?.size ?? asset?.size).filter((size) => Number.isFinite(size));
+    const allSizesKnown = totalAssets > 0 && sizeValues.length === totalAssets;
+    const totalSize = sizeValues.reduce((sum, size) => sum + size, 0);
+    const sogCount = assets.filter((asset) => {
+      const name = (asset?.name || asset?.path || '').toLowerCase();
+      return name.endsWith('.sog');
+    }).length;
+    const estimatedBytes = sogCount > 0 ? sogCount * 11 * 1024 * 1024 : null;
+
+    return {
+      collectionName,
+      totalAssets,
+      allSizesKnown,
+      totalSize,
+      estimatedBytes,
+      sogCount,
+    };
+  }, [activeSourceId, assets]);
 
   const refreshAssets = useCallback(() => {
     const assets = getAssetList();
@@ -121,18 +102,6 @@ function DebugSettings() {
     if (el) el.style.display = enabled ? 'block' : 'none';
   }, [setShowFps]);
 
-  /** Enable/disable mobile devtools (Eruda) */
-  const handleDevtoolsToggle = useCallback((e) => {
-    const enabled = Boolean(e.target.checked);
-    // mark that the user explicitly approved initialization for this session
-    devtoolsUserApprovedRef.current = true;
-    setMobileDevtoolsEnabled(enabled);
-    if (!enabled) {
-      // immediate teardown so the UI responds without waiting on effects
-      disableMobileDevtools();
-    }
-  }, [setMobileDevtoolsEnabled]);
-
   /** Toggle stochastic rendering */
   const handleStochasticToggle = useCallback((e) => {
     const enabled = Boolean(e.target.checked);
@@ -146,13 +115,6 @@ function DebugSettings() {
     setQualityPreset('debug-custom');
     setDebugFpsLimitEnabled(enabled);
   }, [setDebugFpsLimitEnabled, setQualityPreset]);
-
-  /** Force viewer refresh for fullscreen resize debugging */
-  const handleForceViewerRefresh = useCallback(async () => {
-    resize();
-    requestRender();
-    addLog('Forced viewer refresh (resize + render)');
-  }, [addLog]);
 
   /** Toggle side-by-side stereo effect; enter fullscreen when enabling */
   const handleStereoToggle = useCallback(async (e) => {
@@ -224,46 +186,6 @@ function DebugSettings() {
       setIsClearing(false);
     }
   }, [currentAssetName, isClearing, setCurrentAssetHasCustomMetadata, resetCustomMetadataState]);
-
-  /** Wipes IndexedDB image store and reloads */
-  const handleWipeDb = useCallback(async () => {
-    const confirmed = window.confirm('Wipe IndexedDB "radia-viewer-storage"? This cannot be undone.');
-    if (!confirmed) return;
-
-    setWipingDb(true);
-    try {
-      await new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('radia-viewer-storage');
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error || new Error('Failed to delete database'));
-        request.onblocked = () => console.warn('Delete blocked: close other tabs or reopen the app.');
-      });
-      alert('IndexedDB radia-viewer-storage wiped. Reloading...');
-      window.location.reload();
-    } catch (err) {
-      console.error('DB wipe failed:', err);
-      alert(err?.message || 'Failed to wipe DB');
-    } finally {
-      setWipingDb(false);
-    }
-  }, []);
-
-  /** Clears local Supabase manifest cache */
-  const handleClearSupabaseCache = useCallback(async () => {
-    const confirmed = window.confirm('Clear cached Supabase manifest data?');
-    if (!confirmed) return;
-
-    setClearingSupabaseCache(true);
-    try {
-      clearSupabaseManifestCache();
-      addLog('[Debug] Cleared Supabase manifest cache');
-    } catch (err) {
-      console.error('[Debug] Supabase cache clear failed:', err);
-      addLog(`[Debug] Supabase cache clear failed: ${err.message}`);
-    } finally {
-      setClearingSupabaseCache(false);
-    }
-  }, [addLog]);
 
   /** Debug: force regenerate preview for current asset */
   const handleRegeneratePreview = useCallback(async () => {
@@ -367,24 +289,64 @@ function DebugSettings() {
     addLog('[BatchPreview] Abort requested');
   }, [addLog]);
 
+  const sanitizeFileName = useCallback((name, fallback = 'untitled') => {
+    if (!name) return fallback;
+    return String(name)
+      .replace(/[^a-z0-9._-]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 120) || fallback;
+  }, []);
 
-  // React to devtools preference changes — require explicit user approval to initialize
-  useEffect(() => {
-    if (mobileDevtoolsEnabled) {
-      if (!devtoolsUserApprovedRef.current) {
-        // persisted preference exists but user has not re-approved in this session;
-        // do not auto-initialize Eruda to avoid surprises.
-        console.info('[Devtools] Initialization deferred: user approval required (toggle to initialize).');
-        return;
+  const downloadBlob = useCallback((blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, []);
+
+  const handleExportCurrentAsset = useCallback(async () => {
+    if (!currentAsset) throw new Error('No current asset available');
+    const file = currentAsset.file
+      ? currentAsset.file
+      : (isSourceAsset(currentAsset) ? await loadAssetFile(currentAsset) : null);
+
+    if (!file) throw new Error('Unable to load current asset file');
+    downloadBlob(file, file.name || sanitizeFileName(currentAsset.name || 'asset'));
+    addLog(`[Export] Downloaded ${file.name || currentAsset.name || 'asset'}`);
+  }, [addLog, currentAsset, downloadBlob, sanitizeFileName]);
+
+  const handleExportCollection = useCallback(async () => {
+    if (!assets.length) throw new Error('No assets to export');
+
+    const files = {};
+    for (let i = 0; i < assets.length; i += 1) {
+      const asset = assets[i];
+      const assetFile = asset?.file
+        ? asset.file
+        : (isSourceAsset(asset) ? await loadAssetFile(asset) : null);
+
+      if (!assetFile) {
+        throw new Error(`Unable to load asset: ${asset?.name || `#${i + 1}`}`);
       }
-      enableMobileDevtools().catch((err) => {
-        console.warn('[Devtools] Failed to enable:', err);
-        setMobileDevtoolsEnabled(false);
-      });
-    } else {
-      disableMobileDevtools();
+
+      const safeName = sanitizeFileName(assetFile.name || asset?.name || `asset-${i + 1}`);
+      const buffer = await assetFile.arrayBuffer();
+      files[`assets/${i + 1}-${safeName}`] = new Uint8Array(buffer);
     }
-  }, [mobileDevtoolsEnabled, setMobileDevtoolsEnabled]);
+
+    const zipData = zipSync(files, { level: 6 });
+    const blob = new Blob([zipData], { type: 'application/zip' });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeCollectionName = sanitizeFileName(collectionInfo.collectionName, 'collection');
+    const filename = `${safeCollectionName}-${stamp}.zip`;
+    downloadBlob(blob, filename);
+    addLog(`[Export] Downloaded collection ZIP (${assets.length} assets)`);
+  }, [addLog, assets, collectionInfo.collectionName, downloadBlob, sanitizeFileName]);
+
 
   // If fullscreen is exited while stereo is on, disable stereo to avoid misalignment
   useEffect(() => {
@@ -464,16 +426,19 @@ function DebugSettings() {
           </div>
         </div>
 
-        <button
-          class="secondary"
-          type="button"
-          onClick={handleForceViewerRefresh}
-        >
-          Force viewer refresh
-        </button>
-
         <div class="settings-divider">
           <span>Cache</span>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Download</span>
+          <button
+            type="button"
+            class="secondary"
+            onClick={() => setExportModalOpen(true)}
+          >
+            Export...
+          </button>
         </div>
 
         <div class="control-row">
@@ -550,30 +515,6 @@ function DebugSettings() {
         </div>
 
         <div class="control-row">
-          <span class="control-label">Delete image store</span>
-          <button
-            type="button"
-            class={`secondary danger ${wipingDb ? 'is-busy' : ''}`}
-            onClick={handleWipeDb}
-            disabled={wipingDb}
-          >
-            {wipingDb ? 'Deleting...' : 'Delete'}
-          </button>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Clear Supabase cache</span>
-          <button
-            type="button"
-            class={`secondary ${clearingSupabaseCache ? 'is-busy' : ''}`}
-            onClick={handleClearSupabaseCache}
-            disabled={clearingSupabaseCache}
-          >
-            {clearingSupabaseCache ? 'Clearing...' : 'Clear'}
-          </button>
-        </div>
-
-        <div class="control-row">
           <span class="control-label">Transfer bundle</span>
           <button
             type="button"
@@ -586,18 +527,6 @@ function DebugSettings() {
 
         <div class="settings-divider">
           <span>Render debug</span>
-        </div>
-
-        <div class="control-row">
-          <span class="control-label">Mobile devtools</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={mobileDevtoolsEnabled}
-              onChange={handleDevtoolsToggle}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
         </div>
 
         <div class="control-row">
@@ -639,21 +568,6 @@ function DebugSettings() {
           </div>
         </div>
 
-        <div class="control-row">
-          <span class="control-label">Debug zoom-out</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={debugZoomOut}
-              onChange={(e) => {
-                const enabled = Boolean(e.target.checked);
-                setDebugZoomOut(enabled);
-                setDebugForceZoomOut(enabled);
-              }}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
         </div>
       </div>
 
@@ -661,6 +575,29 @@ function DebugSettings() {
         isOpen={transferModalOpen}
         onClose={() => setTransferModalOpen(false)}
         addLog={addLog}
+      />
+      <ExportChoiceModal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExportAsset={handleExportCurrentAsset}
+        onExportCollection={handleExportCollection}
+        assetTitle={currentAsset?.name || 'Current image'}
+        assetSubtitle={`Size: ${formatBytes(currentAssetSize)}`}
+        collectionTitle={collectionInfo.collectionName}
+        collectionSubtitle={
+          collectionInfo.allSizesKnown
+            ? `${collectionInfo.totalAssets} assets · ${formatBytes(collectionInfo.totalSize)}`
+            : `${collectionInfo.totalAssets} assets · ${collectionInfo.estimatedBytes ? `~${formatBytes(collectionInfo.estimatedBytes)} est.` : 'Size unknown'}`
+        }
+        assetDisabled={!currentAsset}
+        collectionDisabled={collectionInfo.totalAssets === 0}
+        note={
+          collectionInfo.allSizesKnown
+            ? ''
+            : (collectionInfo.estimatedBytes
+              ? `Estimate based on ${collectionInfo.sogCount} .sog file${collectionInfo.sogCount === 1 ? '' : 's'} × 11MB.`
+              : '')
+        }
       />
     </>
   );

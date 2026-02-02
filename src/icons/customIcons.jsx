@@ -147,3 +147,23 @@ export const RocketIcon = ({ size = 16, className, ...props }) => (
     <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
   </svg>
 );
+
+export const CollectionIcon = ({ size = 16, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    class={className}
+    {...props}
+  >
+    <path d="M3 3h6l2 3h10v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3z" />
+    <path d="M8 10h8" />
+    <path d="M8 14h5" />
+  </svg>
+);

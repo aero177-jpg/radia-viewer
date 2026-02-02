@@ -131,7 +131,6 @@ function AssetSidebar() {
   const handleAddClick = () => {
     const current = assets[currentAssetIndex];
     const isSupabase = current?.sourceType === 'supabase-storage';
-    console.log('[AssetSidebar] Add clicked. Supabase collection?', isSupabase, 'sourceId:', current?.sourceId);
     openUploadPicker();
     openedByHoverRef.current = false; // opened by explicit click
   };

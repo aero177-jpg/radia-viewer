@@ -149,7 +149,6 @@ export const initializeSources = async () => {
     if (source) {
       _registerSource(source);
       sources.push(source);
-      console.log('[Storage] Restored source:', source.id, source.name);
     }
   }
 

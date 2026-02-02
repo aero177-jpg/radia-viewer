@@ -56,12 +56,6 @@ const getPersistedNumber = (key, fallback = 0) => {
   }
 };
 
-/** Default state for mobile devtools.
- * - Default: OFF (safety-first)
- * - Persisted user preference is still respected, but Eruda will not auto-init
- *   on app startup — explicit user toggle (approval) is required to initialize.
- */
-const defaultDevtoolsEnabled = getPersistedBoolean('mobileDevtoolsEnabled', false);
 
 const QUALITY_PRESET_KEY = 'qualityPreset';
 const DEBUG_STOCHASTIC_KEY = 'debugStochasticRendering';
@@ -196,7 +190,6 @@ export const useStore = create(
   isPortrait: typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
   immersiveMode: false,
   immersiveSensitivity: 1.0,
-  mobileDevtoolsEnabled: defaultDevtoolsEnabled,
   bgBlur: 40,
   
   // Debug
@@ -392,18 +385,6 @@ export const useStore = create(
 
   /** Sets visibility of FPS counter overlay */
   setShowFps: (show) => set({ showFps: show }),
-
-  /** Enables/disables mobile devtools (Eruda) and persists preference */
-  setMobileDevtoolsEnabled: (enabled) => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.setItem('mobileDevtoolsEnabled', String(enabled));
-      } catch (err) {
-        console.warn('[Store] Failed to persist mobileDevtoolsEnabled', err);
-      }
-    }
-    set({ mobileDevtoolsEnabled: enabled });
-  },
 
   /** Sets blur amount for background container */
   setBgBlur: (bgBlur) => set({ bgBlur }),
