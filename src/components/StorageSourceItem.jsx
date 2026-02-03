@@ -31,6 +31,7 @@ import {
   syncCollectionCache,
   clearCollectionCache,
   loadCollectionManifest,
+  getRemovedAssetNames,
 } from '../storage/index.js';
 import { resetSplatManager } from '../splatManager';
 import { clearBackground } from '../backgroundManager';
@@ -124,12 +125,15 @@ function StorageSourceItem({
       const cachedNames = await listCachedFileNames();
       const cachedSet = new Set(cachedNames);
       const assetList = getAssetList();
+      const removedNames = await getRemovedAssetNames(source.id);
+      const removedSet = new Set(removedNames);
       let changed = false;
       let cachedForSource = 0;
       let totalForSource = 0;
 
       assetList.forEach((asset) => {
         if (asset?.sourceId !== source.id) return;
+        if (removedSet.has(asset?.name)) return;
         totalForSource += 1;
         const next = cachedSet.has(asset.name);
         if (asset.isCached !== next) {
@@ -144,10 +148,11 @@ function StorageSourceItem({
       if (totalForSource === 0) {
         const manifest = await loadCollectionManifest(source.id);
         if (manifest?.assets?.length) {
-          totalForSource = manifest.assets.length;
+          const visibleAssets = manifest.assets.filter((asset) => !removedSet.has(asset?.name));
+          totalForSource = visibleAssets.length;
           cachedForSource = cachedSet.size === 0
-            ? manifest.assets.length
-            : manifest.assets.filter((asset) => cachedSet.has(asset?.name)).length;
+            ? visibleAssets.length
+            : visibleAssets.filter((asset) => cachedSet.has(asset?.name)).length;
           if (!source.isConnected()) {
             setAssetCount(totalForSource);
           }
@@ -172,11 +177,14 @@ function StorageSourceItem({
       const cachedNames = await listCachedFileNames();
       const cachedSet = new Set(cachedNames);
       const assetList = getAssetList();
+      const removedNames = await getRemovedAssetNames(source.id);
+      const removedSet = new Set(removedNames);
       let cachedForSource = 0;
       let totalForSource = 0;
 
       assetList.forEach((asset) => {
         if (asset?.sourceId !== source.id) return;
+        if (removedSet.has(asset?.name)) return;
         totalForSource += 1;
         if (cachedSet.has(asset.name)) cachedForSource += 1;
       });
@@ -184,10 +192,11 @@ function StorageSourceItem({
       if (totalForSource === 0) {
         const manifest = await loadCollectionManifest(source.id);
         if (manifest?.assets?.length) {
-          totalForSource = manifest.assets.length;
+          const visibleAssets = manifest.assets.filter((asset) => !removedSet.has(asset?.name));
+          totalForSource = visibleAssets.length;
           cachedForSource = cachedSet.size === 0
-            ? manifest.assets.length
-            : manifest.assets.filter((asset) => cachedSet.has(asset?.name)).length;
+            ? visibleAssets.length
+            : visibleAssets.filter((asset) => cachedSet.has(asset?.name)).length;
           if (!source.isConnected()) {
             setAssetCount(totalForSource);
           }
@@ -212,11 +221,16 @@ function StorageSourceItem({
       }
 
       const assets = await source.listAssets();
-      setAssetCount(assets.length);
+      const removedNames = await getRemovedAssetNames(source.id);
+      const removedSet = new Set(removedNames);
+      const visibleAssets = removedSet.size
+        ? assets.filter((asset) => !removedSet.has(asset?.name))
+        : assets;
+      setAssetCount(visibleAssets.length);
       setStatus('connected');
 
       // Best-effort: sync local cache manifest with remote assets
-      syncCollectionCache(source, assets)
+      syncCollectionCache(source, visibleAssets)
         .then(() => refreshCacheFlagsForSource())
         .catch((err) => console.warn('[Storage] Cache sync failed', err));
       return true;
@@ -306,10 +320,12 @@ function StorageSourceItem({
       const setStatusFromCache = async () => {
         const manifest = await loadCollectionManifest(source.id);
         if (manifest?.assets?.length) {
+          const removedSet = new Set(manifest?.removed || []);
+          const visibleAssets = manifest.assets.filter((asset) => !removedSet.has(asset?.name));
           if (!cancelled) {
             setStatus('disconnected');
-            setAssetCount(manifest.assets.length);
-            setCachedCount(manifest.assets.length);
+            setAssetCount(visibleAssets.length);
+            setCachedCount(visibleAssets.length);
           }
           return true;
         }

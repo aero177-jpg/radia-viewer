@@ -7,7 +7,7 @@
 
 import { getSource, touchSource } from './sourceManager.js';
 import { loadFileSettings, saveCachedStatus } from '../fileStorage.js';
-import { loadCachedAssetFile, loadCollectionManifest } from './assetCache.js';
+import { loadCachedAssetFile, loadCollectionManifest, getRemovedAssetNames } from './assetCache.js';
 
 /**
  * Adapts a RemoteAssetDescriptor to the internal asset format.
@@ -193,8 +193,10 @@ export const loadSourceAssets = async (source) => {
   const buildAssetsFromCache = async () => {
     const cachedManifest = await loadCollectionManifest(source.id);
     if (cachedManifest?.assets?.length) {
+      const removedSet = new Set(cachedManifest?.removed || []);
+      const visibleAssets = cachedManifest.assets.filter((asset) => !removedSet.has(asset?.name));
       console.log(`[SourceAdapter] Using ${cachedManifest.assets.length} cached assets for ${source.id}`);
-      return cachedManifest.assets.map((asset) => adaptRemoteAsset({
+      return visibleAssets.map((asset) => adaptRemoteAsset({
         id: `${source.id}/${asset.path || asset.name}`,
         name: asset.name,
         path: asset.path || asset.name,
@@ -225,7 +227,12 @@ export const loadSourceAssets = async (source) => {
 
     // Source is connected, try to list assets
     const remoteAssets = await source.listAssets();
-    return remoteAssets.map(adaptRemoteAsset);
+    const removedNames = await getRemovedAssetNames(source.id);
+    const removedSet = new Set(removedNames);
+    const visibleAssets = removedSet.size
+      ? remoteAssets.filter((asset) => !removedSet.has(asset?.name))
+      : remoteAssets;
+    return visibleAssets.map(adaptRemoteAsset);
   } catch (err) {
     // Any error (network, etc.) - try cache as fallback
     console.log('[SourceAdapter] Error loading assets, trying cache:', err.message);

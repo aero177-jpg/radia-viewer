@@ -10,11 +10,11 @@ import { useStore } from '../store';
 import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
 import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
-import { resize } from '../fileLoader';
+import { loadFromStorageSource, resize } from '../fileLoader';
 import { clearCustomMetadataForAsset } from '../customMetadata.js';
 import { requestRender, setStereoEffectEnabled } from '../viewer';
 import { formatBytes } from '../previewManager.js';
-import { getSource, isSourceAsset, loadAssetFile } from '../storage/index.js';
+import { clearRemovedAssets, getSource, isSourceAsset, loadAssetFile } from '../storage/index.js';
 import { zipSync } from 'fflate';
 import TransferDataModal from './TransferDataModal';
 import ExportChoiceModal from './ExportChoiceModal';
@@ -58,6 +58,7 @@ function DebugSettings() {
   const [batchProgress, setBatchProgress] = useState(null); // { current, total, name }
   const [generatingBatch, setGeneratingBatch] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isRestoringRemoved, setIsRestoringRemoved] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
 
@@ -186,6 +187,24 @@ function DebugSettings() {
       setIsClearing(false);
     }
   }, [currentAssetName, isClearing, setCurrentAssetHasCustomMetadata, resetCustomMetadataState]);
+
+  const handleRestoreRemoved = useCallback(async () => {
+    if (!activeSourceId || isRestoringRemoved) return;
+    const source = getSource(activeSourceId);
+    if (!source) return;
+
+    setIsRestoringRemoved(true);
+    try {
+      await clearRemovedAssets(source);
+      addLog('[Cache] Restored locally removed items');
+      await loadFromStorageSource(source);
+    } catch (err) {
+      console.error('[Cache] Restore removed failed:', err);
+      addLog(`[Cache] Restore failed: ${err.message}`);
+    } finally {
+      setIsRestoringRemoved(false);
+    }
+  }, [activeSourceId, addLog, isRestoringRemoved]);
 
   /** Debug: force regenerate preview for current asset */
   const handleRegeneratePreview = useCallback(async () => {
@@ -438,6 +457,18 @@ function DebugSettings() {
             onClick={() => setExportModalOpen(true)}
           >
             Export...
+          </button>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">Restore removed</span>
+          <button
+            type="button"
+            class={`secondary ${isRestoringRemoved ? 'is-busy' : ''}`}
+            onClick={handleRestoreRemoved}
+            disabled={!activeSourceId || isRestoringRemoved}
+          >
+            {isRestoringRemoved ? 'Restoring...' : 'Restore'}
           </button>
         </div>
 

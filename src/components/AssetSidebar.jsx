@@ -7,7 +7,7 @@ import { removeAsset, clearAssets, getAssetList, getCurrentAssetIndex } from '..
 import { deleteFileSettings, clearAllFileSettings, loadPreviewBlob } from '../fileStorage';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { getSource } from '../storage/index.js';
+import { addRemovedAssetNames, getSource } from '../storage/index.js';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 
 function AssetSidebar() {
@@ -319,11 +319,26 @@ function AssetSidebar() {
 
     if (deleteScope === 'single') {
       const asset = assets[currentAssetIndex];
+      if (asset?.sourceId && asset?.name) {
+        const source = getSource(asset.sourceId);
+        await addRemovedAssetNames(source || asset.sourceId, asset.name);
+      }
       if (clearMetadata && asset) {
         await deleteFileSettings(asset.name);
       }
       removeAsset(currentAssetIndex);
     } else {
+      const bySource = new Map();
+      targets.forEach((asset) => {
+        if (!asset?.sourceId || !asset?.name) return;
+        const list = bySource.get(asset.sourceId) || [];
+        list.push(asset.name);
+        bySource.set(asset.sourceId, list);
+      });
+      for (const [sourceId, names] of bySource.entries()) {
+        const source = getSource(sourceId);
+        await addRemovedAssetNames(source || sourceId, names);
+      }
       if (clearMetadata) {
         await clearAllFileSettings();
       }
@@ -549,6 +564,11 @@ function AssetSidebar() {
               <div class="modal-subnote">
                 Keeping metadata preserves image previews and camera settings, so re-adding the image restores them.
               </div>
+              {assets.some((asset) => asset?.sourceId) && (
+                <div class="modal-subnote">
+                  Removed collection items are hidden locally and can be restored later from Debug Settings.
+                </div>
+              )}
             </div>
 
             <div class="modal-actions">

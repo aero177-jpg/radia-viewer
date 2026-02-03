@@ -47,10 +47,33 @@ const openDatabase = () => {
   });
 };
 
+const normalizeRemovedList = (removed) => {
+  if (!Array.isArray(removed)) return [];
+  const cleaned = removed
+    .map((name) => (name == null ? '' : String(name)))
+    .map((name) => name.trim())
+    .filter(Boolean);
+  return Array.from(new Set(cleaned));
+};
+
 const normalizeManifest = (manifest) => {
   if (!manifest || !manifest.sourceId) return null;
-  if (!Array.isArray(manifest.assets)) return null;
-  return manifest;
+  const assets = Array.isArray(manifest.assets) ? manifest.assets : [];
+  return {
+    ...manifest,
+    assets,
+    removed: normalizeRemovedList(manifest.removed),
+  };
+};
+
+const buildEmptyManifest = (sourceId, sourceName = '', sourceType = '') => {
+  return {
+    sourceId,
+    sourceName,
+    sourceType,
+    assets: [],
+    removed: [],
+  };
 };
 
 export const loadCachedAssetBlob = async (fileName) => {
@@ -193,16 +216,58 @@ const buildManifest = (source, assets) => {
   };
 };
 
+export const getRemovedAssetNames = async (sourceId) => {
+  if (!sourceId) return [];
+  const manifest = await loadCollectionManifest(sourceId);
+  return normalizeRemovedList(manifest?.removed);
+};
+
+export const addRemovedAssetNames = async (source, names) => {
+  const sourceId = typeof source === 'string' ? source : source?.id;
+  if (!sourceId) return false;
+  const list = Array.isArray(names) ? names : [names];
+  const nextNames = normalizeRemovedList(list);
+  if (nextNames.length === 0) return false;
+
+  const existing = await loadCollectionManifest(sourceId);
+  const base = existing || buildEmptyManifest(sourceId, source?.name, source?.type);
+  base.removed = normalizeRemovedList([...(base.removed || []), ...nextNames]);
+  return saveCollectionManifest(base);
+};
+
+export const clearRemovedAssets = async (source) => {
+  const sourceId = typeof source === 'string' ? source : source?.id;
+  if (!sourceId) return false;
+
+  const existing = await loadCollectionManifest(sourceId);
+  const base = existing || buildEmptyManifest(sourceId, source?.name, source?.type);
+  if (!base.removed || base.removed.length === 0) return true;
+  base.removed = [];
+  return saveCollectionManifest(base);
+};
+
+export const filterRemovedAssets = async (sourceId, assets, options = {}) => {
+  if (!Array.isArray(assets) || !sourceId) return assets || [];
+  const removed = await getRemovedAssetNames(sourceId);
+  if (!removed.length) return assets;
+  const removedSet = new Set(removed);
+  const getName = options.getName || ((asset) => asset?.name);
+  return assets.filter((asset) => !removedSet.has(getName(asset)));
+};
+
 export const cacheCollectionAssets = async (source, assets, options = {}) => {
   if (!source || !Array.isArray(assets)) return { cached: 0, skipped: 0, failed: 0, total: 0 };
   const { onProgress } = options;
+  const removed = await getRemovedAssetNames(source.id);
+  const removedSet = new Set(removed);
+  const filteredAssets = assets.filter((asset) => !removedSet.has(asset?.name));
   let cached = 0;
   let skipped = 0;
   let failed = 0;
-  const total = assets.length;
+  const total = filteredAssets.length;
 
-  for (let i = 0; i < assets.length; i++) {
-    const asset = assets[i];
+  for (let i = 0; i < filteredAssets.length; i++) {
+    const asset = filteredAssets[i];
     const fileName = asset?.name;
     if (!fileName) {
       failed += 1;
@@ -237,7 +302,12 @@ export const cacheCollectionAssets = async (source, assets, options = {}) => {
     if (onProgress) onProgress({ cached, skipped, failed, total });
   }
 
-  await saveCollectionManifest(buildManifest(source, assets));
+  const existingManifest = await loadCollectionManifest(source.id);
+  const nextManifest = buildManifest(source, filteredAssets);
+  if (existingManifest?.removed?.length) {
+    nextManifest.removed = existingManifest.removed;
+  }
+  await saveCollectionManifest(nextManifest);
   return { cached, skipped, failed, total };
 };
 
@@ -303,6 +373,13 @@ export const clearCollectionCache = async (sourceId) => {
     await saveFileSettings(fileName, { isCached: false });
   }
 
-  await deleteCollectionManifest(sourceId);
+  if (manifest?.removed?.length) {
+    await saveCollectionManifest({
+      ...manifest,
+      assets: [],
+    });
+  } else {
+    await deleteCollectionManifest(sourceId);
+  }
   return { removed };
 };
