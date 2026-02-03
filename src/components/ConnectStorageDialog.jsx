@@ -5,7 +5,6 @@
  */
 
 import { useState, useCallback, useEffect, useMemo } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFolder,
@@ -22,6 +21,7 @@ import {
   faFolderOpen,
   faDatabase,
 } from '@fortawesome/free-solid-svg-icons';
+import { SupabaseIcon, CloudFlareIcon, CloudGpuIcon } from '../icons/customIcons';
 import {
   SOURCE_TIERS,
   isFileSystemAccessSupported,
@@ -41,13 +41,16 @@ import { getAssetList } from '../assetManager.js';
 import { getSupportedExtensions } from '../formats/index.js';
 import CloudGpuForm from './CloudGpuForm.jsx';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
-import usePortalTarget from '../utils/usePortalTarget';
+import Modal from './Modal';
 
 const ICONS = {
   folder: faFolder,
   cloud: faCloud,
   link: faLink,
   database: faDatabase,
+  supabase: SupabaseIcon,
+  cloudflare: CloudFlareIcon,
+  'cloud-gpu': CloudGpuIcon,
 };
 
 function TierCard({ type, selected, onSelect, disabled }) {
@@ -61,7 +64,15 @@ function TierCard({ type, selected, onSelect, disabled }) {
       disabled={disabled}
     >
       <div class="tier-icon">
-        <FontAwesomeIcon icon={ICONS[info.icon] || faFolder} />
+        {info.icon === 'supabase' ? (
+          <SupabaseIcon size={20} className="tier-custom-icon" />
+        ) : info.icon === 'cloudflare' ? (
+          <CloudFlareIcon size={24} className="tier-custom-icon" />
+        ) : info.icon === 'cloud-gpu' ? (
+          <CloudGpuIcon size={24} className="tier-custom-icon" />
+        ) : (
+          <FontAwesomeIcon icon={ICONS[info.icon] || faFolder} />
+        )}
       </div>
       <div class="tier-content">
         <div class="tier-header">
@@ -135,8 +146,7 @@ function LocalFolderForm({ onConnect, onBack }) {
         <ul class="feature-list">
           <li><FontAwesomeIcon icon={faCheck} /> Works offline after selection</li>
           <li><FontAwesomeIcon icon={faCheck} /> Fast loading from local disk</li>
-          <li><FontAwesomeIcon icon={faCheck} /> Folder access persists across sessions</li>
-          <li><FontAwesomeIcon icon={faCheck} /> Preview images matched automatically</li>
+          
         </ul>
       </div>
 
@@ -851,18 +861,6 @@ function SupabaseForm({ onConnect, onBack, onClose, onSwitchProvider }) {
           {'Back'}
         </button>
 
-        <div class="form-row" style={{ marginTop: '4px' }}>
-          <strong>Provider</strong>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button class="link-button" onClick={() => onSwitchProvider?.('supabase-storage')}>
-              Supabase
-            </button>
-            <button class="link-button" onClick={() => onSwitchProvider?.('r2-bucket')}>
-              Cloudflare R2
-            </button>
-          </div>
-        </div>
-
         <h3>Connect to Supabase</h3>
         <p class="dialog-subtitle">Enter your Supabase credentials to get started.</p>
 
@@ -953,18 +951,6 @@ function SupabaseForm({ onConnect, onBack, onClose, onSwitchProvider }) {
       <button class="back-button" onClick={onBack}>
         {'Back'}
       </button>
-
-      <div class="form-row" style={{ marginTop: '4px' }}>
-        <strong>Provider</strong>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button class="link-button" onClick={() => onSwitchProvider?.('supabase-storage')}>
-            Supabase
-          </button>
-          <button class="link-button" onClick={() => onSwitchProvider?.('r2-bucket')}>
-            Cloudflare R2
-          </button>
-        </div>
-      </div>
 
       <h3>Supabase Collection</h3>
       <div class="form-section">
@@ -1873,7 +1859,6 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
   const [selectedTier, setSelectedTier] = useState(editSource?.type || initialTier || null);
   const localSupported = isFileSystemAccessSupported();
   const appStorageSupported = false;
-  const portalTarget = usePortalTarget();
 
   useEffect(() => {
     if (editSource) {
@@ -1902,55 +1887,54 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
     setSelectedTier(null);
   }, [onClose]);
 
-  if (!isOpen || !portalTarget) return null;
+  if (!isOpen) return null;
 
   const isEditMode = Boolean(editSource && editSource.type === 'public-url');
 
-  const content = (
-    <div class="modal-overlay storage-dialog-overlay" onClick={handleClose}>
-      <div class="modal-content storage-dialog" onClick={(e) => e.stopPropagation()}>
-        <button class="modal-close" onClick={handleClose}>
-          <FontAwesomeIcon icon={faTimes} />
-        </button>
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      maxWidth={"500px"}
+    >
+      {selectedTier === null && !isEditMode ? (
+        <>
+          <h2>Create a collection</h2>
+          <p class="dialog-subtitle">
+            Pick where your collection is stored. 
+          </p>
 
-        {selectedTier === null && !isEditMode ? (
-          <>
-            <h2>Create a collection</h2>
-            <p class="dialog-subtitle">
-              Pick where your collection lives. Files stay in your storage; manifests load fast in the viewer.
-            </p>
-
-            <div class="storage-tiers">
-              {!appStorageSupported && localSupported && (
-                <TierCard
-                  type="local-folder"
-                  selected={false}
-                  onSelect={setSelectedTier}
-                />
-              )}
-              {appStorageSupported && (
-                <TierCard
-                  type="app-storage"
-                  selected={false}
-                  onSelect={setSelectedTier}
-                />
-              )}
+          <div class="storage-tiers">
+            {!appStorageSupported && localSupported && (
               <TierCard
-                type="supabase-storage"
+                type="local-folder"
                 selected={false}
                 onSelect={setSelectedTier}
               />
+            )}
+            {appStorageSupported && (
               <TierCard
-                type="r2-bucket"
+                type="app-storage"
                 selected={false}
                 onSelect={setSelectedTier}
               />
-              <TierCard
-                type="public-url"
-                selected={false}
-                onSelect={setSelectedTier}
-              />
-            </div>
+            )}
+            <TierCard
+              type="supabase-storage"
+              selected={false}
+              onSelect={setSelectedTier}
+            />
+            <TierCard
+              type="r2-bucket"
+              selected={false}
+              onSelect={setSelectedTier}
+            />
+            <TierCard
+              type="public-url"
+              selected={false}
+              onSelect={setSelectedTier}
+            />
+          </div>
 
             <div class="form-divider" style={{ marginTop: '20px' }}>
               <span>Add Cloud GPU</span>
@@ -1963,31 +1947,27 @@ function ConnectStorageDialog({ isOpen, onClose, onConnect, editSource, onEditCo
                 onSelect={setSelectedTier}
               />
             </div>
-          </>
-        ) : selectedTier === 'local-folder' ? (
-          <LocalFolderForm onConnect={handleConnect} onBack={handleBack} />
-        ) : selectedTier === 'app-storage' ? (
-          <AppStorageForm onConnect={handleConnect} onBack={handleBack} />
-        ) : selectedTier === 'supabase-storage' ? (
-          <SupabaseForm onConnect={handleConnect} onBack={handleBack} onClose={handleClose} onSwitchProvider={setSelectedTier} />
-        ) : selectedTier === 'r2-bucket' ? (
-          <R2Form onConnect={handleConnect} onBack={handleBack} onClose={handleClose} onSwitchProvider={setSelectedTier} />
-        ) : selectedTier === 'public-url' ? (
-          <UrlCollectionForm 
+        </>
+      ) : selectedTier === 'local-folder' ? (
+        <LocalFolderForm onConnect={handleConnect} onBack={handleBack} />
+      ) : selectedTier === 'app-storage' ? (
+        <AppStorageForm onConnect={handleConnect} onBack={handleBack} />
+      ) : selectedTier === 'supabase-storage' ? (
+        <SupabaseForm onConnect={handleConnect} onBack={handleBack} />
+      ) : selectedTier === 'r2-bucket' ? (
+        <R2Form onConnect={handleConnect} onBack={handleBack} />
+      ) : selectedTier === 'public-url' ? (
+ <UrlCollectionForm 
             onConnect={handleConnect} 
             onBack={handleBack}
             initialSource={isEditMode ? editSource : null}
             editMode={isEditMode}
             onSaveEdit={onEditComplete || onConnect}
-          />
-        ) : selectedTier === 'cloud-gpu' ? (
-          <CloudGpuForm onBack={handleBack} />
+          />      ) : selectedTier === 'cloud-gpu' ? (
+        <CloudGpuForm onBack={handleBack} />
         ) : null}
-      </div>
-    </div>
+    </Modal>
   );
-
-  return createPortal(content, portalTarget);
 }
 
 export default ConnectStorageDialog;

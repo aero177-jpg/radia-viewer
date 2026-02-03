@@ -22,7 +22,7 @@ import StorageSourceItem from './StorageSourceItem.jsx';
 /**
  * Storage sources list with collapsible toggle and add button
  */
-function StorageSourceList({ onAddSource, onSelectSource, onOpenCloudGpu }) {
+function StorageSourceList({ onAddSource, onSelectSource, onOpenCloudGpu, listOnly = false }) {
   const [sources, setSources] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [isListExpanded, setIsListExpanded] = useState(true);
@@ -58,6 +58,48 @@ function StorageSourceList({ onAddSource, onSelectSource, onOpenCloudGpu }) {
     setEditSource(null);
   }, []);
 
+  const listContent = sources.length === 0 ? (
+    <div class="sources-empty">
+      <p>No storage sources connected</p>
+      <button class="add-source-link" onClick={onAddSource}>
+        <FontAwesomeIcon icon={faPlus} /> Connect storage
+      </button>
+    </div>
+  ) : (
+    <div class="sources-list">
+      {sources.map((source) => (
+        <StorageSourceItem
+          key={source.id}
+          source={source}
+          isActive={source.id === activeSourceId}
+          expanded={expandedId === source.id}
+          onToggleExpand={() => handleToggleExpand(source.id)}
+          onSelect={onSelectSource}
+          onEditSource={handleEditSource}
+          onRemove={handleRemove}
+          onOpenCloudGpu={onOpenCloudGpu}
+          listOnly={listOnly}
+        />
+      ))}
+    </div>
+  );
+
+  if (listOnly) {
+    return (
+      <>
+        {listContent}
+        {editSource && (
+          <ConnectStorageDialog
+            isOpen={!!editSource}
+            onClose={handleCloseEdit}
+            onConnect={handleCloseEdit}
+            editSource={editSource}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div class="settings-group">
       <div 
@@ -80,30 +122,7 @@ function StorageSourceList({ onAddSource, onSelectSource, onOpenCloudGpu }) {
       </div>
 
       <div class="group-content" style={{ display: isListExpanded ? 'flex' : 'none' }}>
-        {sources.length === 0 ? (
-          <div class="sources-empty">
-            <p>No storage sources connected</p>
-            <button class="add-source-link" onClick={onAddSource}>
-              <FontAwesomeIcon icon={faPlus} /> Connect storage
-            </button>
-          </div>
-        ) : (
-          <div class="sources-list">
-            {sources.map((source) => (
-              <StorageSourceItem
-                key={source.id}
-                source={source}
-                isActive={source.id === activeSourceId}
-                expanded={expandedId === source.id}
-                onToggleExpand={() => handleToggleExpand(source.id)}
-                onSelect={onSelectSource}
-                onEditSource={handleEditSource}
-                onRemove={handleRemove}
-                onOpenCloudGpu={onOpenCloudGpu}
-              />
-            ))}
-          </div>
-        )}
+        {listContent}
       </div>
 
       {editSource && (

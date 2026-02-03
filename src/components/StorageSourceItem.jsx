@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFolder,
@@ -40,6 +39,7 @@ import { useStore } from '../store';
 import { getAssetList } from '../assetManager.js';
 import { listCachedFileNames } from '../fileStorage.js';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
+import Modal from './Modal';
 
 const TYPE_ICONS = {
   'local-folder': faFolder,
@@ -77,6 +77,7 @@ function StorageSourceItem({
   onToggleExpand,
   isActive,
   onOpenCloudGpu,
+  listOnly,
 }) {
   const [status, setStatus] = useState('checking');
   const [assetCount, setAssetCount] = useState(source.getAssets().length);
@@ -88,7 +89,6 @@ function StorageSourceItem({
   const [removeCache, setRemoveCache] = useState(false);
   const [removeRemote, setRemoveRemote] = useState(false);
   const [removeSource, setRemoveSource] = useState(true);
-  const [portalTarget, setPortalTarget] = useState(null);
 
   const activeSourceId = useStore((state) => state.activeSourceId);
   const clearActiveSource = useStore((state) => state.clearActiveSource);
@@ -99,22 +99,7 @@ function StorageSourceItem({
   const allowAssets = source.type !== 'local-folder';
   const allowImages = true;
   const cacheEnabled = source.type !== 'app-storage';
-
-  useEffect(() => {
-    const getPortalTarget = () => {
-      const fullscreenRoot = document.getElementById('app');
-      return document.fullscreenElement === fullscreenRoot ? fullscreenRoot : document.body;
-    };
-
-    setPortalTarget(getPortalTarget());
-
-    const handleFullscreenChange = () => {
-      setPortalTarget(getPortalTarget());
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
+  const actionButtonStyle = { minWidth: listOnly ? '100px' : '70px' };
 
   const refreshCacheFlagsForSource = useCallback(async () => {
     if (!cacheEnabled) {
@@ -701,6 +686,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleRequestPermission}
                 title="Grant permission"
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faUnlock} />
                 <span>Grant Access</span>
@@ -710,6 +696,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleReconnect}
                 title="Reconnect"
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faSync} />
                 <span>Reconnect</span>
@@ -719,6 +706,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleRefresh}
                 title="Refresh assets"
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faSync} />
                 <span>Refresh</span>
@@ -728,6 +716,7 @@ function StorageSourceItem({
               class={`source-action-btn ${isDefault ? 'default' : ''}`}
               onClick={handleSetDefault}
               title={isDefault ? 'Clear default collection' : 'Set as default collection'}
+              style={actionButtonStyle}
             >
               {isDefault && <FontAwesomeIcon icon={faCheck} />}
               <span>{isDefault ? 'Default' : 'Set Default'}</span>
@@ -737,6 +726,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleEditPublicUrl}
                 title="Edit URLs"
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faPen} />
                 <span>Edit</span>
@@ -747,6 +737,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleAppStoragePick}
                 title="Add files to app storage"
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faUpload} />
                 <span>Add files</span>
@@ -757,6 +748,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleUploadClick}
                 title={source.type === 'supabase-storage' ? 'Upload files to Supabase' : source.type === 'r2-bucket' ? 'Upload files to R2' : 'Convert images with Cloud GPU'}
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faUpload} />
                 <span>Upload</span>
@@ -767,6 +759,7 @@ function StorageSourceItem({
                 class="source-action-btn"
                 onClick={handleCacheAll}
                 title="Cache all assets locally"
+                style={actionButtonStyle}
               >
                 <FontAwesomeIcon icon={faDatabase} />
                 <span>Cache</span>
@@ -781,6 +774,7 @@ function StorageSourceItem({
               class="source-action-btn danger"
               onClick={handleRemove}
               title="Remove collection"
+              style={actionButtonStyle}
             >
               <FontAwesomeIcon icon={faTrash} />
               <span>Remove...</span>
@@ -789,148 +783,146 @@ function StorageSourceItem({
         )}
       </div>
 
-      {showRemoveModal && portalTarget && createPortal(
-        <div class="modal-overlay" onClick={handleCancelRemove}>
-          <div class="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Remove Collection</h3>
-            {(() => {
-              const isLocalCollection = source.type === 'local-folder';
-              const isAppStorage = source.type === 'app-storage';
-              const isUrlCollection = source.type === 'public-url';
-              const isSupabase = source.type === 'supabase-storage';
-              const isR2 = source.type === 'r2-bucket';
+      <Modal
+        isOpen={showRemoveModal}
+        onClose={handleCancelRemove}
+      >
+        <h3>Remove Collection</h3>
+        {(() => {
+          const isLocalCollection = source.type === 'local-folder';
+          const isAppStorage = source.type === 'app-storage';
+          const isUrlCollection = source.type === 'public-url';
+          const isSupabase = source.type === 'supabase-storage';
+          const isR2 = source.type === 'r2-bucket';
 
-              if (isLocalCollection) {
-                return (
-                  <p class="modal-note">
-                    Removing here only disconnects the folder; files remain on your device.
-                  </p>
-                );
-              }
+          if (isLocalCollection) {
+            return (
+              <p class="modal-note">
+                Removing here only disconnects the folder; files remain on your device.
+              </p>
+            );
+          }
 
-              if (isAppStorage && removeRemote) {
-                return (
-                  <p class="modal-note">
-                    Selected items will be deleted from app storage and removed from the collection list.
-                  </p>
-                );
-              }
+          if (isAppStorage && removeRemote) {
+            return (
+              <p class="modal-note">
+                Selected items will be deleted from app storage and removed from the collection list.
+              </p>
+            );
+          }
 
-              if (isAppStorage) {
-                return (
-                  <p class="modal-note">
-                    Removing here only disconnects the collection; files remain in app storage unless selected below.
-                  </p>
-                );
-              }
+          if (isAppStorage) {
+            return (
+              <p class="modal-note">
+                Removing here only disconnects the collection; files remain in app storage unless selected below.
+              </p>
+            );
+          }
 
-              if (isUrlCollection) {
-                return (
-                  <p class="modal-note">
-                    This only removes the list; original URLs remain online.
-                  </p>
-                );
-              }
+          if (isUrlCollection) {
+            return (
+              <p class="modal-note">
+                This only removes the list; original URLs remain online.
+              </p>
+            );
+          }
 
-              if (isSupabase && removeRemote) {
-                return (
-                  <p class="modal-note">
-                    Selected items will be deleted from the Supabase collection and removed from the list.
-                  </p>
-                );
-              }
+          if (isSupabase && removeRemote) {
+            return (
+              <p class="modal-note">
+                Selected items will be deleted from the Supabase collection and removed from the list.
+              </p>
+            );
+          }
 
-              if (isR2 && removeRemote) {
-                return (
-                  <p class="modal-note">
-                    Selected items will be deleted from the R2 collection and removed from the list.
-                  </p>
-                );
-              }
+          if (isR2 && removeRemote) {
+            return (
+              <p class="modal-note">
+                Selected items will be deleted from the R2 collection and removed from the list.
+              </p>
+            );
+          }
 
-              if (isSupabase || isR2) {
-                return (
-                  <p class="modal-note">
-                    Removing here only disconnects the collection; files remain in storage unless selected below.
-                  </p>
-                );
-              }
+          if (isSupabase || isR2) {
+            return (
+              <p class="modal-note">
+                Removing here only disconnects the collection; files remain in storage unless selected below.
+              </p>
+            );
+          }
 
-              return (
-                <p class="modal-note">
-                  Removing here only disconnects the collection; the source is unchanged.
-                </p>
-              );
-            })()}
+          return (
+            <p class="modal-note">
+              Removing here only disconnects the collection; the source is unchanged.
+            </p>
+          );
+        })()}
 
-            <div class="modal-checkbox">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={removeSource}
-                  onChange={(e) => setRemoveSource(e.target.checked)}
-                />
-                Remove from collection list
-              </label>
-              <div class="modal-subnote">
-                Disconnects this collection from the viewer.
-              </div>
-            </div>
+        <div class="modal-checkbox">
+          <label>
+            <input
+              type="checkbox"
+              checked={removeSource}
+              onChange={(e) => setRemoveSource(e.target.checked)}
+            />
+            Remove from collection list
+          </label>
+          <div class="modal-subnote">
+            Disconnects this collection from the viewer.
+          </div>
+        </div>
 
-            {cacheEnabled && cachedCount > 0 && (
-              <div class="modal-checkbox">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={removeCache}
-                    onChange={(e) => setRemoveCache(e.target.checked)}
-                  />
-                  Remove cached files
-                </label>
-                <div class="modal-subnote">
-                  Clears cached files stored on this device for this collection.
-                </div>
-              </div>
-            )}
-
-            {(source.type === 'supabase-storage' || source.type === 'r2-bucket' || source.type === 'app-storage') && (
-              <div class="modal-checkbox">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={removeRemote}
-                    onChange={(e) => setRemoveRemote(e.target.checked)}
-                  />
-                  {source.type === 'supabase-storage'
-                    ? 'Delete from Supabase storage'
-                    : source.type === 'r2-bucket'
-                      ? 'Delete from R2 storage'
-                      : 'Delete from app storage'}
-                </label>
-                <div class="modal-subnote">
-                  {source.type === 'supabase-storage'
-                    ? 'Removes files and manifest entries from the linked Supabase collection.'
-                    : source.type === 'r2-bucket'
-                      ? 'Removes files and manifest entries from the linked R2 collection.'
-                      : 'Removes files stored inside the app for this collection.'}
-                </div>
-              </div>
-            )}
-
-            <div class="modal-actions">
-              <button onClick={handleCancelRemove}>Cancel</button>
-              <button
-                class="danger"
-                onClick={handleConfirmRemove}
-                disabled={!removeCache && !removeRemote && !removeSource}
-              >
-                Remove
-              </button>
+        {cacheEnabled && cachedCount > 0 && (
+          <div class="modal-checkbox">
+            <label>
+              <input
+                type="checkbox"
+                checked={removeCache}
+                onChange={(e) => setRemoveCache(e.target.checked)}
+              />
+              Remove cached files
+            </label>
+            <div class="modal-subnote">
+              Clears cached files stored on this device for this collection.
             </div>
           </div>
-        </div>,
-        portalTarget
-      )}
+        )}
+
+        {(source.type === 'supabase-storage' || source.type === 'r2-bucket' || source.type === 'app-storage') && (
+          <div class="modal-checkbox">
+            <label>
+              <input
+                type="checkbox"
+                checked={removeRemote}
+                onChange={(e) => setRemoveRemote(e.target.checked)}
+              />
+              {source.type === 'supabase-storage'
+                ? 'Delete from Supabase storage'
+                : source.type === 'r2-bucket'
+                  ? 'Delete from R2 storage'
+                  : 'Delete from app storage'}
+            </label>
+            <div class="modal-subnote">
+              {source.type === 'supabase-storage'
+                ? 'Removes files and manifest entries from the linked Supabase collection.'
+                : source.type === 'r2-bucket'
+                  ? 'Removes files and manifest entries from the linked R2 collection.'
+                  : 'Removes files stored inside the app for this collection.'}
+            </div>
+          </div>
+        )}
+
+        <div class="modal-actions">
+          <button onClick={handleCancelRemove}>Cancel</button>
+          <button
+            class="danger"
+            onClick={handleConfirmRemove}
+            disabled={!removeCache && !removeRemote && !removeSource}
+          >
+            Remove
+          </button>
+        </div>
+      </Modal>
 
       {uploadModal}
     </>

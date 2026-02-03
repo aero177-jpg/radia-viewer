@@ -4,11 +4,10 @@
  */
 
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCheck, faDownload, faTimes } from '@fortawesome/free-solid-svg-icons';
+import { faCheck, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { CollectionIcon, ImageIcon } from '../icons/customIcons';
-import usePortalTarget from '../utils/usePortalTarget';
+import Modal from './Modal';
 
 function ExportOptionItem({ title, subtitle, icon: Icon, selected, onSelect, onConfirm, disabled }) {
   const selectedStyle = selected ? {
@@ -70,7 +69,6 @@ function ExportChoiceModal({
   assetDisabled = false,
   collectionDisabled = false,
 }) {
-  const portalTarget = usePortalTarget();
   const defaultMode = useMemo(() => {
     if (!assetDisabled) return 'asset';
     if (!collectionDisabled) return 'collection';
@@ -84,7 +82,7 @@ function ExportChoiceModal({
     setMode(defaultMode);
   }, [defaultMode, isOpen]);
 
-  if (!isOpen || !portalTarget) return null;
+  if (!isOpen) return null;
 
   const handleExport = async () => {
     if (exportBusy) return;
@@ -104,74 +102,66 @@ function ExportChoiceModal({
     }
   };
 
-  return createPortal(
-    <div class="modal-overlay storage-dialog-overlay">
-      <div
-        class="modal-content storage-dialog"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '420px' }}
-      >
-        <button class="modal-close" onClick={onClose}>
-          <FontAwesomeIcon icon={faTimes} />
-        </button>
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+    >
+      <h2>{title}</h2>
+      <p class="dialog-subtitle">{subtitle}</p>
 
-        <h2>{title}</h2>
-        <p class="dialog-subtitle">{subtitle}</p>
-
-        <div class="upload-options-list" style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <ExportOptionItem
-            title={assetTitle}
-            subtitle={assetSubtitle}
-            icon={ImageIcon}
-            selected={mode === 'asset'}
-            onSelect={() => setMode('asset')}
-            onConfirm={handleExport}
-            disabled={assetDisabled}
-          />
-          <ExportOptionItem
-            title={collectionTitle}
-            subtitle={collectionSubtitle}
-            icon={CollectionIcon}
-            selected={mode === 'collection'}
-            onSelect={() => setMode('collection')}
-            onConfirm={handleExport}
-            disabled={collectionDisabled}
-          />
-        </div>
-
-        {note && (
-          <p class="dialog-subtitle" style={{ marginTop: '12px', color: 'var(--text-muted, #888)' }}>
-            {note}
-          </p>
-        )}
-
-        {exportError && (
-          <div class="form-error" style={{ marginTop: '16px' }}>
-            {exportError}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
-          <button
-            class="secondary-button"
-            onClick={onClose}
-            style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
-          >
-            Cancel
-          </button>
-          <button
-            class="primary-button"
-            onClick={handleExport}
-            disabled={exportBusy || (mode === 'asset' ? assetDisabled : collectionDisabled)}
-            style={{ height: '36px', padding: '0 16px' }}
-          >
-            <FontAwesomeIcon icon={faDownload} />
-            {' '}{exportBusy ? 'Exporting...' : 'Export'}
-          </button>
-        </div>
+      <div class="upload-options-list" style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <ExportOptionItem
+          title={assetTitle}
+          subtitle={assetSubtitle}
+          icon={ImageIcon}
+          selected={mode === 'asset'}
+          onSelect={() => setMode('asset')}
+          onConfirm={handleExport}
+          disabled={assetDisabled}
+        />
+        <ExportOptionItem
+          title={collectionTitle}
+          subtitle={collectionSubtitle}
+          icon={CollectionIcon}
+          selected={mode === 'collection'}
+          onSelect={() => setMode('collection')}
+          onConfirm={handleExport}
+          disabled={collectionDisabled}
+        />
       </div>
-    </div>,
-    portalTarget
+
+      {note && (
+        <p class="dialog-subtitle" style={{ marginTop: '12px', color: 'var(--text-muted, #888)' }}>
+          {note}
+        </p>
+      )}
+
+      {exportError && (
+        <div class="form-error" style={{ marginTop: '16px' }}>
+          {exportError}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
+        <button
+          class="secondary-button"
+          onClick={onClose}
+          style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
+        >
+          Cancel
+        </button>
+        <button
+          class="primary-button"
+          onClick={handleExport}
+          disabled={exportBusy || (mode === 'asset' ? assetDisabled : collectionDisabled)}
+          style={{ height: '36px', padding: '0 16px' }}
+        >
+          <FontAwesomeIcon icon={faDownload} />
+          {' '}{exportBusy ? 'Exporting...' : 'Export'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

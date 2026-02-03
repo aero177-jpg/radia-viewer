@@ -157,7 +157,7 @@ export const SOURCE_TIERS = {
     description: 'Manifest-first collections in your Supabase bucket',
     benefits: ['Cross-device via manifest.json', 'Uploads stay in your bucket', 'Free-tier friendly'],
     requirements: ['Supabase project URL', 'Anon/public key', 'Public bucket access'],
-    icon: 'cloud',
+    icon: 'supabase',
   },
   'r2-bucket': {
     tier: 2,
@@ -165,7 +165,7 @@ export const SOURCE_TIERS = {
     description: 'Manifest-first collections in your R2 bucket',
     benefits: ['Zero egress for reads', 'S3-compatible access', 'Bring your own domain'],
     requirements: ['Account ID', 'Access key ID/secret', 'Public base URL'],
-    icon: 'cloud',
+    icon: 'cloudflare',
   },
   'public-url': {
     tier: 3,
@@ -181,7 +181,7 @@ export const SOURCE_TIERS = {
     description: 'Configure a custom GPU conversion endpoint',
     benefits: ['Bring your own GPU endpoint', 'Convert images to splats'],
     requirements: ['API URL and API key'],
-    icon: 'cloud',
+    icon: 'cloud-gpu',
   },
 };
 

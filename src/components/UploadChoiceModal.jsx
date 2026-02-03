@@ -4,17 +4,15 @@
  */
 
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCloud,
   faCheck,
-  faTimes,
   faUpload,
 } from '@fortawesome/free-solid-svg-icons';
 import { CubeIcon, ImageIcon } from '../icons/customIcons';
 import { loadCloudGpuSettings } from '../storage/cloudGpuSettings.js';
-import usePortalTarget from '../utils/usePortalTarget';
+import Modal from './Modal';
 
 function UploadOptionItem({ title, subtitle, icon: Icon, selected, onSelect, onConfirm, disabled }) {
   const selectedStyle = selected ? {
@@ -80,7 +78,6 @@ function UploadChoiceModal({
   const [mode, setMode] = useState('assets'); // 'assets' | 'images'
   const cloudGpuSettings = useMemo(() => loadCloudGpuSettings(), [isOpen]);
   const isCloudGpuConfigured = Boolean(cloudGpuSettings?.apiUrl && cloudGpuSettings?.apiKey);
-  const portalTarget = usePortalTarget();
 
   useEffect(() => {
     if (!isCloudGpuConfigured && mode === 'images') {
@@ -88,7 +85,7 @@ function UploadChoiceModal({
     }
   }, [isCloudGpuConfigured, mode]);
 
-  if (!isOpen || !portalTarget) return null;
+  if (!isOpen) return null;
 
   const handleUpload = () => {
     if (mode === 'images' && !isCloudGpuConfigured) return;
@@ -104,81 +101,73 @@ function UploadChoiceModal({
     onOpenCloudGpu?.();
   };
 
-  return createPortal(
-    <div class="modal-overlay storage-dialog-overlay">
-      <div
-        class="modal-content storage-dialog"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '420px' }}
-      >
-        <button class="modal-close" onClick={onClose}>
-          <FontAwesomeIcon icon={faTimes} />
-        </button>
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+    >
+      <h2>{title}</h2>
+      <p class="dialog-subtitle">{subtitle}</p>
 
-        <h2>{title}</h2>
-        <p class="dialog-subtitle">{subtitle}</p>
-
-        <div class="upload-options-list" style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <UploadOptionItem
-            title={assetTitle}
-            subtitle={assetSubtitle || `Supported files:${supportedExtensions.join(', ')}`}
-            icon={CubeIcon}
-            selected={mode === 'assets'}
-            onSelect={() => setMode('assets')}
-            onConfirm={handleUpload}
-          />
-          <UploadOptionItem
-            title={imageTitle}
-            subtitle={imageSubtitle || 'Image files: .jpg, .png, .webp, .heic, etc.'}
-            icon={ImageIcon}
-            selected={mode === 'images'}
-            onSelect={() => setMode('images')}
-            onConfirm={handleUpload}
-            disabled={!isCloudGpuConfigured}
-          />
-        </div>
-
-        <div class="form-info" style={{ marginTop: '16px' }}>
-           {!isCloudGpuConfigured &&
-             <p style={{ fontSize: '0.9em', color: 'var(--text-muted, #888)' }}>
-               <FontAwesomeIcon icon={faCloud} style={{ marginRight: '6px' }} />
-               Cloud GPU is not configured.{' '}
-               {onOpenCloudGpu && (
-                 <button class="link-button" style={{ marginTop: '12px' }} type="button" onClick={handleOpenCloudGpu}>
-                   Configure Cloud GPU
-                 </button>
-               )}
-             </p>
-           }
-        </div>
-
-        {note && (
-          <p class="dialog-subtitle" style={{ marginTop: '12px', color: 'var(--text-muted, #888)' }}>
-            {note}
-          </p>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
-          <button
-            class="secondary-button"
-            onClick={onClose}
-            style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
-          >
-            Cancel
-          </button>
-          <button
-            class="primary-button"
-            onClick={handleUpload}
-            disabled={mode === 'images' && !isCloudGpuConfigured}
-            style={{ height: '36px', padding: '0 16px' }}
-          >
-            <FontAwesomeIcon icon={faUpload} />
-            {' '}browse files
-          </button>
-        </div>
+      <div class="upload-options-list" style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <UploadOptionItem
+          title={assetTitle}
+          subtitle={assetSubtitle || `Supported files:${supportedExtensions.join(', ')}`}
+          icon={CubeIcon}
+          selected={mode === 'assets'}
+          onSelect={() => setMode('assets')}
+          onConfirm={handleUpload}
+        />
+        <UploadOptionItem
+          title={imageTitle}
+          subtitle={imageSubtitle || 'Image files: .jpg, .png, .webp, .heic, etc.'}
+          icon={ImageIcon}
+          selected={mode === 'images'}
+          onSelect={() => setMode('images')}
+          onConfirm={handleUpload}
+          disabled={!isCloudGpuConfigured}
+        />
       </div>
-    </div>,
-    portalTarget
+
+      <div class="form-info" style={{ marginTop: '16px' }}>
+         {!isCloudGpuConfigured &&
+           <p style={{ fontSize: '0.9em', color: 'var(--text-muted, #888)' }}>
+             <FontAwesomeIcon icon={faCloud} style={{ marginRight: '6px' }} />
+             Cloud GPU is not configured.{' '}
+             {onOpenCloudGpu && (
+               <button class="link-button" style={{ marginTop: '12px' }} type="button" onClick={handleOpenCloudGpu}>
+                 Configure Cloud GPU
+               </button>
+             )}
+           </p>
+         }
+      </div>
+
+      {note && (
+        <p class="dialog-subtitle" style={{ marginTop: '12px', color: 'var(--text-muted, #888)' }}>
+          {note}
+        </p>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
+        <button
+          class="secondary-button"
+          onClick={onClose}
+          style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
+        >
+          Cancel
+        </button>
+        <button
+          class="primary-button"
+          onClick={handleUpload}
+          disabled={mode === 'images' && !isCloudGpuConfigured}
+          style={{ height: '36px', padding: '0 16px' }}
+        >
+          <FontAwesomeIcon icon={faUpload} />
+          {' '}browse files
+        </button>
+      </div>
+    </Modal>
   );
 }
 

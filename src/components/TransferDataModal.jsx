@@ -4,7 +4,6 @@
  */
 
 import { useCallback, useRef, useState } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCheck,
@@ -18,11 +17,10 @@ import {
   faLink,
   faServer,
   faSpinner,
-  faTimes,
   faUpload,
 } from '@fortawesome/free-solid-svg-icons';
 import { buildTransferBundle, importTransferBundle } from '../utils/debugTransfer.js';
-import usePortalTarget from '../utils/usePortalTarget';
+import Modal from './Modal';
 
 /**
  * Tier-style card for landing page options (Import / Export)
@@ -493,7 +491,6 @@ function ImportPage({ onBack, onClose, addLog }) {
  */
 function TransferDataModal({ isOpen, onClose, addLog }) {
   const [page, setPage] = useState(null); // null = landing, 'export', 'import'
-  const portalTarget = usePortalTarget();
 
   const handleClose = useCallback(() => {
     setPage(null);
@@ -504,7 +501,7 @@ function TransferDataModal({ isOpen, onClose, addLog }) {
     setPage(null);
   }, []);
 
-  if (!isOpen || !portalTarget) return null;
+  if (!isOpen) return null;
 
   let content;
   if (page === 'export') {
@@ -540,20 +537,14 @@ function TransferDataModal({ isOpen, onClose, addLog }) {
     );
   }
 
-  return createPortal(
-    <div class="modal-overlay storage-dialog-overlay" onClick={handleClose}>
-      <div
-        class="modal-content storage-dialog"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '460px' }}
-      >
-        <button class="modal-close" onClick={handleClose}>
-          <FontAwesomeIcon icon={faTimes} />
-        </button>
-        {content}
-      </div>
-    </div>,
-    portalTarget
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      maxWidth={460}
+    >
+      {content}
+    </Modal>
   );
 }
 

@@ -167,3 +167,71 @@ export const CollectionIcon = ({ size = 16, className, ...props }) => (
     <path d="M8 14h5" />
   </svg>
 );
+
+export const SupabaseIcon = ({ size = 16, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+    role="img"
+    xmlns="http://www.w3.org/2000/svg"
+    class={className}
+    {...props}
+  >
+    <title>Supabase</title>
+    <path d="M11.9 1.036c-0.015 -0.986 -1.26 -1.41 -1.874 -0.637L0.764 12.05C-0.33 13.427 0.65 15.455 2.409 15.455h9.579l0.113 7.51c0.014 0.985 1.259 1.408 1.873 0.636l9.262 -11.653c1.093 -1.375 0.113 -3.403 -1.645 -3.403h-9.642z" />
+  </svg>
+);
+
+export const CloudFlareIcon = ({ size = 16, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 128 128"
+    fill="currentColor"
+    aria-hidden="true"
+    role="img"
+    xmlns="http://www.w3.org/2000/svg"
+    class={className}
+    {...props}
+  >
+    <title>Cloudflare</title>
+    <path d="m115.679 69.288-15.591-8.94-2.689-1.163-63.781.436v32.381h82.061z" />
+    <path d="M87.295 89.022c.763-2.617.472-5.015-.8-6.796-1.163-1.635-3.125-2.58-5.488-2.689l-44.737-.581c-.291 0-.545-.145-.691-.363s-.182-.509-.109-.8c.145-.436.581-.763 1.054-.8l45.137-.581c5.342-.254 11.157-4.579 13.192-9.885l2.58-6.723c.109-.291.145-.581.073-.872-2.906-13.158-14.644-22.97-28.672-22.97-12.938 0-23.913 8.359-27.838 19.952a13.35 13.35 0 0 0-9.267-2.58c-6.215.618-11.193 5.597-11.811 11.811-.145 1.599-.036 3.162.327 4.615C10.104 70.051 2 78.337 2 88.549c0 .909.073 1.817.182 2.726a.895.895 0 0 0 .872.763h82.57c.472 0 .909-.327 1.054-.8l.617-2.216z" />
+    <path d="M101.542 60.275c-.4 0-.836 0-1.236.036-.291 0-.545.218-.654.509l-1.744 6.069c-.763 2.617-.472 5.015.8 6.796 1.163 1.635 3.125 2.58 5.488 2.689l9.522.581c.291 0 .545.145.691.363.145.218.182.545.109.8-.145.436-.581.763-1.054.8l-9.924.582c-5.379.254-11.157 4.579-13.192 9.885l-.727 1.853c-.145.363.109.727.509.727h34.089c.4 0 .763-.254.872-.654.581-2.108.909-4.325.909-6.614 0-13.447-10.975-24.422-24.458-24.422" />
+  </svg>
+);
+
+export const CloudGpuIcon = ({ size = 16, className, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    class={className}
+    {...props}
+  >
+    <title>Cloud GPU</title>
+    <path d="M12 20v2" />
+    <path d="M12 2v2" />
+    <path d="M17 20v2" />
+    <path d="M17 2v2" />
+    <path d="M2 12h2" />
+    <path d="M2 17h2" />
+    <path d="M2 7h2" />
+    <path d="M20 12h2" />
+    <path d="M20 17h2" />
+    <path d="M20 7h2" />
+    <path d="M7 20v2" />
+    <path d="M7 2v2" />
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <rect x="8" y="8" width="8" height="8" rx="1" />
+  </svg>
+);

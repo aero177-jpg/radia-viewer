@@ -3,15 +3,12 @@
  * Sits above the app layout and handles file/storage/demo actions.
  */
 import { useEffect, useState, useCallback } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import FrostedTitle from './FrostedTitle';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolder, faCloud, faRocket, faUpload, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { testSharpCloud } from '../testSharpCloud';
 import { FolderIcon, ServerIcon, RocketIcon, CollectionIcon } from '../icons/customIcons';
 import { getSourcesArray, onSourceChange } from '../storage/index.js';
 import StorageSourceList from './StorageSourceList';
-import usePortalTarget from '../utils/usePortalTarget';
+import Modal from './Modal';
 
 function TitleCard({
   show,
@@ -37,8 +34,6 @@ function TitleCard({
   const [sources, setSources] = useState(() => getSourcesArray());
   const [showCollectionsModal, setShowCollectionsModal] = useState(false);
 
-  // Portal target for modal
-  const portalTarget = usePortalTarget();
 
   // Subscribe to source changes
   useEffect(() => {
@@ -136,39 +131,31 @@ function TitleCard({
         </div>
       </div>
 
-      {showCollectionsModal && portalTarget && createPortal(
-        <div class="modal-overlay storage-dialog-overlay" onClick={handleCloseCollections}>
-          <div
-            class="modal-content storage-dialog"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '480px' }}
+      <Modal
+        isOpen={showCollectionsModal}
+        onClose={handleCloseCollections}
+        maxWidth={480}
+      >
+        <h2>Collections</h2>
+        <p class="dialog-subtitle">Select a collection to load.</p>
+
+        <StorageSourceList
+          onAddSource={onOpenStorage}
+          onSelectSource={handleSelectSource}
+          onOpenCloudGpu={onOpenCloudGpu}
+          listOnly
+        />
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
+          <button
+            class="secondary-button"
+            onClick={handleCloseCollections}
+            style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
           >
-            <button class="modal-close" onClick={handleCloseCollections}>
-              <FontAwesomeIcon icon={faTimes} />
-            </button>
-
-            <h2>Collections</h2>
-            <p class="dialog-subtitle">Select a collection to load.</p>
-
-            <StorageSourceList
-              onAddSource={onOpenStorage}
-              onSelectSource={handleSelectSource}
-              onOpenCloudGpu={onOpenCloudGpu}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
-              <button
-                class="secondary-button"
-                onClick={handleCloseCollections}
-                style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>,
-        portalTarget
-      )}
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

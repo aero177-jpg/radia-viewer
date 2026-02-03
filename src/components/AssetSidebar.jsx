@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef, useCallback } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
 import useSwipe from '../utils/useSwipe';
 import { useStore } from '../store';
 import { loadAssetByIndex } from '../fileLoader';
@@ -9,6 +8,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { addRemovedAssetNames, getSource } from '../storage/index.js';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
+import Modal from './Modal';
 
 function AssetSidebar() {
   const assets = useStore((state) => state.assets);
@@ -45,27 +45,6 @@ function AssetSidebar() {
     allowAssets: true,
     allowImages: true,
   });
-
-  // Portal target for modal - render to fullscreen-safe container
-  const [portalTarget, setPortalTarget] = useState(null);
-
-  useEffect(() => {
-    // Use app root if in fullscreen, otherwise document body
-    const getPortalTarget = () => {
-      const fullscreenRoot = document.getElementById('app');
-      return document.fullscreenElement === fullscreenRoot ? fullscreenRoot : document.body;
-    };
-
-    setPortalTarget(getPortalTarget());
-
-    // Update portal target when fullscreen state changes
-    const handleFullscreenChange = () => {
-      setPortalTarget(getPortalTarget());
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
 
   // Only show if we have multiple assets
   const hasMultipleAssets = assets.length > 1;
@@ -437,148 +416,145 @@ function AssetSidebar() {
         </div>
       </div>
 
-      {/* Delete Modal - rendered via portal for fullscreen compatibility */}
-      {showDeleteModal && portalTarget && createPortal(
-        <div class="modal-overlay">
-          <div class="modal-content">
-            <h3>Remove Image</h3>
-            {(() => {
-              const asset = assets[currentAssetIndex];
-              const sourceType = asset?.sourceType;
-              const isCollection = !!asset?.sourceId;
-              const source = asset?.sourceId ? getSource(asset.sourceId) : null;
-              const isLocalCollection = sourceType === 'local-folder';
-              const isAppStorage = sourceType === 'app-storage';
-              const isUrlCollection = sourceType === 'public-url';
-              const isSupabase = sourceType === 'supabase-storage';
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+      >
+        <h3>Remove Image</h3>
+        {(() => {
+          const asset = assets[currentAssetIndex];
+          const sourceType = asset?.sourceType;
+          const isCollection = !!asset?.sourceId;
+          const source = asset?.sourceId ? getSource(asset.sourceId) : null;
+          const isLocalCollection = sourceType === 'local-folder';
+          const isAppStorage = sourceType === 'app-storage';
+          const isUrlCollection = sourceType === 'public-url';
+          const isSupabase = sourceType === 'supabase-storage';
 
-              if (!isCollection) {
-                return null; // plain queue, no source note
-              }
+          if (!isCollection) {
+            return null; // plain queue, no source note
+          }
 
-              if (isLocalCollection) {
-                return (
-                  <p class="modal-note">
-                    Removing here only clears it from the app; delete the file in the folder to remove it on your device.
-                  </p>
-                );
-              }
+          if (isLocalCollection) {
+            return (
+              <p class="modal-note">
+                Removing here only clears it from the app; delete the file in the folder to remove it on your device.
+              </p>
+            );
+          }
 
-              if (isAppStorage) {
-                return (
-                  <p class="modal-note">
-                    Removing here only clears it from the viewer; the file remains in app storage.
-                  </p>
-                );
-              }
+          if (isAppStorage) {
+            return (
+              <p class="modal-note">
+                Removing here only clears it from the viewer; the file remains in app storage.
+              </p>
+            );
+          }
 
-              if (isUrlCollection) {
-                return (
-                  <p class="modal-note">
-                    This only removes the link from the collection; the original URL/file stays online.
-                  </p>
-                );
-              }
+          if (isUrlCollection) {
+            return (
+              <p class="modal-note">
+                This only removes the link from the collection; the original URL/file stays online.
+              </p>
+            );
+          }
 
-              if (isSupabase && !deleteRemote) {
-                return (
-                  <p class="modal-note">
-                    Removing here only clears it from the app; file remains in the Supabase collection. Enable the checkbox below to delete remotely.
-                  </p>
-                );
-              }
+          if (isSupabase && !deleteRemote) {
+            return (
+              <p class="modal-note">
+                Removing here only clears it from the app; file remains in the Supabase collection. Enable the checkbox below to delete remotely.
+              </p>
+            );
+          }
 
-              if (isSupabase && deleteRemote) {
-                return (
-                  <p class="modal-note">
-                    Selected item will be deleted from the Supabase collection and removed from the app.
-                  </p>
-                );
-              }
+          if (isSupabase && deleteRemote) {
+            return (
+              <p class="modal-note">
+                Selected item will be deleted from the Supabase collection and removed from the app.
+              </p>
+            );
+          }
 
-              // Fallback
-              return (
-                <p class="modal-note">
-                  Removing here only clears it from the app; the source is unchanged.
-                </p>
-              );
-            })()}
-            
-            <div class="modal-options">
-              <label class="radio-option">
-                <input 
-                  type="radio" 
-                  name="deleteScope" 
-                  value="single" 
-                  checked={deleteScope === 'single'}
-                  onChange={(e) => setDeleteScope(e.target.value)}
-                />
-                Remove image from queue 
-              </label>
-              
-              <label class="radio-option">
-                <input 
-                  type="radio" 
-                  name="deleteScope" 
-                  value="all" 
-                  checked={deleteScope === 'all'}
-                  onChange={(e) => setDeleteScope(e.target.value)}
-                />
-                Remove all images from queue
-              </label>
-            </div>
+          // Fallback
+          return (
+            <p class="modal-note">
+              Removing here only clears it from the app; the source is unchanged.
+            </p>
+          );
+        })()}
+        
+        <div class="modal-options">
+          <label class="radio-option">
+            <input 
+              type="radio" 
+              name="deleteScope" 
+              value="single" 
+              checked={deleteScope === 'single'}
+              onChange={(e) => setDeleteScope(e.target.value)}
+            />
+            Remove image from queue 
+          </label>
+          
+          <label class="radio-option">
+            <input 
+              type="radio" 
+              name="deleteScope" 
+              value="all" 
+              checked={deleteScope === 'all'}
+              onChange={(e) => setDeleteScope(e.target.value)}
+            />
+            Remove all images from queue
+          </label>
+        </div>
 
-            {(() => {
-              const hasSupabase = deleteScope === 'single'
-                ? assets[currentAssetIndex]?.sourceType === 'supabase-storage'
-                : assets.some((a) => a?.sourceType === 'supabase-storage');
+        {(() => {
+          const hasSupabase = deleteScope === 'single'
+            ? assets[currentAssetIndex]?.sourceType === 'supabase-storage'
+            : assets.some((a) => a?.sourceType === 'supabase-storage');
 
-              if (!hasSupabase) return null;
+          if (!hasSupabase) return null;
 
-              return (
-                <div class="modal-checkbox">
-                  <label>
-                    <input 
-                      type="checkbox" 
-                      checked={deleteRemote}
-                      onChange={(e) => setDeleteRemote(e.target.checked)}
-                    />
-                    Delete from Supabase storage
-                  </label>
-                  <div class="modal-subnote">
-                    Removes files and manifest entries from the linked Supabase collection using the stored collection credentials.
-                  </div>
-                </div>
-              );
-            })()}
-
+          return (
             <div class="modal-checkbox">
               <label>
                 <input 
                   type="checkbox" 
-                  checked={clearMetadata}
-                  onChange={(e) => setClearMetadata(e.target.checked)}
+                  checked={deleteRemote}
+                  onChange={(e) => setDeleteRemote(e.target.checked)}
                 />
-                Clear stored metadata
+                Delete from Supabase storage
               </label>
               <div class="modal-subnote">
-                Keeping metadata preserves image previews and camera settings, so re-adding the image restores them.
+                Removes files and manifest entries from the linked Supabase collection using the stored collection credentials.
               </div>
-              {assets.some((asset) => asset?.sourceId) && (
-                <div class="modal-subnote">
-                  Removed collection items are hidden locally and can be restored later from Debug Settings.
-                </div>
-              )}
             </div>
+          );
+        })()}
 
-            <div class="modal-actions">
-              <button onClick={() => setShowDeleteModal(false)}>Cancel</button>
-              <button class="danger" onClick={confirmDelete}>Delete</button>
-            </div>
+        <div class="modal-checkbox">
+          <label>
+            <input 
+              type="checkbox" 
+              checked={clearMetadata}
+              onChange={(e) => setClearMetadata(e.target.checked)}
+            />
+            Clear stored metadata
+          </label>
+          <div class="modal-subnote">
+            Keeping metadata preserves image previews and camera settings, so re-adding the image restores them.
           </div>
-        </div>,
-        portalTarget
-      )}
+          {assets.some((asset) => asset?.sourceId) && (
+            <div class="modal-subnote">
+              Removed collection items are hidden locally and can be restored later from Debug Settings.
+            </div>
+          )}
+        </div>
+
+        <div class="modal-actions">
+          <button onClick={() => setShowDeleteModal(false)}>Cancel</button>
+          <button class="danger" onClick={confirmDelete}>Delete</button>
+        </div>
+      </Modal>
       {uploadModal}
     </>
   );

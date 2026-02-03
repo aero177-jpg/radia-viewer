@@ -450,7 +450,7 @@ function DebugSettings() {
         </div>
 
         <div class="control-row">
-          <span class="control-label">Download</span>
+          <span class="control-label">Download items</span>
           <button
             type="button"
             class="secondary"
@@ -552,7 +552,7 @@ function DebugSettings() {
             class="secondary"
             onClick={() => setTransferModalOpen(true)}
           >
-            Open
+            Open...
           </button>
         </div>
 
