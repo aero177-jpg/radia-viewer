@@ -29,6 +29,7 @@ import ConnectStorageDialog from './ConnectStorageDialog';
 import ControlsModal from './ControlsModal';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 import { useViewerDrop } from './useViewerDrop.jsx';
+import PwaReloadPrompt from './PwaReloadPrompt';
 
 /** Delay before resize after panel toggle animation completes */
 const PANEL_TRANSITION_MS = 350;
@@ -689,6 +690,7 @@ function App() {
         isOpen={controlsModalOpen}
         onClose={() => setControlsModalOpen(false)}
       />
+      <PwaReloadPrompt />
       {dropModal}
       {uploadModal}
     </div>

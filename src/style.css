@@ -35,6 +35,59 @@ button, a, input, .sidebar-btn, .panel-toggle {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* PWA toast (offline ready / update available) */
+.pwa-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  background: rgba(12, 14, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  color: #e6ecf8;
+  padding: 12px 14px;
+  max-width: min(92vw, 520px);
+  backdrop-filter: blur(10px);
+}
+
+.pwa-toast__content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.pwa-toast__message {
+  font-size: 0.92rem;
+  letter-spacing: 0.2px;
+}
+
+.pwa-toast__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pwa-toast__button {
+  background: #1d2636;
+  color: #e6ecf8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pwa-toast__button:hover {
+  background: #24324a;
+}
+
+.pwa-toast__button--secondary {
+  background: transparent;
+}
+
 /* For touch devices, make focus rings less obtrusive while still present for keyboard users */
 @media (pointer: coarse) {
   :focus {

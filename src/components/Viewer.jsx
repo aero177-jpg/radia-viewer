@@ -279,12 +279,28 @@ function Viewer({ viewerReady, dropOverlay }) {
         return;
       }
 
+      if (document.querySelector('.modal-overlay')) {
+        return;
+      }
+
       cancelLoadZoomAnimation();
 
 
-      if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
+      if (event.code === 'KeyR' || event.key === 'r' || event.key === 'R') {
         event.preventDefault();
         restoreHomeView();
+        return;
+      }
+
+      if (event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar') {
+        event.preventDefault();
+        if (slideshowMode) {
+          if (slideshowPlaying) {
+            stopSlideshow();
+          } else {
+            startSlideshow();
+          }
+        }
         return;
       }
 
@@ -423,7 +439,7 @@ function Viewer({ viewerReady, dropOverlay }) {
         <div className="large-file-overlay">
           <div className="large-file-badge">
             <span className="large-file-spinner" aria-hidden="true" />
-            <span>Loading large file...</span>
+            <span>Loading file...</span>
           </div>
         </div>
       )}

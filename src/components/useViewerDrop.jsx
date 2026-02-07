@@ -143,6 +143,14 @@ export function useViewerDrop({ activeSourceId, setStatus, handleAssets, handleI
       const fileList = splatFiles.length > 0 ? splatFiles : imageFiles;
       const mode = splatFiles.length > 0 ? 'splats' : 'images';
 
+      const sourceType = activeSource?.type;
+      const isLocalOnlySession = !activeSource || sourceType === 'local-folder';
+
+      if (mode === 'splats' && isLocalOnlySession) {
+        await handleSessionOnlyDrop(fileList);
+        return;
+      }
+
       setPendingDrop({
         files: fileList,
         mode,

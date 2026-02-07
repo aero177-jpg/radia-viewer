@@ -1,0 +1,22 @@
+{
+  "name": "Radia viewer",
+  "short_name": "Radia",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "icons": [
+    {
+      "sizes": "192x192",
+      "src": "/radiaIcon_192.png",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+       {
+      "sizes": "512x512",
+      "src": "/radiaIcon_512.png",
+      "type": "image/png"
+    }
+  ]
+}
