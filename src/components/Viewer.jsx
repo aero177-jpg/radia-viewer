@@ -215,9 +215,17 @@ function Viewer({ viewerReady, dropOverlay }) {
     const cancelLoadZoomOnUserInput = () => {
       if (shouldIgnoreViewerInput()) return;
       cancelLoadZoomAnimation();
-      cancelContinuousZoomAnimation();
-      cancelContinuousOrbitAnimation();
-      cancelContinuousVerticalOrbitAnimation();
+      const st = useStore.getState();
+      if (st.slideshowMode && st.slideshowPlaying) {
+        // Auto-pause — preserves tweens + timer for glide-back resume
+        stopSlideshow();
+      } else if (!st.slideshowMode) {
+        // Not in slideshow mode — kill continuous tweens normally
+        cancelContinuousZoomAnimation();
+        cancelContinuousOrbitAnimation();
+        cancelContinuousVerticalOrbitAnimation();
+      }
+      // If paused (slideshowMode && !slideshowPlaying), leave tweens alone
     };
 
     // Cancel animation on any user input

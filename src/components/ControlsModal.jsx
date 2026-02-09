@@ -78,9 +78,10 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
                <Section title="Slideshow" isOpen={isSubsectionOpen('getting-started.slideshow')}>
                 <ul>
                   <li><strong>Start slideshow: </strong>Click the play icon on the bottom left of the screen to toggle. pause by tapping the screen, or clicking the play/pause button between the arrow buttons.</li>
-                  <li><strong>Settings:</strong>Hold the slideshow button for a second to open slide settings.</li>
+                  <li><strong>Settings: </strong>Hold the slideshow button for a second to open slide settings.</li>
                   <li><strong>Continuous mode:</strong> This replaces the side in and out animation with a single sliding animation.</li> 
-                  <li><strong>Transition Range:</strong> Adjusts how wide the orbit or zoom path is, but this can lead to seeing more unwanted artifacts and defects. </li>
+                  <li><strong>Landscape zoom:</strong> file-level setting that allows for a deeper zoom animation for images with a distant subject.</li>
+                  <li><strong>Transition Range:</strong> Adjusts how wide the orbit or zoom path is, but this can lead to seeing more unwanted artifacts or deformed splats. </li>
                 </ul>
               </Section>
           

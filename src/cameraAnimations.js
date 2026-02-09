@@ -20,6 +20,9 @@ export {
   cancelContinuousZoomAnimation,
   cancelContinuousOrbitAnimation,
   cancelContinuousVerticalOrbitAnimation,
+  pauseContinuousAnimations,
+  resumeContinuousAnimations,
+  getActiveContinuousTween,
 } from "./continuousAnimations.js";
 
 // Internal imports from split modules

@@ -173,7 +173,7 @@ export const cancelContinuousVerticalOrbitAnimation = () => {
  * Continuous-zoom slide-in: gentle dolly along the forward axis.
  * @returns {Promise} Resolves when CSS fade completes (tween continues in background).
  */
-export const continuousZoomSlideIn = (duration, amount) => {
+export const continuousZoomSlideIn = (duration, amount, options = {}) => {
   return new Promise((resolve) => {
     cancelContinuousZoomAnimation();
     const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
@@ -192,19 +192,39 @@ export const continuousZoomSlideIn = (duration, amount) => {
     const startPosition = currentPosition.clone().add(startOffset);
     const endPosition = currentPosition.clone().add(endOffset);
 
-    camera.position.copy(startPosition);
-    controls.update();
-    requestRender();
+    const glideDuration = options.glideDuration ?? 0;
 
-    continuousZoomTween = gsap.to(camera.position, {
-      x: endPosition.x,
-      y: endPosition.y,
-      z: endPosition.z,
-      duration: durationSec,
-      ease: "none",
-      onUpdate: () => { controls.update(); requestRender(); },
-      onComplete: () => { continuousZoomTween = null; },
-    });
+    const startMainAnimation = () => {
+      continuousZoomTween = gsap.to(camera.position, {
+        x: endPosition.x,
+        y: endPosition.y,
+        z: endPosition.z,
+        duration: durationSec,
+        ease: "none",
+        onUpdate: () => { controls.update(); requestRender(); },
+        onComplete: () => { continuousZoomTween = null; },
+      });
+    };
+
+    if (glideDuration > 0) {
+      const glideProxy = { t: 0 };
+      continuousZoomTween = gsap.to(glideProxy, {
+        t: 1,
+        duration: glideDuration,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          camera.position.lerpVectors(currentPosition, startPosition, glideProxy.t);
+          controls.update();
+          requestRender();
+        },
+        onComplete: startMainAnimation,
+      });
+    } else {
+      camera.position.copy(startPosition);
+      controls.update();
+      requestRender();
+      startMainAnimation();
+    }
 
     scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
   });
@@ -214,7 +234,7 @@ export const continuousZoomSlideIn = (duration, amount) => {
  * Continuous-orbit slide-in: horizontal arc around the target.
  * @returns {Promise}
  */
-export const continuousOrbitSlideIn = (duration, amount) => {
+export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
   return new Promise((resolve) => {
     cancelContinuousOrbitAnimation();
     const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
@@ -245,31 +265,51 @@ export const continuousOrbitSlideIn = (duration, amount) => {
     continuousOrbitState = {};
     applyOrbitLimitOverride(continuousOrbitState);
 
-    camera.position.copy(startPosition);
-    controls.target.copy(startTarget);
-    controls.update();
-    requestRender();
+    const glideDuration = options.glideDuration ?? 0;
 
-    const proxy = { t: 0 };
+    const startMainAnimation = () => {
+      const proxy = { t: 0 };
+      continuousOrbitTween = gsap.to(proxy, {
+        t: 1,
+        duration: durationSec,
+        ease: "none",
+        onUpdate: () => {
+          camera.position.lerpVectors(startPosition, endPosition, proxy.t);
+          controls.target.lerpVectors(startTarget, endTarget, proxy.t);
+          controls.update();
+          requestRender();
+        },
+        onComplete: () => {
+          continuousOrbitTween = null;
+          if (continuousOrbitState) {
+            restoreOrbitLimitOverride(continuousOrbitState);
+            continuousOrbitState = null;
+          }
+        },
+      });
+    };
 
-    continuousOrbitTween = gsap.to(proxy, {
-      t: 1,
-      duration: durationSec,
-      ease: "none",
-      onUpdate: () => {
-        camera.position.lerpVectors(startPosition, endPosition, proxy.t);
-        controls.target.lerpVectors(startTarget, endTarget, proxy.t);
-        controls.update();
-        requestRender();
-      },
-      onComplete: () => {
-        continuousOrbitTween = null;
-        if (continuousOrbitState) {
-          restoreOrbitLimitOverride(continuousOrbitState);
-          continuousOrbitState = null;
-        }
-      },
-    });
+    if (glideDuration > 0) {
+      const glideProxy = { t: 0 };
+      continuousOrbitTween = gsap.to(glideProxy, {
+        t: 1,
+        duration: glideDuration,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          camera.position.lerpVectors(currentPosition, startPosition, glideProxy.t);
+          controls.target.lerpVectors(currentTarget, startTarget, glideProxy.t);
+          controls.update();
+          requestRender();
+        },
+        onComplete: startMainAnimation,
+      });
+    } else {
+      camera.position.copy(startPosition);
+      controls.target.copy(startTarget);
+      controls.update();
+      requestRender();
+      startMainAnimation();
+    }
 
     scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
   });
@@ -279,7 +319,7 @@ export const continuousOrbitSlideIn = (duration, amount) => {
  * Continuous-vertical-orbit slide-in: vertical arc around the target.
  * @returns {Promise}
  */
-export const continuousVerticalOrbitSlideIn = (duration, amount) => {
+export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) => {
   return new Promise((resolve) => {
     cancelContinuousVerticalOrbitAnimation();
     const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
@@ -308,35 +348,77 @@ export const continuousVerticalOrbitSlideIn = (duration, amount) => {
     continuousVerticalOrbitState = {};
     applyOrbitLimitOverride(continuousVerticalOrbitState);
 
-    camera.position.copy(startPosition);
-    controls.target.copy(startTarget);
-    controls.update();
-    requestRender();
+    const glideDuration = options.glideDuration ?? 0;
 
-    const proxy = { t: 0 };
+    const startMainAnimation = () => {
+      const proxy = { t: 0 };
+      continuousVerticalOrbitTween = gsap.to(proxy, {
+        t: 1,
+        duration: durationSec,
+        ease: "none",
+        onUpdate: () => {
+          const currentTargetPos = startTarget.clone().lerp(endTarget, proxy.t);
+          const currentAngle = gsap.utils.interpolate(-orbitAngle, orbitAngle, proxy.t);
+          const currentOffset = orbitOffset.clone().applyAxisAngle(right, currentAngle);
+          camera.position.copy(currentTargetPos).add(currentOffset);
+          controls.target.copy(currentTargetPos);
+          controls.update();
+          requestRender();
+        },
+        onComplete: () => {
+          continuousVerticalOrbitTween = null;
+          if (continuousVerticalOrbitState) {
+            restoreOrbitLimitOverride(continuousVerticalOrbitState);
+            continuousVerticalOrbitState = null;
+          }
+        },
+      });
+    };
 
-    continuousVerticalOrbitTween = gsap.to(proxy, {
-      t: 1,
-      duration: durationSec,
-      ease: "none",
-      onUpdate: () => {
-        const currentTargetPos = startTarget.clone().lerp(endTarget, proxy.t);
-        const currentAngle = gsap.utils.interpolate(-orbitAngle, orbitAngle, proxy.t);
-        const currentOffset = orbitOffset.clone().applyAxisAngle(right, currentAngle);
-        camera.position.copy(currentTargetPos).add(currentOffset);
-        controls.target.copy(currentTargetPos);
-        controls.update();
-        requestRender();
-      },
-      onComplete: () => {
-        continuousVerticalOrbitTween = null;
-        if (continuousVerticalOrbitState) {
-          restoreOrbitLimitOverride(continuousVerticalOrbitState);
-          continuousVerticalOrbitState = null;
-        }
-      },
-    });
+    if (glideDuration > 0) {
+      const glideProxy = { t: 0 };
+      continuousVerticalOrbitTween = gsap.to(glideProxy, {
+        t: 1,
+        duration: glideDuration,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          camera.position.lerpVectors(currentPosition, startPosition, glideProxy.t);
+          controls.target.lerpVectors(currentTarget, startTarget, glideProxy.t);
+          controls.update();
+          requestRender();
+        },
+        onComplete: startMainAnimation,
+      });
+    } else {
+      camera.position.copy(startPosition);
+      controls.target.copy(startTarget);
+      controls.update();
+      requestRender();
+      startMainAnimation();
+    }
 
     scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
   });
+};
+
+// ============================================================================
+// Pause / resume helpers (used by slideshowController)
+// ============================================================================
+
+/** Returns the currently active continuous tween, or null. */
+export const getActiveContinuousTween = () =>
+  continuousZoomTween ?? continuousOrbitTween ?? continuousVerticalOrbitTween ?? null;
+
+/** Pauses all active continuous tweens in place. */
+export const pauseContinuousAnimations = () => {
+  if (continuousZoomTween) continuousZoomTween.pause();
+  if (continuousOrbitTween) continuousOrbitTween.pause();
+  if (continuousVerticalOrbitTween) continuousVerticalOrbitTween.pause();
+};
+
+/** Resumes all paused continuous tweens. */
+export const resumeContinuousAnimations = () => {
+  if (continuousZoomTween) continuousZoomTween.resume();
+  if (continuousOrbitTween) continuousOrbitTween.resume();
+  if (continuousVerticalOrbitTween) continuousVerticalOrbitTween.resume();
 };

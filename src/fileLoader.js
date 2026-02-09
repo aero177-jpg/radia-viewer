@@ -37,6 +37,7 @@ import {
   restoreOrbitConstraints,
 } from "./customMetadata.js";
 import { slideOutAnimation, slideInAnimation, cancelContinuousZoomAnimation, cancelContinuousOrbitAnimation, cancelContinuousVerticalOrbitAnimation } from "./cameraAnimations.js";
+import { resetSlideshowTimer } from "./slideshowController.js";
 import { isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode } from "./immersiveMode.js";
 import { applyIntrinsicsAspect, updateViewerAspectRatio, resize } from "./layout.js";
 import { cleanupSlideTransitionState, waitForViewerResizeTransition } from "./transitionUtils.js";
@@ -240,7 +241,9 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
   const isFirstLoad = !hasLoadedFirstAsset; // Detect first asset load before any mesh exists
   const forceFadeForNonSequential = !slideDirection; // random asset clicks should use fade transition
   const baseSlideMode = store.slideMode ?? 'horizontal';
-  const shouldUseContinuous = store.slideshowMode && store.slideshowContinuousMode && baseSlideMode !== 'fade';
+  // Only use continuous animation when slideshow is actively playing.
+  // When paused and manually advancing, use standard fade transition.
+  const shouldUseContinuous = store.slideshowMode && store.slideshowPlaying && store.slideshowContinuousMode && baseSlideMode !== 'fade';
   const resolvedSlideMode = shouldUseContinuous
     ? (baseSlideMode === 'horizontal'
       ? 'continuous-orbit'
@@ -1143,6 +1146,7 @@ export const loadNextAsset = async () => {
   if (isNavigationLocked) return;
   
   isNavigationLocked = true;
+  resetSlideshowTimer();
   
   // Pause immersive mode immediately to prevent erratic camera during transition
   const wasImmersive = isImmersiveModeActive();
@@ -1176,6 +1180,7 @@ export const loadPrevAsset = async () => {
   if (isNavigationLocked) return;
   
   isNavigationLocked = true;
+  resetSlideshowTimer();
   
   // Pause immersive mode immediately to prevent erratic camera during transition
   const wasImmersive = isImmersiveModeActive();

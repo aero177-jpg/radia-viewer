@@ -27,7 +27,7 @@ import { getSourcesArray } from '../storage/index.js';
 import { getSource, createPublicUrlSource, registerSource, saveSource } from '../storage/index.js';
 import ConnectStorageDialog from './ConnectStorageDialog';
 import ControlsModal from './ControlsModal';
-import { startSlideshow, stopSlideshow } from '../slideshowController';
+import { startSlideshow, stopSlideshow, resetSlideshow } from '../slideshowController';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
 import { useViewerDrop } from './useViewerDrop.jsx';
 import PwaReloadPrompt from './PwaReloadPrompt';
@@ -249,7 +249,7 @@ function App() {
 
   const handleSlideshowToggle = useCallback(() => {
     if (slideshowMode) {
-      stopSlideshow();
+      resetSlideshow();
       setSlideshowMode(false);
       return;
     }
@@ -267,7 +267,7 @@ function App() {
       slideshowHoldTriggered.current = true;
       setSlideshowOptionsOpen(true);
       slideshowHoldTimeout.current = null;
-    }, 1000);
+    }, 700);
   }, []);
 
   const handleSlideshowHoldEnd = useCallback(() => {
