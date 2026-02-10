@@ -86,6 +86,7 @@ const DEFAULT_UI_PREFS = {
     slideMode: 'horizontal',
     continuousMotionSize: 'large',
     continuousMotionDuration: 7,
+    slideshowContinuousMode: false,
     slideshowDuration: 3,
     custom: {
       duration: 2.5,
@@ -113,6 +114,9 @@ const normalizeUiPrefs = (raw) => {
     if (typeof raw.animation.direction === 'string') anim.direction = raw.animation.direction;
     if (typeof raw.animation.slideMode === 'string') anim.slideMode = raw.animation.slideMode;
     if (typeof raw.animation.continuousMotionSize === 'string') anim.continuousMotionSize = raw.animation.continuousMotionSize;
+    if (typeof raw.animation.slideshowContinuousMode === 'boolean') {
+      anim.slideshowContinuousMode = raw.animation.slideshowContinuousMode;
+    }
 
     if (Number.isFinite(raw.animation.continuousMotionDuration)) {
       anim.continuousMotionDuration = raw.animation.continuousMotionDuration;
@@ -162,6 +166,9 @@ const persistUiPrefs = (state) => {
   }
   if (Number.isFinite(state.continuousMotionDuration) && state.continuousMotionDuration !== DEFAULT_UI_PREFS.animation.continuousMotionDuration) {
     anim.continuousMotionDuration = state.continuousMotionDuration;
+  }
+  if (typeof state.slideshowContinuousMode === 'boolean' && state.slideshowContinuousMode !== DEFAULT_UI_PREFS.animation.slideshowContinuousMode) {
+    anim.slideshowContinuousMode = state.slideshowContinuousMode;
   }
   if (Number.isFinite(state.slideshowDuration) && state.slideshowDuration !== DEFAULT_UI_PREFS.animation.slideshowDuration) {
     anim.slideshowDuration = state.slideshowDuration;
@@ -272,7 +279,7 @@ export const useStore = create(
   slideMode: persistedUiPrefs.animation?.slideMode ?? 'horizontal',
   continuousMotionSize: persistedUiPrefs.animation?.continuousMotionSize ?? 'large',
   continuousMotionDuration: persistedUiPrefs.animation?.continuousMotionDuration ?? 7,
-  slideshowContinuousMode: false,
+  slideshowContinuousMode: persistedUiPrefs.animation?.slideshowContinuousMode ?? false,
   slideshowMode: false,
   slideshowUseCustom: false,
   slideshowDuration: persistedUiPrefs.animation?.slideshowDuration ?? 3,
@@ -287,6 +294,10 @@ export const useStore = create(
     zoomType: persistedUiPrefs.animation?.custom?.zoomType ?? 'out',
     easing: persistedUiPrefs.animation?.custom?.easing ?? 'ease-in-out',
     dollyZoom: false,
+  },
+  // Per-file custom animation overrides (stored in IndexedDB file-settings)
+  fileCustomAnimation: {
+    zoomProfile: 'default',
   },
 
   // Custom focus state
@@ -444,7 +455,10 @@ export const useStore = create(
   },
 
   /** Sets continuous mode for slideshow */
-  setSlideshowContinuousMode: (enabled) => set({ slideshowContinuousMode: enabled }),
+  setSlideshowContinuousMode: (enabled) => {
+    set({ slideshowContinuousMode: enabled });
+    persistUiPrefs({ ...get(), slideshowContinuousMode: enabled });
+  },
   
   /** Enables/disables slideshow mode */
   setSlideshowMode: (enabled) => set({ slideshowMode: enabled }),
@@ -474,6 +488,11 @@ export const useStore = create(
     persistUiPrefs(nextState);
     return { customAnimation: nextCustomAnimation };
   }),
+
+  /** Updates per-file custom animation settings (merges with existing) */
+  setFileCustomAnimation: (settings) => set((state) => ({
+    fileCustomAnimation: { ...state.fileCustomAnimation, ...settings },
+  })),
 
   /** Sets custom focus state */
   setHasCustomFocus: (hasCustomFocus) => set({ hasCustomFocus }),

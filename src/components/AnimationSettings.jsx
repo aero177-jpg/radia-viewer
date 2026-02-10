@@ -9,8 +9,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faRotateRight, faPlay, faStop } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
 import { setLoadAnimationEnabled, setLoadAnimationIntensity, setLoadAnimationDirection, startLoadZoomAnimation } from '../customAnimations';
-import { saveAnimationSettings, savePreviewBlob } from '../fileStorage';
+import { saveAnimationSettings, savePreviewBlob, saveCustomAnimationSettings } from '../fileStorage';
 import { scene, renderer, composer, THREE, currentMesh } from '../viewer';
+import { updateCustomAnimationInCache, clearCustomAnimationInCache } from '../splatManager';
 import { startSlideshow, stopSlideshow } from '../slideshowController';
 
 const PREVIEW_TARGET_HEIGHT = 128;
@@ -61,6 +62,13 @@ const CONTINUOUS_SIZE_OPTIONS = [
   { value: 'large', label: 'Large' },
 ];
 
+const ZOOM_PROFILE_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: 'near', label: 'Near' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'far', label: 'Far' },
+];
+
 function AnimationSettings() {
   // Store state
   const animationEnabled = useStore((state) => state.animationEnabled);
@@ -69,12 +77,15 @@ function AnimationSettings() {
   const slideMode = useStore((state) => state.slideMode);
   const continuousMotionSize = useStore((state) => state.continuousMotionSize);
   const continuousMotionDuration = useStore((state) => state.continuousMotionDuration);
+  const assets = useStore((state) => state.assets);
+  const currentAssetIndex = useStore((state) => state.currentAssetIndex);
   const slideshowMode = useStore((state) => state.slideshowMode);
   const slideshowContinuousMode = useStore((state) => state.slideshowContinuousMode);
   const slideshowDuration = useStore((state) => state.slideshowDuration);
   const slideshowPlaying = useStore((state) => state.slideshowPlaying);
   const animSettingsExpanded = useStore((state) => state.animSettingsExpanded);
   const customAnimation = useStore((state) => state.customAnimation);
+  const fileCustomAnimation = useStore((state) => state.fileCustomAnimation);
   const currentFileName = useStore((state) => state.fileInfo?.name);
   
   // Store actions
@@ -88,6 +99,7 @@ function AnimationSettings() {
   const setSlideshowContinuousModeStore = useStore((state) => state.setSlideshowContinuousMode);
   const setSlideshowDurationStore = useStore((state) => state.setSlideshowDuration);
   const setCustomAnimation = useStore((state) => state.setCustomAnimation);
+  const setFileCustomAnimation = useStore((state) => state.setFileCustomAnimation);
   const toggleAnimSettingsExpanded = useStore((state) => state.toggleAnimSettingsExpanded);
 
   /**
@@ -156,6 +168,28 @@ function AnimationSettings() {
     const value = Number(e.target.value);
     setContinuousMotionDurationStore(value);
   }, [setContinuousMotionDurationStore]);
+
+  const handleZoomProfileChange = useCallback((e) => {
+    const zoomProfile = e.target.value;
+    setFileCustomAnimation({ zoomProfile });
+    const currentAssetId = assets?.[currentAssetIndex]?.id;
+
+    if (currentFileName && currentFileName !== '-') {
+      const payload = zoomProfile === 'default' ? {} : { zoomProfile };
+      saveCustomAnimationSettings(currentFileName, payload)
+        .catch(err => {
+          console.warn('Failed to save custom animation settings:', err);
+        });
+    }
+
+    if (currentAssetId) {
+      if (zoomProfile === 'default') {
+        clearCustomAnimationInCache(currentAssetId);
+      } else {
+        updateCustomAnimationInCache(currentAssetId, { zoomProfile });
+      }
+    }
+  }, [setFileCustomAnimation, currentFileName, assets, currentAssetIndex]);
 
   const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob || null), type, quality);
@@ -329,7 +363,53 @@ function AnimationSettings() {
           </select>
         </div>
 
-        {slideshowMode && slideshowContinuousMode && slideMode !== 'fade' && (
+        {/* Slideshow mode toggle */}
+        <div class="control-row animate-toggle-row">
+          <span class="control-label">Slideshow Mode</span>
+          <label class="switch">
+            <input
+              type="checkbox"
+              checked={slideshowMode}
+              onChange={(e) => setSlideshowModeStore(e.target.checked)}
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+        </div>
+
+        <div class="settings-divider">
+          <span>Slideshow</span>
+        </div>
+
+        {/* Slideshow continuous mode toggle */}
+        {slideMode !== 'fade' && (
+          <div class="control-row animate-toggle-row">
+            <span class="control-label">Continuous Mode</span>
+            <label class="switch">
+              <input
+                type="checkbox"
+                checked={slideshowContinuousMode}
+                onChange={(e) => setSlideshowContinuousModeStore(e.target.checked)}
+              />
+              <span class="switch-track" aria-hidden="true" />
+            </label>
+          </div>
+        )}
+
+        {slideMode === 'zoom' && (
+          <div class="control-row select-row">
+            <span class="control-label">Zoom target</span>
+            <select
+              value={fileCustomAnimation?.zoomProfile ?? 'default'}
+              onChange={handleZoomProfileChange}
+            >
+              {ZOOM_PROFILE_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {slideshowContinuousMode && slideMode !== 'fade' && (
           <div class="control-row select-row">
             <span class="control-label">Transition range</span>
             <select value={continuousMotionSize} onChange={handleContinuousSizeChange}>
@@ -340,7 +420,7 @@ function AnimationSettings() {
           </div>
         )}
 
-        {slideshowMode && slideshowContinuousMode && slideMode !== 'fade' && (
+        {slideshowContinuousMode && slideMode !== 'fade' && (
           <div class="control-row">
             <span class="control-label">Duration</span>
             <div class="control-track">
@@ -357,36 +437,8 @@ function AnimationSettings() {
           </div>
         )}
 
-        {/* Slideshow mode toggle */}
-        <div class="control-row animate-toggle-row">
-          <span class="control-label">Slideshow Mode</span>
-          <label class="switch">
-            <input
-              type="checkbox"
-              checked={slideshowMode}
-              onChange={(e) => setSlideshowModeStore(e.target.checked)}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-        </div>
-
-        {/* Slideshow continuous mode toggle */}
-        {slideshowMode && slideMode !== 'fade' && (
-          <div class="control-row animate-toggle-row">
-            <span class="control-label">Continuous Mode</span>
-            <label class="switch">
-              <input
-                type="checkbox"
-                checked={slideshowContinuousMode}
-                onChange={(e) => setSlideshowContinuousModeStore(e.target.checked)}
-              />
-              <span class="switch-track" aria-hidden="true" />
-            </label>
-          </div>
-        )}
-
         {/* Slideshow hold time (non-continuous) */}
-        {slideshowMode && (!slideshowContinuousMode || slideMode === 'fade') && (
+        {(!slideshowContinuousMode || slideMode === 'fade') && (
           <div class="control-row">
             <span class="control-label">Hold Time</span>
             <div class="control-track">
@@ -403,7 +455,7 @@ function AnimationSettings() {
           </div>
         )}
 
-        {/* Slideshow playback controls - only shown when slideshow mode is enabled */}
+        {/* Slideshow playback controls */}
         {slideshowMode && (
           <div class="control-row slideshow-controls">
             <div style="width: 100%">

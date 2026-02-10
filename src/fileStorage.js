@@ -26,6 +26,7 @@ const PREVIEW_VERSION = 1;
  * @property {number} version - Schema version for migration
  * @property {number} lastModified - Timestamp of last update
  * @property {AnimationSettings} [animation] - Load animation preferences
+ * @property {Object} [customAnimation] - Per-file custom animation overrides
  * @property {number} [focusDistance] - Optional user-set focus distance override
  * @property {CustomCameraMetadata} [customMetadata] - Optional user-set camera metadata override
  * @property {boolean} [isCached] - Whether this file is cached in IndexedDB
@@ -197,6 +198,16 @@ export const saveFileSettings = async (fileName, settings) => {
  */
 export const saveAnimationSettings = async (fileName, animation) => {
   return await saveFileSettings(fileName, { animation });
+};
+
+/**
+ * Saves per-file custom animation settings.
+ * @param {string} fileName - File name
+ * @param {Object} customAnimation - Custom animation settings
+ * @returns {Promise<boolean>} Success status
+ */
+export const saveCustomAnimationSettings = async (fileName, customAnimation) => {
+  return await saveFileSettings(fileName, { customAnimation });
 };
 
 /**

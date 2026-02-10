@@ -192,6 +192,11 @@ const syncStoredAnimationSettings = async (animationSettings, wasImmersiveModeAc
   }
 };
 
+const syncStoredCustomAnimationSettings = (customAnimationSettings, store) => {
+  const zoomProfile = customAnimationSettings?.zoomProfile ?? 'default';
+  store.setFileCustomAnimation({ zoomProfile });
+};
+
 
 const applyDebugZoomOut = () => {
   if (!debugForceZoomOut) return;
@@ -426,6 +431,10 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     await syncStoredAnimationSettings(
       storedSettings?.animation,
       wasImmersiveModeActive,
+      store,
+    );
+    syncStoredCustomAnimationSettings(
+      storedSettings?.customAnimation,
       store,
     );
 

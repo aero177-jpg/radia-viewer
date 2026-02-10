@@ -163,6 +163,7 @@ export const loadAssetMetadata = async (asset) => {
       return {
         animation: stored.animation,
         focusDistance: stored.focusDistance,
+        customAnimation: stored.customAnimation,
       };
     }
   } catch (err) {

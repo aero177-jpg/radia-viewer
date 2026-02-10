@@ -58,8 +58,32 @@ const getContinuousSizeScale = () => {
 };
 
 const getContinuousZoomRatios = () => {
-  const { continuousMotionSize } = getStoreState();
+  const { continuousMotionSize, slideMode, fileCustomAnimation } = getStoreState();
   const sizeKey = continuousMotionSize ?? 'large';
+  const zoomProfile = slideMode === 'zoom' ? fileCustomAnimation?.zoomProfile : null;
+
+  if (zoomProfile === 'near') {
+    return {
+      start: CONTINUOUS_ZOOM_START_RATIO_BY_SIZE.small,
+      end: CONTINUOUS_ZOOM_END_RATIO_BY_SIZE.small,
+    };
+  }
+
+  if (zoomProfile === 'medium') {
+    return {
+      start: CONTINUOUS_ZOOM_START_RATIO_BY_SIZE.small,
+      end: 0.5,
+    };
+  }
+
+  if (zoomProfile === 'far') {
+    const deepEnd = 0.9;
+    return {
+      start: 0,
+      end: deepEnd,
+    };
+  }
+
   return {
     start: CONTINUOUS_ZOOM_START_RATIO_BY_SIZE[sizeKey] ?? CONTINUOUS_ZOOM_START_RATIO_BY_SIZE.large,
     end: CONTINUOUS_ZOOM_END_RATIO_BY_SIZE[sizeKey] ?? CONTINUOUS_ZOOM_END_RATIO_BY_SIZE.large,

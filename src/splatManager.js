@@ -125,6 +125,9 @@ const createEntry = async (asset) => {
     if (sourceMetadata.animation && !storedSettings.animation) {
       storedSettings.animation = sourceMetadata.animation;
     }
+    if (sourceMetadata.customAnimation && !storedSettings.customAnimation) {
+      storedSettings.customAnimation = sourceMetadata.customAnimation;
+    }
     if (sourceMetadata.focusDistance !== undefined && storedSettings.focusDistance === undefined) {
       storedSettings.focusDistance = sourceMetadata.focusDistance;
     }
@@ -185,6 +188,28 @@ export const clearFocusDistanceInCache = (assetId) => {
     delete entry.storedSettings.focusDistance;
   }
   entry.focusDistanceOverride = undefined;
+};
+
+export const updateCustomAnimationInCache = (assetId, customAnimation) => {
+  if (!assetId || !cache.has(assetId)) return;
+  const entry = cache.get(assetId);
+  if (!entry) return;
+  if (!entry.storedSettings) {
+    entry.storedSettings = {};
+  }
+  entry.storedSettings.customAnimation = {
+    ...(entry.storedSettings.customAnimation || {}),
+    ...(customAnimation || {}),
+  };
+};
+
+export const clearCustomAnimationInCache = (assetId) => {
+  if (!assetId || !cache.has(assetId)) return;
+  const entry = cache.get(assetId);
+  if (!entry) return;
+  if (entry.storedSettings && entry.storedSettings.customAnimation !== undefined) {
+    delete entry.storedSettings.customAnimation;
+  }
 };
 
 export const activateSplatEntry = async (asset) => {
