@@ -70,12 +70,19 @@ export async function listExistingCollections({ accountId, accessKeyId, secretAc
       let collectionName = collectionId;
 
       const cachedManifest = loadR2ManifestCache({ accountId, bucket, collectionId });
-      const hasManifest = Boolean(cachedManifest);
+      let hasManifest = Boolean(cachedManifest);
 
       if (cachedManifest) {
         assetCount = cachedManifest.assets?.length || 0;
         if (cachedManifest.name) collectionName = cachedManifest.name;
       } else {
+        const manifestProbe = await client.send(new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: `${basePath}/manifest.json`,
+          MaxKeys: 1,
+        }));
+        hasManifest = Boolean(manifestProbe?.Contents?.length);
+
         const assetFiles = await listAllObjects(client, bucket, {
           Prefix: `${basePath}/assets/`,
           MaxKeys: 1000,

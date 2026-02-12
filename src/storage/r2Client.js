@@ -1,6 +1,6 @@
 /**
  * Shared Cloudflare R2 (S3-compatible) client factory.
- * Ensures one S3Client per (endpoint, accessKeyId).
+ * Ensures one S3Client per credential set.
  */
 import { S3Client } from '@aws-sdk/client-s3';
 
@@ -16,7 +16,7 @@ export const getR2Client = ({ accountId, endpoint, accessKeyId, secretAccessKey 
   const normalizedEndpoint = String(resolvedEndpoint || '').trim();
   const normalizedAccessKey = String(accessKeyId || '').trim();
   const normalizedSecretKey = String(secretAccessKey || '').trim();
-  const cacheKey = `${normalizedEndpoint}::${normalizedAccessKey}`;
+  const cacheKey = `${normalizedEndpoint}::${normalizedAccessKey}::${normalizedSecretKey}`;
 
   if (!clientCache.has(cacheKey)) {
     const client = new S3Client({

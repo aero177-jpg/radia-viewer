@@ -184,6 +184,7 @@ function CameraControls() {
   const setCustomMetadataAvailable = useStore((state) => state.setCustomMetadataAvailable);
   const setMetadataMissing = useStore((state) => state.setMetadataMissing);
   const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
+  const setCameraSettingsExpanded = useStore((state) => state.setCameraSettingsExpanded);
   const qualityPreset = useStore((state) => state.qualityPreset);
   const setQualityPreset = useStore((state) => state.setQualityPreset);
   const controlsModalOpen = useStore((state) => state.controlsModalOpen);
@@ -1071,6 +1072,17 @@ function CameraControls() {
             >
               Save View
             </button>
+
+            <div class="control-row clear-custom-row">
+              <button
+                type="button"
+                class="clear-custom-btn is-reset"
+                onClick={handleClearCustomMetadata}
+                disabled={isClearingCustomMetadata}
+              >
+                {isClearingCustomMetadata ? 'Resetting...' : 'Reset'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -1079,10 +1091,12 @@ function CameraControls() {
             <button
               type="button"
               class="clear-custom-btn"
-              onClick={handleClearCustomMetadata}
-              disabled={isClearingCustomMetadata}
+              onClick={() => {
+                setCustomMetadataControlsVisible(true);
+                setCameraSettingsExpanded(true);
+              }}
             >
-              {isClearingCustomMetadata ? 'Clearing...' : 'Clear custom camera'}
+              Edit custom camera
             </button>
           </div>
         )}

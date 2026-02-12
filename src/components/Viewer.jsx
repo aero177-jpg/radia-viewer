@@ -72,6 +72,9 @@ function Viewer({ viewerReady, dropOverlay }) {
   const slideshowMode = useStore((state) => state.slideshowMode);
   const slideshowPlaying = useStore((state) => state.slideshowPlaying);
   const setAnchorState = useStore((state) => state.setAnchorState);
+  const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
+  const setCameraSettingsExpanded = useStore((state) => state.setCameraSettingsExpanded);
+  const setPanelOpen = useStore((state) => state.setPanelOpen);
   
   // Store actions
   const addLog = useStore((state) => state.addLog);
@@ -80,6 +83,12 @@ function Viewer({ viewerReady, dropOverlay }) {
   const handleDismissUploadError = useCallback(() => {
     setUploadState({ isUploading: false, uploadProgress: null });
   }, [setUploadState]);
+
+  const handleOpenCustomMetadataEditor = useCallback(() => {
+    setCustomMetadataControlsVisible(true);
+    setCameraSettingsExpanded(true);
+    setPanelOpen(true);
+  }, [setCustomMetadataControlsVisible, setCameraSettingsExpanded, setPanelOpen]);
   
   // Ref for viewer container
   const viewerRef = useRef(null);
@@ -434,7 +443,14 @@ function Viewer({ viewerReady, dropOverlay }) {
       )}
       {metadataMissing && (
         <div class="metadata-warning">
-          No metadata. Adjust camera settings to save a new view.
+          <span>No metadata detected.</span>
+          <button
+            type="button"
+            class="metadata-action-btn"
+            onClick={handleOpenCustomMetadataEditor}
+          >
+            Adjust custom camera
+          </button>
         </div>
       )}
       {!hasOriginalMetadata && customMetadataMode && (
@@ -446,8 +462,15 @@ function Viewer({ viewerReady, dropOverlay }) {
             </span>
           </div>
           <div className="metadata-missing-hint">
-            Use Camera Settings to adjust view, then save
+            Adjust custom camera to save a new view
           </div>
+          <button
+            type="button"
+            className="metadata-action-btn"
+            onClick={handleOpenCustomMetadataEditor}
+          >
+            Adjust custom camera
+          </button>
         </div>
       )}
       {showLargeFileNotice && (

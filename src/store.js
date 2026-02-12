@@ -606,6 +606,9 @@ export const useStore = create(
   toggleCameraSettingsExpanded: () => set((state) => ({ 
     cameraSettingsExpanded: !state.cameraSettingsExpanded 
   })),
+
+  /** Sets camera settings expanded state */
+  setCameraSettingsExpanded: (expanded) => set({ cameraSettingsExpanded: expanded }),
   
   /** Toggles gallery expanded */
   toggleGalleryExpanded: () => set((state) => ({ 

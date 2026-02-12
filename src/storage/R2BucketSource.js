@@ -11,7 +11,6 @@ import {
 	GetObjectCommand,
 	PutObjectCommand,
 	DeleteObjectsCommand,
-	HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { AssetSource } from './AssetSource.js';
 import { createSourceId, MANIFEST_VERSION, SUPPORTED_MANIFEST_VERSIONS } from './types.js';
@@ -22,6 +21,8 @@ import { loadR2ManifestCache, saveR2ManifestCache } from './r2Settings.js';
 
 const PREVIEW_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 const METADATA_SUFFIXES = ['.meta.json', '.metadata.json'];
+
+const isMetadataFile = (filename) => METADATA_SUFFIXES.some((suffix) => filename.toLowerCase().endsWith(suffix));
 
 const getExtension = (filename) => {
 	const parts = filename.split('.');
@@ -37,6 +38,15 @@ const getBaseName = (filename) => {
 	const name = getFilename(filename);
 	const lastDot = name.lastIndexOf('.');
 	return lastDot > 0 ? name.slice(0, lastDot) : name;
+};
+
+const getMetadataAssetBase = (filename) => {
+	const name = getFilename(filename);
+	const lowerName = name.toLowerCase();
+	const matchedSuffix = METADATA_SUFFIXES.find((suffix) => lowerName.endsWith(suffix));
+	if (!matchedSuffix) return null;
+	const withoutSuffix = name.slice(0, -matchedSuffix.length);
+	return getBaseName(withoutSuffix).toLowerCase();
 };
 
 const stripLeadingSlash = (value) => value.replace(/^\/+/, '');
@@ -78,6 +88,10 @@ export class R2BucketSource extends AssetSource {
 	constructor(config) {
 		super(config);
 		this._manifest = null;
+	}
+
+	_isOffline() {
+		return typeof navigator !== 'undefined' && navigator.onLine === false;
 	}
 
 	_client() {
@@ -128,7 +142,7 @@ export class R2BucketSource extends AssetSource {
 			: options;
 
 		const { refreshManifest = true, verifyUpload = false } = normalized;
-		const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+		const isOffline = this._isOffline();
 
 		if (refreshManifest || !this._manifest) {
 			await this._loadManifest({ allowStale: true });
@@ -144,17 +158,6 @@ export class R2BucketSource extends AssetSource {
 		}
 
 		try {
-			const client = this._client();
-			await client.send(new ListObjectsV2Command({
-				Bucket: this._bucket(),
-				Prefix: this._basePrefix(),
-				MaxKeys: 1,
-			}));
-
-			if (refreshManifest) {
-				await this._loadManifest({ bypassCache: false });
-			}
-
 			await this._ensureManifestLoaded();
 
 			if (verifyUpload) {
@@ -184,7 +187,7 @@ export class R2BucketSource extends AssetSource {
 			bucket: this.config.config.bucket,
 			collectionId: this.config.config.collectionId,
 		};
-		const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+		const isOffline = this._isOffline();
 
 		if (!bypassCache) {
 			const cachedManifest = isOffline || allowStale
@@ -266,67 +269,61 @@ export class R2BucketSource extends AssetSource {
 		if (!this._manifest && this.config.config.hasManifest !== false) {
 			await this._loadManifest({ allowStale: true });
 		}
-		const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+		const isOffline = this._isOffline();
 		if (!this._manifest && !isOffline) {
 			// NOTE: We auto-generate a manifest on first connect for existing buckets.
 			// If this causes friction, consider moving this to an explicit "Rescan" action later.
 			const generated = await this._generateManifestFromBucket();
 			if (generated) {
 				await this._saveManifest(generated);
-				await this._ensureAssetsFolder();
 			}
 		}
 		return this._manifest;
 	}
 
-	async _ensureAssetsFolder() {
-		try {
-			const client = this._client();
-			const keepKey = `${this._assetPrefix()}/.keep`;
-			try {
-				await client.send(new HeadObjectCommand({
-					Bucket: this._bucket(),
-					Key: keepKey,
-				}));
-			} catch {
-				await client.send(new PutObjectCommand({
-					Bucket: this._bucket(),
-					Key: keepKey,
-					Body: new Uint8Array(0),
-					ContentType: 'text/plain',
-					CacheControl: 'no-cache',
-				}));
-			}
-		} catch {
-			// Ignore CORS/permission failures for the keep probe.
-		}
-	}
-
-	async _generateManifestFromBucket() {
+	async _scanBucket() {
 		const client = this._client();
 		const assetPrefix = `${this._assetPrefix()}/`;
 		const objects = await listAllObjects(client, this._bucket(), { Prefix: assetPrefix });
-		const filePaths = objects.map((item) => item.Key).filter(Boolean);
-		const { previewByBase, metadataByBase } = this._buildPreviewAndMetadataMaps(filePaths);
+
+		const storageFiles = objects.map((item) => item.Key).filter(Boolean);
+		const relativeFiles = storageFiles.map((path) => toRelativeFromBase(path, this._basePrefix()));
 		const supportedExtensions = getSupportedExtensions();
 
-		const assets = [];
-		for (const obj of objects) {
-			const key = obj.Key;
-			if (!key) continue;
-			const relative = toRelativeFromBase(key, this._basePrefix());
-			const ext = getExtension(relative);
-			if (!supportedExtensions.includes(ext)) continue;
+		const assetPaths = relativeFiles.filter((path) => supportedExtensions.includes(getExtension(path)));
+		const { previewByBase, metadataByBase } = this._buildPreviewAndMetadataMaps(storageFiles);
 
-			const base = getBaseName(relative).toLowerCase();
-			assets.push({
-				path: relative,
-				name: getFilename(relative),
-				size: obj.Size,
-				preview: previewByBase.get(base) || null,
-				metadata: metadataByBase.get(base) || null,
-			});
+		const objectByRelative = new Map();
+		for (const obj of objects) {
+			if (!obj.Key) continue;
+			objectByRelative.set(toRelativeFromBase(obj.Key, this._basePrefix()), obj);
 		}
+
+		return {
+			objects,
+			storageFiles,
+			relativeFiles,
+			assetPaths,
+			previewByBase,
+			metadataByBase,
+			objectByRelative,
+		};
+	}
+
+	async _generateManifestFromBucket() {
+		const scan = await this._scanBucket();
+
+		const assets = scan.assetPaths.map((path) => {
+			const base = getBaseName(path).toLowerCase();
+			const obj = scan.objectByRelative.get(path);
+			return {
+				path,
+				name: getFilename(path),
+				size: obj?.Size,
+				preview: scan.previewByBase.get(base) || null,
+				metadata: scan.metadataByBase.get(base) || null,
+			};
+		});
 
 		return {
 			version: MANIFEST_VERSION,
@@ -424,15 +421,9 @@ export class R2BucketSource extends AssetSource {
 				previewByBase.set(base.toLowerCase(), relative);
 			}
 
-			for (const suffix of METADATA_SUFFIXES) {
-				if (relative.toLowerCase().endsWith(suffix)) {
-					const baseKey = relative
-						.toLowerCase()
-						.replace(new RegExp(`${suffix.replace(/\./g, '\\.')}$`, 'i'), '')
-						.split('/')
-						.pop();
-					metadataByBase.set(baseKey, relative);
-				}
+			const metadataBase = getMetadataAssetBase(relative);
+			if (metadataBase) {
+				metadataByBase.set(metadataBase, relative);
 			}
 		}
 
@@ -445,29 +436,21 @@ export class R2BucketSource extends AssetSource {
 			if (!result.success) return { success: false, error: result.error };
 		}
 
-		const client = this._client();
-		const assetPrefix = `${this._assetPrefix()}/`;
-		const objects = await listAllObjects(client, this._bucket(), { Prefix: assetPrefix });
-		const storageFiles = objects.map((item) => item.Key).filter(Boolean);
-		const relativeFiles = storageFiles.map((path) => toRelativeFromBase(path, this._basePrefix()));
-		const supportedExtensions = getSupportedExtensions();
-
-		const assetPaths = relativeFiles.filter((path) => supportedExtensions.includes(getExtension(path)));
-		const { previewByBase, metadataByBase } = this._buildPreviewAndMetadataMaps(storageFiles);
+		const scan = await this._scanBucket();
 
 		const manifestAssets = this._manifest?.assets || [];
 		const manifestPaths = new Set(manifestAssets.map((a) => a.path));
 
-		const newPaths = assetPaths.filter((path) => !manifestPaths.has(path));
-		const missingPaths = Array.from(manifestPaths).filter((path) => !assetPaths.includes(path));
+		const newPaths = scan.assetPaths.filter((path) => !manifestPaths.has(path));
+		const missingPaths = Array.from(manifestPaths).filter((path) => !scan.assetPaths.includes(path));
 
 		const additions = newPaths.map((path) => {
 			const base = getBaseName(path).toLowerCase();
 			return {
 				path,
 				name: getFilename(path),
-				preview: previewByBase.get(base) || null,
-				metadata: metadataByBase.get(base) || null,
+				preview: scan.previewByBase.get(base) || null,
+				metadata: scan.metadataByBase.get(base) || null,
 			};
 		});
 
@@ -490,7 +473,7 @@ export class R2BucketSource extends AssetSource {
 			added: additions,
 			missing: missingPaths,
 			hasManifest: !!this._manifest,
-			totalFiles: assetPaths.length,
+			totalFiles: scan.assetPaths.length,
 			applied: !!applyChanges,
 		};
 	}
@@ -507,12 +490,20 @@ export class R2BucketSource extends AssetSource {
 		const client = this._client();
 		const results = { uploaded: [], failed: [] };
 		const existingByPath = new Map(manifest.assets.map((a) => [a.path, a]));
+		const assetsByBase = new Map();
+		for (const asset of manifest.assets) {
+			const base = getBaseName(asset.path).toLowerCase();
+			const list = assetsByBase.get(base) || [];
+			list.push(asset);
+			assetsByBase.set(base, list);
+		}
 
 		for (const file of files) {
 			const ext = getExtension(file.name);
 			const base = getBaseName(file.name).toLowerCase();
+			const metadataBase = getMetadataAssetBase(file.name);
 
-			if (!supportedExtensions.includes(ext) && !PREVIEW_EXTENSIONS.includes(ext) && !METADATA_SUFFIXES.some((suffix) => file.name.toLowerCase().endsWith(suffix))) {
+			if (!supportedExtensions.includes(ext) && !PREVIEW_EXTENSIONS.includes(ext) && !isMetadataFile(file.name)) {
 				results.failed.push({ name: file.name, error: 'Unsupported file type' });
 				continue;
 			}
@@ -536,24 +527,30 @@ export class R2BucketSource extends AssetSource {
 
 			if (supportedExtensions.includes(ext)) {
 				if (!existingByPath.has(relative)) {
-					manifest.assets.push({
+					const newAsset = {
 						path: relative,
 						name: file.name,
 						size: file.size,
-					});
-					existingByPath.set(relative, manifest.assets[manifest.assets.length - 1]);
+					};
+					manifest.assets.push(newAsset);
+					existingByPath.set(relative, newAsset);
+					const list = assetsByBase.get(base) || [];
+					list.push(newAsset);
+					assetsByBase.set(base, list);
+				} else {
+					const existing = existingByPath.get(relative);
+					existing.name = file.name;
+					existing.size = file.size;
 				}
 			} else if (PREVIEW_EXTENSIONS.includes(ext)) {
-				for (const asset of manifest.assets) {
-					if (getBaseName(asset.path).toLowerCase() === base) {
-						asset.preview = relative;
-					}
+				const matched = assetsByBase.get(base) || [];
+				for (const asset of matched) {
+					asset.preview = relative;
 				}
-			} else if (METADATA_SUFFIXES.some((suffix) => file.name.toLowerCase().endsWith(suffix))) {
-				for (const asset of manifest.assets) {
-					if (getBaseName(asset.path).toLowerCase() === base) {
-						asset.metadata = relative;
-					}
+			} else if (metadataBase) {
+				const matched = assetsByBase.get(metadataBase) || [];
+				for (const asset of matched) {
+					asset.metadata = relative;
 				}
 			}
 
@@ -608,7 +605,7 @@ export class R2BucketSource extends AssetSource {
 		}
 
 		const client = this._client();
-		await client.send(new DeleteObjectsCommand({
+		const deleteResponse = await client.send(new DeleteObjectsCommand({
 			Bucket: this._bucket(),
 			Delete: {
 				Objects: Array.from(targetPaths).map((Key) => ({ Key })),
@@ -616,13 +613,21 @@ export class R2BucketSource extends AssetSource {
 			},
 		}));
 
-		if (removedPaths.size > 0) {
-			manifest.assets = manifest.assets.filter((a) => !removedPaths.has(a.path));
+		const failedDeleteKeys = new Set((deleteResponse?.Errors || []).map((item) => item?.Key).filter(Boolean));
+		for (const item of deleteResponse?.Errors || []) {
+			failures.push({ path: item?.Key || null, error: item?.Message || item?.Code || 'Delete failed' });
+		}
+
+		const removedSuccessfully = Array.from(removedPaths).filter((path) => !failedDeleteKeys.has(this._toStoragePath(path)));
+
+		if (removedSuccessfully.length > 0) {
+			const removedSet = new Set(removedSuccessfully);
+			manifest.assets = manifest.assets.filter((a) => !removedSet.has(a.path));
 			await this._saveManifest(manifest);
 			await this.listAssets();
 		}
 
-		return { success: failures.length === 0, removed: Array.from(removedPaths), failed: failures };
+		return { success: failures.length === 0, removed: removedSuccessfully, failed: failures };
 	}
 
 	async verifyUploadPermission() {
