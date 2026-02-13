@@ -65,6 +65,11 @@ function ViewerEmptyState({ source }) {
   }, [openUploadPicker]);
 
   const handleGoHome = useCallback(() => {
+    if (window.location.pathname !== '/') {
+      window.location.replace('/');
+      return;
+    }
+
     clearActiveSource();
     setAssets([]);
     setCurrentAssetIndex(-1);

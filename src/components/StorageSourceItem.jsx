@@ -556,6 +556,10 @@ function StorageSourceItem({
             pageEl.classList.remove('has-glow');
           }
           requestRender();
+
+          // Force a full app refresh at home route to avoid stale Three.js frame.
+          window.location.replace('/');
+          return;
         }
       }
     } catch (err) {

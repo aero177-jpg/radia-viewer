@@ -12,7 +12,7 @@ import SidePanel from './SidePanel';
 import MobileSheet from './MobileSheet';
 import AssetSidebar from './AssetSidebar';
 import AssetNavigation from './AssetNavigation';
-import { initViewer, startRenderLoop, currentMesh, camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, resetViewer } from '../viewer';
+import { initViewer, startRenderLoop, currentMesh, camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, resetViewer, setCurrentMesh } from '../viewer';
 import { resize, loadFromStorageSource, loadNextAsset, loadPrevAsset, reloadCurrentAsset } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
 import { enableImmersiveMode, disableImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, syncImmersiveBaseline } from '../immersiveMode';
@@ -23,7 +23,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExpandAlt, faCompressAlt } from '@fortawesome/free-solid-svg-icons';
 import { FocusIcon, Rotate3DIcon, MaximizeIcon, MinimizeIcon, slideShowToggleIcon as SlideShowToggleIcon } from '../icons/customIcons';
 import { initVrSupport } from '../vrMode';
-import { getSourcesArray } from '../storage/index.js';
 import { getSource, createPublicUrlSource, registerSource, saveSource } from '../storage/index.js';
 import ConnectStorageDialog from './ConnectStorageDialog';
 import ControlsModal from './ControlsModal';
@@ -33,6 +32,7 @@ import { useViewerDrop } from './useViewerDrop.jsx';
 import PwaReloadPrompt from './PwaReloadPrompt';
 import SlideshowOptionsModal from './SlideshowOptionsModal';
 import { resetSplatManager } from '../splatManager';
+import { useCollectionRouting } from './useCollectionRouting.js';
 
 /** Delay before resize after panel toggle animation completes */
 const PANEL_TRANSITION_MS = 350;
@@ -603,42 +603,24 @@ function App() {
     };
   }, []);
 
+  useCollectionRouting({
+    viewerReady,
+    activeSourceId,
+    setHasDefaultSource,
+    setLandingVisible,
+    addLog,
+  });
+
   // Auto-load the default collection (if any) once the viewer is ready
   useEffect(() => {
-    if (!viewerReady || defaultLoadAttempted.current || assets.length > 0) {
-      return;
-    }
-
-    defaultLoadAttempted.current = true;
-
-    const tryLoadDefaultSource = async () => {
-      try {
-        const sources = getSourcesArray();
-        const defaultSource = sources.find((source) => source?.config?.isDefault);
-        if (!defaultSource) return;
-
-        setHasDefaultSource(true);
-        setLandingVisible(false);
-
-        if (!defaultSource.isConnected()) {
-          const result = await defaultSource.connect(false);
-          if (!result?.success) {
-            if (result?.needsPermission) {
-              setStatus(`"${defaultSource.name}" needs permission to load the default collection.`);
-            } else if (result?.error) {
-              setStatus(`Could not load default collection: ${result.error}`);
-            }
-            return;
-          }
-        }
-
-        await loadFromStorageSource(defaultSource);
-      } catch (err) {
-        setStatus(`Failed to load default collection: ${err?.message || err}`);
-      }
-    };
-
-    tryLoadDefaultSource();
+    // Routing contract:
+    // - "/" stays on home
+    // - "/:collection" attempts to load that collection
+    // So default-source autoload is intentionally disabled.
+    void viewerReady;
+    void defaultLoadAttempted.current;
+    void assets.length;
+    void setStatus;
   }, [viewerReady, assets.length, setStatus]);
 
   // Keep landingVisible in sync: show when no assets, hide when assets present

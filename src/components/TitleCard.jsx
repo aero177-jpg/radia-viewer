@@ -93,6 +93,15 @@ function TitleCard({
   const actionButtonsClass = `action-buttons ${buttonsVisible ? 'is-visible' : ''}`;
   const helpButtonClass = `title-card-help ${buttonsVisible ? 'is-visible' : ''}`;
 
+  const isDemoSource = useCallback((source) => {
+    const sourceId = String(source?.id ?? '').trim().toLowerCase();
+    const sourceName = String(source?.name ?? '').trim().toLowerCase();
+    return sourceId === 'demo-public-url' || sourceName === 'demo url collection';
+  }, []);
+
+  const onlyDemoSources = sources.length > 0 && sources.every(isDemoSource);
+  const showCollectionsButton = sources.length > 1 && !onlyDemoSources;
+
   // Render always and let parent control visibility via CSS class to allow fade transitions
   const overlayClass = `title-card-overlay ${show ? 'is-visible' : 'is-hidden'}`;
 
@@ -119,7 +128,7 @@ function TitleCard({
               <ServerIcon size={16} />
               <span>C o n n e c t</span>
             </button>
-            {sources.length > 1 ? (
+            {showCollectionsButton ? (
               <button class="action-btn " onClick={handleOpenCollections}>
                 <FolderOpenIcon size={16} />
                 <span>C o l l e c t i o n s</span>
