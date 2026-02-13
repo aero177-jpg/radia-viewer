@@ -88,7 +88,6 @@ function CloudGpuForm({ onBack }) {
     trimmedSettings.apiKey !== trimmedSaved.apiKey ||
     trimmedSettings.gpuType !== trimmedSaved.gpuType ||
     trimmedSettings.batchUploads !== trimmedSaved.batchUploads;
-  const shouldFadeSaveText = !isSettingsReady || !settingsChanged;
 
   const handleSave = useCallback(() => {
     if (!trimmedSettings.apiUrl || !trimmedSettings.apiKey) {
@@ -217,7 +216,7 @@ function CloudGpuForm({ onBack }) {
       )}
 
       <button
-        class={`secondary-button save-settings-btn ${isSettingsReady ? 'is-ready' : ''}`}
+        class="secondary-button"
         onClick={handleSave}
         disabled={status === 'saving' || !isSettingsReady || !settingsChanged}
         style={{ marginTop: '16px' }}
@@ -233,9 +232,7 @@ function CloudGpuForm({ onBack }) {
             {' '}Saved
           </>
         ) : (
-          <span class={`save-settings-text ${shouldFadeSaveText ? 'is-muted' : ''}`}>
-            Save Cloud GPU settings
-          </span>
+          'Save Cloud GPU settings'
         )}
       </button>
 

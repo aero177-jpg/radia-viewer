@@ -2957,7 +2957,7 @@ border-radius: 10px;
   width: 100%;
 }
 
-.storage-tier-card:hover:not(.disabled):not(.selected) {
+.storage-tier-card:hover:not(:disabled):not(.selected) {
  background: #515d6f52;
     border-color: #5d6c857a;
 }
@@ -2967,7 +2967,8 @@ border-radius: 10px;
     border-color: #587283;
 }
 
-.storage-tier-card.disabled {
+.storage-tier-card:disabled {
+  color: rgb(147, 164, 169);
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -3034,7 +3035,7 @@ border-radius: 10px;
   transition: transform 0.2s ease;
 }
 
-.storage-tier-card:hover:not(.disabled) .tier-arrow {
+.storage-tier-card:hover:not(:disabled) .tier-arrow {
   transform: translateX(4px);
   color: var(--faded-blue);
 }
@@ -3159,6 +3160,37 @@ border-radius: 10px;
   margin-top: 4px;
 }
 
+.permissions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.permission-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #b9c4d6;
+}
+
+.permission-pill.is-allowed {
+  border-color: rgba(72, 187, 120, 0.35);
+  background: rgba(72, 187, 120, 0.12);
+  color: #7dd7a0;
+}
+
+.permission-pill.is-denied {
+  border-color: rgba(255, 80, 80, 0.35);
+  background: rgba(255, 80, 80, 0.12);
+  color: #ff6b6b;
+}
+
 .form-error {
   padding: 10px 12px;
   background: rgba(255, 80, 80, 0.1);
@@ -3213,6 +3245,18 @@ background: #3e576c52;
     border-color: #5d6c857a;
 }
 
+.primary-button.danger {
+  background: rgba(255, 80, 80, 0.14);
+  border-color: rgba(255, 80, 80, 0.35);
+  color: #ff8d8d;
+}
+
+.primary-button.danger:hover:not(:disabled) {
+  background: rgba(255, 80, 80, 0.22);
+  border-color: rgba(255, 80, 80, 0.5);
+  color: #ffb0b0;
+}
+
 .primary-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -3236,27 +3280,12 @@ background: #3e576c52;
   margin-top: 8px;
 }
 
-.secondary-button.save-settings-btn.is-ready {
-  background: linear-gradient(135deg, rgba(110, 231, 255, 0.15), rgba(110, 231, 255, 0.08));
-  border-color: rgba(110, 231, 255, 0.35);
-  color: #6ee7ff;
-}
-
-.secondary-button.save-settings-btn.is-ready:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(110, 231, 255, 0.25), rgba(110, 231, 255, 0.1));
-  border-color: rgba(110, 231, 255, 0.5);
-}
-
-.secondary-button.save-settings-btn:disabled {
+.secondary-button:disabled {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
   color: #e6ecf8;
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.save-settings-text.is-muted {
-  opacity: 0.55;
 }
 
 .secondary-button:hover {
@@ -3931,9 +3960,6 @@ background: #3e576c52;
   cursor: not-allowed;
 }
 
-.list-item .selected {
-
-}
 
 .collection-info {
   display: flex;

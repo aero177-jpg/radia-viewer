@@ -9,10 +9,26 @@ import {
   saveSource,
   registerSource,
   restoreSource,
+  deleteSource,
+  clearAllAssetCache,
 } from '../storage/index.js';
-import { loadSupabaseSettings, saveSupabaseSettings } from '../storage/supabaseSettings.js';
-import { loadR2Settings, saveR2Settings } from '../storage/r2Settings.js';
-import { loadCloudGpuSettings, saveCloudGpuSettings } from '../storage/cloudGpuSettings.js';
+import {
+  loadSupabaseSettings,
+  saveSupabaseSettings,
+  clearSupabaseSettings,
+  clearSupabaseManifestCache,
+} from '../storage/supabaseSettings.js';
+import {
+  loadR2Settings,
+  saveR2Settings,
+  clearR2Settings,
+  clearR2ManifestCache,
+} from '../storage/r2Settings.js';
+import {
+  loadCloudGpuSettings,
+  saveCloudGpuSettings,
+  clearCloudGpuSettings,
+} from '../storage/cloudGpuSettings.js';
 import {
   listAllFileSettings,
   listPreviewRecords,
@@ -20,9 +36,101 @@ import {
   saveFileSettings,
   deletePreviewBlob,
   savePreviewBlob,
+  clearAllFileSettings,
+  clearAllPreviewBlobs,
 } from '../fileStorage.js';
 
 const EXPORT_SCHEMA_VERSION = 1;
+
+const QUALITY_PRESET_KEY = 'qualityPreset';
+const DEBUG_STOCHASTIC_KEY = 'debugStochasticRendering';
+const DEBUG_SPARK_STDDEV_KEY = 'debugSparkMaxStdDev';
+const DEBUG_FPS_LIMIT_KEY = 'debugFpsLimitEnabled';
+const UI_PREFERENCES_KEY = 'ui-preferences';
+
+export const createOptionSelectionState = (options = [], defaultValue = false) => {
+  return options.reduce((acc, option) => {
+    acc[option.key] = defaultValue;
+    return acc;
+  }, {});
+};
+
+export const CLEAR_DATA_OPTIONS = [
+  {
+    key: 'clearUrlCollections',
+    title: 'URL collections',
+    subtitle: 'Saved URL source entries',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearSupabaseCollections',
+    title: 'Supabase collections',
+    subtitle: 'Saved Supabase source entries',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearR2Collections',
+    title: 'R2 collections',
+    subtitle: 'Saved Cloudflare R2 source entries',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearLocalFolderCollections',
+    title: 'Local folder collections',
+    subtitle: 'Saved local-folder source metadata and handles',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearAppStorageCollections',
+    title: 'App storage collections',
+    subtitle: 'Saved in-app storage source entries',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearCloudGpuSettings',
+    title: 'Cloud GPU settings',
+    subtitle: 'Stored API URL/key settings',
+    scope: 'localstorage',
+  },
+  {
+    key: 'clearSupabaseSettings',
+    title: 'Supabase settings',
+    subtitle: 'Saved Supabase settings and manifest cache',
+    scope: 'localstorage',
+  },
+  {
+    key: 'clearR2Settings',
+    title: 'R2 settings',
+    subtitle: 'Saved R2 settings and manifest cache',
+    scope: 'localstorage',
+  },
+  {
+    key: 'clearViewerPrefs',
+    title: 'Viewer/UI preferences',
+    subtitle: 'Quality/debug/UI preference keys in localStorage',
+    scope: 'localstorage',
+  },
+  {
+    key: 'clearFileSettings',
+    title: 'File settings',
+    subtitle: 'Per-file camera/display settings',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearFilePreviews',
+    title: 'File previews',
+    subtitle: 'Persisted thumbnail blobs',
+    scope: 'indexeddb',
+  },
+  {
+    key: 'clearAssetCache',
+    title: 'Asset cache',
+    subtitle: 'Cached source asset blobs and collection manifests',
+    scope: 'indexeddb',
+  },
+];
+
+export const createInitialClearDataOptions = () => createOptionSelectionState(CLEAR_DATA_OPTIONS, false);
 
 const sanitizeFileName = (name) => {
   if (!name) return 'untitled';
@@ -150,6 +258,116 @@ export const buildTransferBundle = async (options) => {
   const zipData = zipSync(files, { level: 6 });
   const blob = new Blob([zipData], { type: 'application/zip' });
   return { blob, manifest };
+};
+
+const countLocalStorageKeysByPrefix = (prefix) => {
+  if (typeof window === 'undefined' || !window.localStorage) return 0;
+  let count = 0;
+  for (let i = 0; i < window.localStorage.length; i += 1) {
+    const key = window.localStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      count += 1;
+    }
+  }
+  return count;
+};
+
+const clearLocalStorageKey = (key) => {
+  if (typeof window === 'undefined' || !window.localStorage) return 0;
+  const existed = window.localStorage.getItem(key) !== null;
+  window.localStorage.removeItem(key);
+  return existed ? 1 : 0;
+};
+
+const clearSourcesByType = async (type) => {
+  const allSources = await loadAllSources();
+  let removed = 0;
+  for (const config of allSources) {
+    if (config?.type !== type || !config?.id) continue;
+    const ok = await deleteSource(config.id);
+    if (ok) removed += 1;
+  }
+  return removed;
+};
+
+export const clearSelectedLocalData = async (options = {}) => {
+  const summary = {
+    sourcesCleared: 0,
+    localStorageEntriesCleared: 0,
+    fileSettingsCleared: 0,
+    previewsCleared: 0,
+    assetCacheBlobsCleared: 0,
+    assetCacheManifestsCleared: 0,
+    warnings: [],
+  };
+
+  if (options.clearUrlCollections) {
+    summary.sourcesCleared += await clearSourcesByType('public-url');
+  }
+
+  if (options.clearSupabaseCollections) {
+    summary.sourcesCleared += await clearSourcesByType('supabase-storage');
+  }
+
+  if (options.clearR2Collections) {
+    summary.sourcesCleared += await clearSourcesByType('r2-bucket');
+  }
+
+  if (options.clearLocalFolderCollections) {
+    summary.sourcesCleared += await clearSourcesByType('local-folder');
+  }
+
+  if (options.clearAppStorageCollections) {
+    summary.sourcesCleared += await clearSourcesByType('app-storage');
+  }
+
+  if (options.clearCloudGpuSettings) {
+    summary.localStorageEntriesCleared += clearLocalStorageKey('cloud-gpu-settings');
+    clearCloudGpuSettings();
+  }
+
+  if (options.clearSupabaseSettings) {
+    summary.localStorageEntriesCleared += clearLocalStorageKey('supabase-settings');
+    summary.localStorageEntriesCleared += countLocalStorageKeysByPrefix('supabase-manifest-cache:');
+    clearSupabaseSettings();
+    clearSupabaseManifestCache();
+  }
+
+  if (options.clearR2Settings) {
+    summary.localStorageEntriesCleared += clearLocalStorageKey('r2-settings');
+    summary.localStorageEntriesCleared += countLocalStorageKeysByPrefix('r2-manifest-cache:');
+    clearR2Settings();
+    clearR2ManifestCache();
+  }
+
+  if (options.clearViewerPrefs) {
+    summary.localStorageEntriesCleared += clearLocalStorageKey(QUALITY_PRESET_KEY);
+    summary.localStorageEntriesCleared += clearLocalStorageKey(DEBUG_STOCHASTIC_KEY);
+    summary.localStorageEntriesCleared += clearLocalStorageKey(DEBUG_SPARK_STDDEV_KEY);
+    summary.localStorageEntriesCleared += clearLocalStorageKey(DEBUG_FPS_LIMIT_KEY);
+    summary.localStorageEntriesCleared += clearLocalStorageKey(UI_PREFERENCES_KEY);
+  }
+
+  if (options.clearFileSettings) {
+    summary.fileSettingsCleared = await clearAllFileSettings();
+  }
+
+  if (options.clearFilePreviews) {
+    const previewRecords = await listPreviewRecords();
+    const cleared = await clearAllPreviewBlobs();
+    summary.previewsCleared = cleared ? previewRecords.length : 0;
+    if (!cleared && previewRecords.length > 0) {
+      summary.warnings.push('Failed to clear one or more preview blobs');
+    }
+  }
+
+  if (options.clearAssetCache) {
+    const result = await clearAllAssetCache();
+    summary.assetCacheBlobsCleared = result.assetBlobsCleared || 0;
+    summary.assetCacheManifestsCleared = result.manifestsCleared || 0;
+  }
+
+  return summary;
 };
 
 export const importTransferBundle = async (file) => {

@@ -19,6 +19,7 @@ import { zipSync } from 'fflate';
 import TransferDataModal from './TransferDataModal';
 import ExportChoiceModal from './ExportChoiceModal';
 import BatchPreviewModal from './BatchPreviewModal';
+import ClearDataModal from './ClearDataModal';
 
 
 function DebugSettings() {
@@ -64,6 +65,7 @@ function DebugSettings() {
   const [isClearing, setIsClearing] = useState(false);
   const [isRestoringRemoved, setIsRestoringRemoved] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [clearDataModalOpen, setClearDataModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [batchPreviewModalOpen, setBatchPreviewModalOpen] = useState(false);
 
@@ -736,6 +738,17 @@ function DebugSettings() {
           </button>
         </div>
 
+        <div class="control-row">
+          <span class="control-label">Clear data</span>
+          <button
+            type="button"
+            class="secondary danger"
+            onClick={() => setClearDataModalOpen(true)}
+          >
+            Clear...
+          </button>
+        </div>
+
         <div class="settings-divider">
           <span>Render debug</span>
         </div>
@@ -796,6 +809,11 @@ function DebugSettings() {
       <TransferDataModal
         isOpen={transferModalOpen}
         onClose={() => setTransferModalOpen(false)}
+        addLog={addLog}
+      />
+      <ClearDataModal
+        isOpen={clearDataModalOpen}
+        onClose={() => setClearDataModalOpen(false)}
         addLog={addLog}
       />
       <ExportChoiceModal

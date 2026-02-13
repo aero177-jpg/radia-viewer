@@ -111,6 +111,7 @@ export {
   cacheCollectionAssets,
   syncCollectionCache,
   clearCollectionCache,
+  clearAllAssetCache,
 } from './assetCache.js';
 
 

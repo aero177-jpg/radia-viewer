@@ -383,3 +383,54 @@ export const clearCollectionCache = async (sourceId) => {
   }
   return { removed };
 };
+
+export const clearAllAssetCache = async () => {
+  try {
+    const db = await openDatabase();
+
+    const counts = await Promise.all([
+      new Promise((resolve, reject) => {
+        const tx = db.transaction([ASSET_STORE], 'readonly');
+        const store = tx.objectStore(ASSET_STORE);
+        const request = store.count();
+        request.onsuccess = () => resolve(request.result || 0);
+        request.onerror = () => reject(new Error('Failed to count asset cache blobs'));
+      }),
+      new Promise((resolve, reject) => {
+        const tx = db.transaction([MANIFEST_STORE], 'readonly');
+        const store = tx.objectStore(MANIFEST_STORE);
+        const request = store.count();
+        request.onsuccess = () => resolve(request.result || 0);
+        request.onerror = () => reject(new Error('Failed to count asset cache manifests'));
+      }),
+    ]);
+
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        const tx = db.transaction([ASSET_STORE], 'readwrite');
+        const store = tx.objectStore(ASSET_STORE);
+        const request = store.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error('Failed to clear asset cache blobs'));
+      }),
+      new Promise((resolve, reject) => {
+        const tx = db.transaction([MANIFEST_STORE], 'readwrite');
+        const store = tx.objectStore(MANIFEST_STORE);
+        const request = store.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(new Error('Failed to clear asset cache manifests'));
+      }),
+    ]);
+
+    return {
+      assetBlobsCleared: counts[0],
+      manifestsCleared: counts[1],
+    };
+  } catch (err) {
+    console.warn('[AssetCache] Failed to clear all cache data', err);
+    return {
+      assetBlobsCleared: 0,
+      manifestsCleared: 0,
+    };
+  }
+};

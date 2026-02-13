@@ -7,7 +7,6 @@ import { useCallback, useRef, useState } from 'preact/hooks';
 import { useStore } from '../store';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faCheck,
   faChevronRight,
   faCloud,
   faCog,
@@ -22,6 +21,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { buildTransferBundle, importTransferBundle } from '../utils/debugTransfer.js';
 import Modal from './Modal';
+import SelectableOptionItem from './SelectableOptionItem';
 
 /**
  * Tier-style card for landing page options (Import / Export)
@@ -42,72 +42,6 @@ function TransferTierCard({ type, icon, title, description, onSelect }) {
         <p class="tier-description">{description}</p>
       </div>
       <FontAwesomeIcon icon={faChevronRight} class="tier-arrow" />
-    </button>
-  );
-}
-
-/**
- * Checkbox-style option item for export selection
- */
-function TransferOptionItem({ title, subtitle, icon, selected, onToggle, disabled }) {
-  const disabledStyle = disabled
-    ? {
-        opacity: 0.55,
-        cursor: 'not-allowed',
-      }
-    : {};
-
-  const checkmarkStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '22px',
-    height: '22px',
-    borderRadius: '50%',
-    background: selected ? 'rgba(91, 178, 213, 0.87)' : 'rgba(255, 255, 255, 0.1)',
-    border: selected ? 'none' : '1px solid rgba(255, 255, 255, 0.2)',
-    color: selected ? '#000' : 'transparent',
-    fontSize: '12px',
-    flexShrink: 0,
-    transition: 'all 0.15s ease',
-  };
-
-  const iconStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: selected ? 1 : 0.5,
-    transition: 'opacity 0.15s ease',
-  };
-
-  const titleStyle = {
-    marginBottom: '4px',
-    opacity: selected ? 1 : 0.6,
-    transition: 'opacity 0.15s ease',
-  };
-
-  return (
-    <button
-      class={`storage-tier-card ${selected ? 'selected' : ''}`}
-      onClick={disabled ? undefined : onToggle}
-      type="button"
-      style={disabledStyle}
-      disabled={disabled}
-    >
-      <div class="collection-info">
-        <div class="collection-icon" style={iconStyle}>
-          <FontAwesomeIcon icon={icon} style={{ fontSize: '18px' }} />
-        </div>
-        <div class="collection-details">
-          <span class="collection-name" style={titleStyle}>
-            {title}
-          </span>
-          {subtitle && <span class="collection-meta">{subtitle}</span>}
-        </div>
-      </div>
-      <div style={checkmarkStyle}>
-        <FontAwesomeIcon icon={faCheck} />
-      </div>
     </button>
   );
 }
@@ -241,7 +175,7 @@ function ExportPage({ onBack, onClose, addLog }) {
         }}
       >
         {options.map((opt) => (
-          <TransferOptionItem
+          <SelectableOptionItem
             key={opt.key}
             title={opt.title}
             subtitle={opt.subtitle}
