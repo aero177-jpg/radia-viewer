@@ -60,7 +60,6 @@
  * @property {string} secretAccessKey - R2 secret access key
  * @property {string} endpoint - Account endpoint for R2 API (not public URL)
  * @property {string} bucket - R2 bucket name
- * @property {string} publicBaseUrl - Public base URL for asset delivery
  * @property {string} collectionId - Collection identifier under collections/{collectionId}
  * @property {string} [collectionName] - Display name for the collection
  * @property {boolean} hasManifest - Whether manifest.json exists
@@ -165,7 +164,7 @@ export const SOURCE_TIERS = {
     label: 'Cloudflare R2',
     description: 'Cloud-hosted storage. Heigher free tier limits.',
     benefits: ['Zero egress for reads', 'S3-compatible access'],
-    requirements: ['Account ID', 'Access key ID/secret', 'Public base URL'],
+    requirements: ['Account ID', 'Access key ID/secret', 'Bucket name'],
     icon: 'cloudflare',
   },
   'public-url': {

@@ -340,7 +340,6 @@ export function useCollectionUploadFlow({
         s3AccessKeyId: cfg?.accessKeyId,
         s3SecretAccessKey: cfg?.secretAccessKey,
         s3Bucket: cfg?.bucket,
-        ...(cfg?.publicBaseUrl ? { s3PublicUrlBase: cfg.publicBaseUrl } : {}),
       });
     } else if (type === 'supabase-storage') {
       const cfg = resolvedSource?.config?.config;

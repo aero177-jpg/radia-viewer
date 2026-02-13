@@ -30,8 +30,7 @@ export const loadR2Settings = () => {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const permissions = normalizePermissions(parsed.permissions);
-    const publicBaseUrl = String(parsed.publicBaseUrl || '').trim();
-    if (!permissions.canRead || !publicBaseUrl) {
+    if (!permissions.canRead) {
       return null;
     }
 
@@ -41,7 +40,6 @@ export const loadR2Settings = () => {
 
     return {
       ...parsed,
-      publicBaseUrl,
       permissions,
     };
   } catch {

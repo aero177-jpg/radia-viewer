@@ -40,13 +40,11 @@ function R2Form({ onConnect, onBack, onClose }) {
       accessKeyId: '',
       secretAccessKey: '',
       bucket: '',
-      publicBaseUrl: '',
       permissions: { canRead: true, canWrite: false, canDelete: false },
     },
     []
   );
   const hasInitialDetectedPermissions = Boolean(
-    initialSettings.publicBaseUrl &&
     initialSettings.accountId &&
     initialSettings.accessKeyId &&
     initialSettings.secretAccessKey &&
@@ -58,7 +56,6 @@ function R2Form({ onConnect, onBack, onClose }) {
   const [accessKeyId, setAccessKeyId] = useState(initialSettings.accessKeyId);
   const [secretAccessKey, setSecretAccessKey] = useState(initialSettings.secretAccessKey);
   const [bucket, setBucket] = useState(initialSettings.bucket);
-  const [publicBaseUrl, setPublicBaseUrl] = useState(initialSettings.publicBaseUrl);
   const [permissions, setPermissions] = useState({ canRead: true, ...(initialSettings.permissions || { canWrite: false, canDelete: false }) });
   const [hasDetectedPermissions, setHasDetectedPermissions] = useState(hasInitialDetectedPermissions);
   const [collectionName, setCollectionName] = useState('');
@@ -78,7 +75,6 @@ function R2Form({ onConnect, onBack, onClose }) {
 
   const r2Configured = Boolean(
     savedSettings?.permissions?.canRead &&
-    savedSettings.publicBaseUrl &&
     (savedSettings.accountId && savedSettings.accessKeyId && savedSettings.secretAccessKey && savedSettings.bucket)
   );
   const trimmedSettings = useMemo(() => ({
@@ -86,35 +82,30 @@ function R2Form({ onConnect, onBack, onClose }) {
     accessKeyId: accessKeyId.trim(),
     secretAccessKey: secretAccessKey.trim(),
     bucket: bucket.trim(),
-    publicBaseUrl: publicBaseUrl.trim().replace(/\/+$/, ''),
     permissions: { ...permissions, canRead: true },
-  }), [accountId, accessKeyId, secretAccessKey, bucket, publicBaseUrl, permissions]);
+  }), [accountId, accessKeyId, secretAccessKey, bucket, permissions]);
   const trimmedSaved = useMemo(() => ({
     accountId: savedSettings.accountId?.trim?.() || '',
     accessKeyId: savedSettings.accessKeyId?.trim?.() || '',
     secretAccessKey: savedSettings.secretAccessKey?.trim?.() || '',
     bucket: savedSettings.bucket?.trim?.() || '',
-    publicBaseUrl: savedSettings.publicBaseUrl?.trim?.() || '',
     permissions: savedSettings.permissions || { canRead: true, canWrite: false, canDelete: false },
   }), [savedSettings]);
   const isSettingsReady = Boolean(
     trimmedSettings.permissions.canRead &&
-    trimmedSettings.publicBaseUrl &&
     trimmedSettings.accountId && trimmedSettings.accessKeyId && trimmedSettings.secretAccessKey && trimmedSettings.bucket
   );
   const canTestConnection = Boolean(
     trimmedSettings.accountId &&
     trimmedSettings.accessKeyId &&
     trimmedSettings.secretAccessKey &&
-    trimmedSettings.bucket &&
-    trimmedSettings.publicBaseUrl
+    trimmedSettings.bucket
   );
   const settingsChanged =
     trimmedSettings.accountId !== trimmedSaved.accountId ||
     trimmedSettings.accessKeyId !== trimmedSaved.accessKeyId ||
     trimmedSettings.secretAccessKey !== trimmedSaved.secretAccessKey ||
     trimmedSettings.bucket !== trimmedSaved.bucket ||
-    trimmedSettings.publicBaseUrl !== trimmedSaved.publicBaseUrl ||
     trimmedSettings.permissions.canRead !== trimmedSaved.permissions.canRead ||
     trimmedSettings.permissions.canWrite !== trimmedSaved.permissions.canWrite ||
     trimmedSettings.permissions.canDelete !== trimmedSaved.permissions.canDelete;
@@ -131,6 +122,7 @@ function R2Form({ onConnect, onBack, onClose }) {
     if (!r2Configured) return;
 
     setLoadingCollections(true);
+    setMessageType('error');
     setError(null);
 
     const result = await listR2Collections({
@@ -145,25 +137,25 @@ function R2Form({ onConnect, onBack, onClose }) {
     if (result.success) {
       setExistingCollections(result.collections);
     } else {
+      setMessageType('error');
       setError(result.error);
     }
   }, [r2Configured, accountId, accessKeyId, secretAccessKey, bucket]);
 
   const handleTestConnection = useCallback(async () => {
     if (!trimmedSettings.permissions.canRead) {
+      setMessageType('error');
       setError('Read permission is required.');
       return;
     }
-    if (!trimmedSettings.publicBaseUrl) {
-      setError('Public base URL is required.');
-      return;
-    }
     if (!trimmedSettings.accountId || !trimmedSettings.accessKeyId || !trimmedSettings.secretAccessKey || !trimmedSettings.bucket) {
-      setError('Fill Account ID, access key, secret, bucket, and public base URL.');
+      setMessageType('error');
+      setError('Fill Account ID, access key, secret, and bucket.');
       return;
     }
 
     setStatus('testing');
+    setMessageType('error');
     setError(null);
 
     const testResult = await testR2Connection({
@@ -171,7 +163,6 @@ function R2Form({ onConnect, onBack, onClose }) {
       accessKeyId: trimmedSettings.accessKeyId,
       secretAccessKey: trimmedSettings.secretAccessKey,
       bucket: trimmedSettings.bucket,
-      publicBaseUrl: trimmedSettings.publicBaseUrl,
       permissions: trimmedSettings.permissions,
     });
 
@@ -207,7 +198,8 @@ function R2Form({ onConnect, onBack, onClose }) {
 
   const handleSaveSettings = useCallback(async () => {
     if (!isSettingsReady) {
-      setError('Read + public base URL + account/key/bucket are required.');
+      setMessageType('error');
+      setError('Read + account/key/bucket are required.');
       return;
     }
 
@@ -216,7 +208,6 @@ function R2Form({ onConnect, onBack, onClose }) {
       accessKeyId: trimmedSettings.accessKeyId,
       secretAccessKey: trimmedSettings.secretAccessKey,
       bucket: trimmedSettings.bucket,
-      publicBaseUrl: trimmedSettings.publicBaseUrl,
       permissions: trimmedSettings.permissions,
     });
     setSavedSettings({
@@ -224,7 +215,6 @@ function R2Form({ onConnect, onBack, onClose }) {
       accessKeyId: trimmedSettings.accessKeyId,
       secretAccessKey: trimmedSettings.secretAccessKey,
       bucket: trimmedSettings.bucket,
-      publicBaseUrl: trimmedSettings.publicBaseUrl,
       permissions: trimmedSettings.permissions,
     });
 
@@ -239,13 +229,13 @@ function R2Form({ onConnect, onBack, onClose }) {
         src.config.config.permissions = { ...trimmedSettings.permissions };
         src.config.config.accessKeyId = trimmedSettings.accessKeyId;
         src.config.config.secretAccessKey = trimmedSettings.secretAccessKey;
-        src.config.config.publicBaseUrl = trimmedSettings.publicBaseUrl;
         try { await saveSource(src.toJSON()); } catch (e) { console.warn('[R2Form] Failed to persist source update', e); }
       }
     }
 
     setHasDetectedPermissions(true);
     setStatus('idle');
+    setMessageType('error');
     setError(null);
     await loadExistingCollections();
   }, [isSettingsReady, trimmedSettings, loadExistingCollections]);
@@ -254,6 +244,7 @@ function R2Form({ onConnect, onBack, onClose }) {
     setSelectedExisting(collection);
     setHasManifest(null);
     setStatus('idle');
+    setMessageType('error');
     setError(null);
   }, []);
 
@@ -261,6 +252,7 @@ function R2Form({ onConnect, onBack, onClose }) {
     if (!selectedExisting) return;
 
     setStatus('connecting');
+    setMessageType('error');
     setError(null);
 
     try {
@@ -269,7 +261,6 @@ function R2Form({ onConnect, onBack, onClose }) {
         accessKeyId: accessKeyId.trim(),
         secretAccessKey: secretAccessKey.trim(),
         bucket: bucket.trim(),
-        publicBaseUrl: publicBaseUrl.trim().replace(/\/+$/, ''),
         collectionId: selectedExisting.id,
         collectionName: selectedExisting.name,
         permissions: trimmedSettings.permissions,
@@ -284,19 +275,22 @@ function R2Form({ onConnect, onBack, onClose }) {
         setStatus('success');
         setTimeout(() => onClose?.(), 500);
       } else {
+        setMessageType('error');
         setError(result.error || 'Failed to connect');
         setStatus('error');
       }
     } catch (err) {
+      setMessageType('error');
       setError(err.message);
       setStatus('error');
     }
-  }, [accountId, accessKeyId, secretAccessKey, bucket, publicBaseUrl, onClose, selectedExisting, trimmedSettings]);
+  }, [accountId, accessKeyId, secretAccessKey, bucket, onClose, selectedExisting, trimmedSettings]);
 
   const handleConnectAndSwitch = useCallback(async () => {
     if (!selectedExisting) return;
 
     setStatus('connecting');
+    setMessageType('error');
     setError(null);
 
     try {
@@ -305,7 +299,6 @@ function R2Form({ onConnect, onBack, onClose }) {
         accessKeyId: accessKeyId.trim(),
         secretAccessKey: secretAccessKey.trim(),
         bucket: bucket.trim(),
-        publicBaseUrl: publicBaseUrl.trim().replace(/\/+$/, ''),
         collectionId: selectedExisting.id,
         collectionName: selectedExisting.name,
         permissions: trimmedSettings.permissions,
@@ -320,23 +313,27 @@ function R2Form({ onConnect, onBack, onClose }) {
         setStatus('success');
         setTimeout(() => onConnect(source), 500);
       } else {
+        setMessageType('error');
         setError(result.error || 'Failed to connect');
         setStatus('error');
       }
     } catch (err) {
+      setMessageType('error');
       setError(err.message);
       setStatus('error');
     }
-  }, [accountId, accessKeyId, secretAccessKey, bucket, publicBaseUrl, onConnect, selectedExisting, trimmedSettings]);
+  }, [accountId, accessKeyId, secretAccessKey, bucket, onConnect, selectedExisting, trimmedSettings]);
 
   const handleCreateNew = useCallback(async () => {
     if (!r2Configured) {
+      setMessageType('error');
       setError('Configure R2 first.');
       return;
     }
 
     const collectionId = slugify(collectionName.trim()) || `collection-${Date.now()}`;
     setStatus('connecting');
+    setMessageType('error');
     setError(null);
 
     try {
@@ -345,7 +342,6 @@ function R2Form({ onConnect, onBack, onClose }) {
         accessKeyId: accessKeyId.trim(),
         secretAccessKey: secretAccessKey.trim(),
         bucket: bucket.trim(),
-        publicBaseUrl: publicBaseUrl.trim().replace(/\/+$/, ''),
         collectionId,
         collectionName: collectionName.trim() || undefined,
         permissions: trimmedSettings.permissions,
@@ -363,6 +359,7 @@ function R2Form({ onConnect, onBack, onClose }) {
           const uploadResult = await source.uploadAssets(queueFiles);
           if (!uploadResult.success) {
             const firstError = uploadResult.failed?.[0]?.error;
+            setMessageType('error');
             setError(firstError ? `Some uploads failed: ${firstError}` : 'Some uploads failed.');
           }
         }
@@ -370,14 +367,16 @@ function R2Form({ onConnect, onBack, onClose }) {
         setStatus('success');
         setTimeout(() => onConnect(source), 500);
       } else {
+        setMessageType('error');
         setError(result.error || 'Failed to connect');
         setStatus('error');
       }
     } catch (err) {
+      setMessageType('error');
       setError(err.message);
       setStatus('error');
     }
-  }, [r2Configured, accountId, accessKeyId, secretAccessKey, bucket, publicBaseUrl, collectionName, slugify, onConnect, hasWritePermission, uploadExisting, queueFiles, trimmedSettings]);
+  }, [r2Configured, accountId, accessKeyId, secretAccessKey, bucket, collectionName, slugify, onConnect, hasWritePermission, uploadExisting, queueFiles, trimmedSettings]);
 
   if (!r2Configured) {
     return (
@@ -389,9 +388,9 @@ function R2Form({ onConnect, onBack, onClose }) {
         <h3>Connect to Cloudflare R2</h3>
         <p class="dialog-subtitle">Enter your R2 settings, then test to discover read/write/delete permissions automatically.</p>
 
-        {hasDetectedPermissions && (
-          <div class="form-field" style={{ marginTop: '12px' }}>
-            <label>Detected permissions</label>
+        <div class="form-field" style={{ marginTop: '12px' }}>
+          <label>Detected permissions</label>
+          {hasDetectedPermissions ? (
             <div class="permissions-inline">
               <span class={`permission-pill ${permissions.canRead ? 'is-allowed' : 'is-denied'}`}>
                 <FontAwesomeIcon icon={permissions.canRead ? faCheck : faTimes} />
@@ -406,8 +405,12 @@ function R2Form({ onConnect, onBack, onClose }) {
                 {' '}Delete
               </span>
             </div>
-          </div>
-        )}
+          ) : (
+            <span class="field-hint" style={{ fontStyle: 'italic' }}>
+              Read-only option: If you prefer read-only access, make the bucket public in your R2 dashboard, then use the URL List connection and enter asset URLs there.
+            </span>
+          )}
+        </div>
 
         <div class="config-grid" style={{ marginTop: '16px' }}>
           <div class="form-field">
@@ -448,17 +451,6 @@ function R2Form({ onConnect, onBack, onClose }) {
               value={bucket}
               onInput={(e) => setBucket(e.target.value)}
             />
-          </div>
-
-          <div class="form-field">
-            <label>Public base URL</label>
-            <input
-              type="url"
-              placeholder="https://pub-xxxx.r2.dev or https://cdn.example.com"
-              value={publicBaseUrl}
-              onInput={(e) => setPublicBaseUrl(e.target.value)}
-            />
-            <span class="field-hint">Public delivery URL used by the viewer. API calls use the account endpoint.</span>
           </div>
 
         </div>
@@ -504,7 +496,7 @@ function R2Form({ onConnect, onBack, onClose }) {
               <li>Select your account → <strong>R2</strong></li>
               <li>Create an <strong>API token</strong> or access key pair</li>
               <li>Copy the Account ID and key pair</li>
-              <li>Create a public bucket or custom domain for delivery</li>
+              <li>Grant read/list permissions, plus write/delete if you want uploads/removal</li>
             </ol>
           </FaqItem>
         </div>
@@ -536,9 +528,9 @@ function R2Form({ onConnect, onBack, onClose }) {
 
         {showR2Config && (
           <div class="config-grid">
-            {hasDetectedPermissions && (
-              <div class="form-field">
-                <label>Detected permissions</label>
+            <div class="form-field">
+              <label>Detected permissions</label>
+              {hasDetectedPermissions ? (
                 <div class="permissions-inline">
                   <span class={`permission-pill ${permissions.canRead ? 'is-allowed' : 'is-denied'}`}>
                     <FontAwesomeIcon icon={permissions.canRead ? faCheck : faTimes} />
@@ -553,8 +545,12 @@ function R2Form({ onConnect, onBack, onClose }) {
                     {' '}Delete
                   </span>
                 </div>
-              </div>
-            )}
+              ) : (
+                <span class="field-hint" style={{ fontStyle: 'italic' }}>
+                  Read-only option: If you prefer read-only access, make the bucket public in your R2 dashboard, then use the URL List connection and enter asset URLs there.
+                </span>
+              )}
+            </div>
 
             <div class="form-field">
               <label>Account ID</label>
@@ -594,17 +590,6 @@ function R2Form({ onConnect, onBack, onClose }) {
                 value={bucket}
                 onInput={(e) => setBucket(e.target.value)}
               />
-            </div>
-
-            <div class="form-field">
-              <label>Public base URL</label>
-              <input
-                type="url"
-                placeholder="https://pub-xxxx.r2.dev or https://cdn.example.com"
-                value={publicBaseUrl}
-                onInput={(e) => setPublicBaseUrl(e.target.value)}
-              />
-              <span class="field-hint">Public delivery URL used by the viewer. API calls use the account endpoint.</span>
             </div>
 
             <button

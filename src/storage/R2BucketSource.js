@@ -1,6 +1,6 @@
 /**
  * Cloudflare R2 Storage Source Adapter
- * Manifest-first storage for public R2 buckets.
+ * Manifest-first storage for authenticated R2 buckets.
  * Layout (required):
  * {bucket}/collections/{collectionId}/manifest.json
  * {bucket}/collections/{collectionId}/assets/*
@@ -12,6 +12,7 @@ import {
 	PutObjectCommand,
 	DeleteObjectsCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { AssetSource } from './AssetSource.js';
 import { createSourceId, MANIFEST_VERSION, SUPPORTED_MANIFEST_VERSIONS } from './types.js';
 import { saveSource } from './sourceManager.js';
@@ -141,11 +142,13 @@ export class R2BucketSource extends AssetSource {
 		return `${this._basePrefix()}/${stripLeadingSlash(relative)}`;
 	}
 
-	_publicUrlFor(relativePath) {
-		const base = String(this.config.config.publicBaseUrl || '').replace(/\/+$/, '');
-		// TODO: Support presigned URLs for private buckets if we move beyond public-only access.
-		if (!base) return '';
-		return `${base}/${this._toStoragePath(relativePath)}`;
+	async _signedUrlFor(relativePath) {
+		const client = this._client();
+		const command = new GetObjectCommand({
+			Bucket: this._bucket(),
+			Key: this._toStoragePath(relativePath),
+		});
+		return getSignedUrl(client, command, { expiresIn: 900 });
 	}
 
 	getCapabilities() {
@@ -397,7 +400,7 @@ export class R2BucketSource extends AssetSource {
 	}
 
 	async fetchAssetData(asset) {
-		const url = this._publicUrlFor(asset.path);
+		const url = await this._signedUrlFor(asset.path);
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`Failed to fetch asset: ${response.status} ${response.statusText}`);
@@ -406,7 +409,7 @@ export class R2BucketSource extends AssetSource {
 	}
 
 	async fetchAssetStream(asset) {
-		const url = this._publicUrlFor(asset.path);
+		const url = await this._signedUrlFor(asset.path);
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`Failed to fetch asset: ${response.status} ${response.statusText}`);
@@ -424,7 +427,7 @@ export class R2BucketSource extends AssetSource {
 		}
 
 		if (asset._metadataPath) {
-			const url = this._publicUrlFor(asset._metadataPath);
+			const url = await this._signedUrlFor(asset._metadataPath);
 			const response = await fetch(url);
 			if (response.ok) {
 				return response.json();
@@ -680,7 +683,6 @@ export const createR2BucketSource = ({
 	accessKeyId,
 	secretAccessKey,
 	bucket,
-	publicBaseUrl,
 	collectionId,
 	name,
 	collectionName,
@@ -708,7 +710,6 @@ export const createR2BucketSource = ({
 			secretAccessKey: String(secretAccessKey || '').trim(),
 			endpoint,
 			bucket: String(bucket || '').trim(),
-			publicBaseUrl: String(publicBaseUrl || '').trim(),
 			collectionId: String(collectionId || '').trim(),
 			collectionName: collectionName || displayName,
 			permissions: normalizedPermissions,
