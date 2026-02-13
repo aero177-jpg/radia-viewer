@@ -133,52 +133,75 @@ export async function testR2Connection({ accountId, accessKeyId, secretAccessKey
       return status ? `${operation} (${status}): ${message}` : `${operation}: ${message}`;
     };
 
+    const isNetworkError = (err) => {
+      const msg = (err?.message || err?.name || '').toLowerCase();
+      return (
+        msg.includes('failed to fetch') ||
+        msg.includes('networkerror') ||
+        msg.includes('network error') ||
+        msg.includes('err_ssl') ||
+        msg.includes('err_connection') ||
+        msg.includes('err_name_not_resolved') ||
+        msg.includes('load failed') ||
+        err?.name === 'TypeError' && msg.includes('fetch')
+      );
+    };
+
+    let networkFailure = false;
+
     try {
       await client.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 1 }));
       permissions.canRead = true;
     } catch (err) {
+      if (isNetworkError(err)) networkFailure = true;
       probeErrors.push(formatProbeError('Read probe failed', err));
       // Read is required to use this source; keep false and return below.
     }
 
+    // Skip further probes if the endpoint is unreachable
     let probeKey = null;
-    try {
-      probeKey = `__cap_probe_${Date.now()}.txt`;
-      await client.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: probeKey,
-        Body: 'ok',
-        ContentType: 'text/plain',
-      }));
-      permissions.canWrite = true;
-    } catch (err) {
-      probeErrors.push(formatProbeError('Write probe failed', err));
-      probeKey = null;
-    }
-
-    if (probeKey) {
+    if (!networkFailure) {
       try {
-        const deleteResult = await client.send(new DeleteObjectsCommand({
+        probeKey = `__cap_probe_${Date.now()}.txt`;
+        await client.send(new PutObjectCommand({
           Bucket: bucket,
-          Delete: { Objects: [{ Key: probeKey }], Quiet: true },
+          Key: probeKey,
+          Body: 'ok',
+          ContentType: 'text/plain',
         }));
-        permissions.canDelete = !(deleteResult?.Errors?.length);
-        if (deleteResult?.Errors?.length) {
-          const firstDeleteError = deleteResult.Errors[0];
-          const code = firstDeleteError?.Code ? ` (${firstDeleteError.Code})` : '';
-          const msg = firstDeleteError?.Message ? `: ${firstDeleteError.Message}` : '';
-          probeErrors.push(`Delete probe failed${code}${msg}`);
-        }
+        permissions.canWrite = true;
       } catch (err) {
-        permissions.canDelete = false;
-        probeErrors.push(formatProbeError('Delete probe failed', err));
+        probeErrors.push(formatProbeError('Write probe failed', err));
+        probeKey = null;
+      }
+
+      if (probeKey) {
+        try {
+          const deleteResult = await client.send(new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: [{ Key: probeKey }], Quiet: true },
+          }));
+          permissions.canDelete = !(deleteResult?.Errors?.length);
+          if (deleteResult?.Errors?.length) {
+            const firstDeleteError = deleteResult.Errors[0];
+            const code = firstDeleteError?.Code ? ` (${firstDeleteError.Code})` : '';
+            const msg = firstDeleteError?.Message ? `: ${firstDeleteError.Message}` : '';
+            probeErrors.push(`Delete probe failed${code}${msg}`);
+          }
+        } catch (err) {
+          permissions.canDelete = false;
+          probeErrors.push(formatProbeError('Delete probe failed', err));
+        }
       }
     }
 
     if (!permissions.canRead) {
+      const error = networkFailure
+        ? 'Could not reach the R2 endpoint. Check your Account ID and credentials.'
+        : 'Connected, but missing read/list permission for this bucket.';
       return {
         success: false,
-        error: 'Connected, but missing read/list permission for this bucket.',
+        error,
         permissions,
         probeErrors,
       };

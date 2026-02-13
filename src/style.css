@@ -3204,6 +3204,20 @@ border-radius: 10px;
   gap: 8px;
 }
 
+.form-notice {
+  padding: 10px 12px;
+  background: rgba(110, 180, 255, 0.08);
+  border: 1px solid rgba(110, 180, 255, 0.25);
+  border-radius: 6px;
+  color: #8bb8e8;
+  font-size: 13px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.45;
+}
+
 .form-success {
   padding: 10px 12px;
   background: rgba(72, 187, 120, 0.1);

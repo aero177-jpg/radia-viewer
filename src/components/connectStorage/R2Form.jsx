@@ -5,12 +5,14 @@ import {
   faCheck,
   faSpinner,
   faExclamationTriangle,
+  faInfoCircle,
   faFolderOpen,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   createR2BucketSource,
   registerSource,
   saveSource,
+  getSourcesArray,
 } from '../../storage/index.js';
 import { loadR2Settings, saveR2Settings } from '../../storage/r2Settings.js';
 import { listExistingCollections as listR2Collections, testR2Connection } from '../../storage/r2Api.js';
@@ -62,6 +64,7 @@ function R2Form({ onConnect, onBack, onClose }) {
   const [collectionName, setCollectionName] = useState('');
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
+  const [messageType, setMessageType] = useState('error'); // 'error' | 'info'
   const [hasManifest, setHasManifest] = useState(null);
   const [uploadExisting, setUploadExisting] = useState(false);
 
@@ -185,12 +188,17 @@ function R2Form({ onConnect, onBack, onClose }) {
     }
 
     if (!testResult.success) {
+      setMessageType('error');
       setError(`Connection failed: ${testResult.error}${probeErrorText}`);
+    } else if (!testResult.permissions?.canWrite) {
+      setMessageType('info');
+      setError('Read-only connection. API credentials are still needed to read collection manifests. For public assets you can use a URL List connection instead and enter asset addresses directly.');
     } else {
-      const hasLimitedPermissions = !testResult.permissions?.canWrite || !testResult.permissions?.canDelete;
-      if (hasLimitedPermissions) {
-        setError(`Connected, but some permissions are limited.${probeErrorText}`);
+      if (!testResult.permissions?.canDelete) {
+        setMessageType('error');
+        setError(`Connected, but delete permission is missing.${probeErrorText}`);
       } else if (probeErrorText) {
+        setMessageType('error');
         setError(`Connection test completed with warnings.${probeErrorText}`);
       }
     }
@@ -220,6 +228,23 @@ function R2Form({ onConnect, onBack, onClose }) {
       permissions: trimmedSettings.permissions,
     });
 
+    // Update permissions on any already-registered R2 sources matching this account/bucket
+    const activeSources = getSourcesArray();
+    for (const src of activeSources) {
+      if (
+        src.type === 'r2-bucket' &&
+        src.config?.config?.accountId === trimmedSettings.accountId &&
+        src.config?.config?.bucket === trimmedSettings.bucket
+      ) {
+        src.config.config.permissions = { ...trimmedSettings.permissions };
+        src.config.config.accessKeyId = trimmedSettings.accessKeyId;
+        src.config.config.secretAccessKey = trimmedSettings.secretAccessKey;
+        src.config.config.publicBaseUrl = trimmedSettings.publicBaseUrl;
+        try { await saveSource(src.toJSON()); } catch (e) { console.warn('[R2Form] Failed to persist source update', e); }
+      }
+    }
+
+    setHasDetectedPermissions(true);
     setStatus('idle');
     setError(null);
     await loadExistingCollections();
@@ -439,8 +464,8 @@ function R2Form({ onConnect, onBack, onClose }) {
         </div>
 
         {error && (
-          <div class="form-error">
-            <FontAwesomeIcon icon={faExclamationTriangle} />
+          <div class={messageType === 'info' ? 'form-notice' : 'form-error'}>
+            <FontAwesomeIcon icon={messageType === 'info' ? faInfoCircle : faExclamationTriangle} style={{ marginTop: '2px', flexShrink: 0 }} />
             {' '}{error}
           </div>
         )}
@@ -731,8 +756,8 @@ function R2Form({ onConnect, onBack, onClose }) {
       )}
 
       {error && (
-        <div class="form-error">
-          <FontAwesomeIcon icon={faExclamationTriangle} />
+        <div class={messageType === 'info' ? 'form-notice' : 'form-error'}>
+          <FontAwesomeIcon icon={messageType === 'info' ? faInfoCircle : faExclamationTriangle} style={{ marginTop: '2px', flexShrink: 0 }} />
           {' '}{error}
         </div>
       )}
