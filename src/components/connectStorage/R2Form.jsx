@@ -7,6 +7,7 @@ import {
   faExclamationTriangle,
   faInfoCircle,
   faFolderOpen,
+  faLock,
 } from '@fortawesome/free-solid-svg-icons';
 import {
   createR2BucketSource,
@@ -16,9 +17,18 @@ import {
 } from '../../storage/index.js';
 import { loadR2Settings, saveR2Settings } from '../../storage/r2Settings.js';
 import { listExistingCollections as listR2Collections, testR2Connection } from '../../storage/r2Api.js';
+import {
+  encryptCredentialValue,
+  getVaultSecretIds,
+  hasVaultPassword,
+  isVaultUnlocked,
+  unlockCredentialVault,
+} from '../../storage/credentialVault.js';
 import { getAssetList } from '../../assetManager.js';
 import { getSupportedExtensions } from '../../formats/index.js';
 import { ExistingCollectionItem, FaqItem } from './SharedSections.jsx';
+
+const VAULT_PASSWORD_MISMATCH_ERROR = 'Password does not match the existing vault password.';
 
 function R2Form({ onConnect, onBack, onClose }) {
   const supportedExtensions = useMemo(() => getSupportedExtensions(), []);
@@ -32,6 +42,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       })
       .map((asset) => asset.file);
   }, [queuedAssets, supportedExtensions]);
+
   const hasQueueFiles = queueFiles.length > 0;
 
   const initialSettings = useMemo(
@@ -64,6 +75,10 @@ function R2Form({ onConnect, onBack, onClose }) {
   const [messageType, setMessageType] = useState('error'); // 'error' | 'info'
   const [hasManifest, setHasManifest] = useState(null);
   const [uploadExisting, setUploadExisting] = useState(false);
+  const [encryptSecretKey, setEncryptSecretKey] = useState(Boolean(initialSettings.secretAccessKeyEncrypted));
+  const [unlockPasswordInput, setUnlockPasswordInput] = useState('');
+  const [unlockingVault, setUnlockingVault] = useState(false);
+  const [vaultPasswordExists, setVaultPasswordExists] = useState(() => hasVaultPassword());
 
   const [existingCollections, setExistingCollections] = useState([]);
   const [loadingCollections, setLoadingCollections] = useState(false);
@@ -71,7 +86,26 @@ function R2Form({ onConnect, onBack, onClose }) {
   const [showR2Config, setShowR2Config] = useState(false);
   const [selectedExisting, setSelectedExisting] = useState(null);
 
+  const persistSourceConfig = useCallback(async (source) => {
+    const payload = source.toJSON();
+    if (encryptSecretKey && payload?.config) {
+      payload.config.secretAccessKey = '';
+      payload.config.secretAccessKeyEncrypted = savedSettings.secretAccessKeyEncrypted || null;
+    }
+    await saveSource(payload);
+  }, [encryptSecretKey, savedSettings.secretAccessKeyEncrypted]);
+
   const hasWritePermission = permissions.canWrite;
+  const r2PasswordLocked = Boolean(savedSettings?.requiresPassword && !secretAccessKey.trim());
+  const vaultLockedForConfigChanges = Boolean(vaultPasswordExists && !isVaultUnlocked());
+  const showVaultPasswordInput = Boolean(
+    !isVaultUnlocked() && (
+      r2PasswordLocked ||
+      encryptSecretKey ||
+      Boolean(savedSettings?.secretAccessKeyEncrypted) ||
+      vaultPasswordExists
+    )
+  );
 
   const r2Configured = Boolean(
     savedSettings?.permissions?.canRead &&
@@ -108,7 +142,8 @@ function R2Form({ onConnect, onBack, onClose }) {
     trimmedSettings.bucket !== trimmedSaved.bucket ||
     trimmedSettings.permissions.canRead !== trimmedSaved.permissions.canRead ||
     trimmedSettings.permissions.canWrite !== trimmedSaved.permissions.canWrite ||
-    trimmedSettings.permissions.canDelete !== trimmedSaved.permissions.canDelete;
+    trimmedSettings.permissions.canDelete !== trimmedSaved.permissions.canDelete ||
+    Boolean(encryptSecretKey) !== Boolean(savedSettings.secretAccessKeyEncrypted);
 
   const slugify = useCallback((value) => {
     const slug = value
@@ -203,19 +238,84 @@ function R2Form({ onConnect, onBack, onClose }) {
       return;
     }
 
-    saveR2Settings({
+    let nextSecretAccessKey = trimmedSettings.secretAccessKey;
+    let nextEncryptedSecret = null;
+    const providedPassword = unlockPasswordInput.trim();
+
+    if (encryptSecretKey) {
+      if (!providedPassword && !isVaultUnlocked()) {
+        setMessageType('error');
+        setError(vaultPasswordExists
+          ? 'Vault key already set. Enter vault password above.'
+          : 'Create a vault password to encrypt the key.');
+        return;
+      }
+
+      if (vaultPasswordExists && !isVaultUnlocked()) {
+        const unlockResult = await unlockCredentialVault(providedPassword);
+        if (!unlockResult.success) {
+          setMessageType('error');
+          setError(unlockResult.error || (vaultPasswordExists ? VAULT_PASSWORD_MISMATCH_ERROR : 'Unable to unlock encrypted keys.'));
+          return;
+        }
+      }
+
+      try {
+        nextEncryptedSecret = await encryptCredentialValue(
+          getVaultSecretIds().r2,
+          trimmedSettings.secretAccessKey,
+          providedPassword || undefined
+        );
+        setVaultPasswordExists(hasVaultPassword());
+      } catch (err) {
+        setMessageType('error');
+        setError(err?.message || 'Failed to encrypt the R2 key.');
+        return;
+      }
+    } else if (savedSettings?.secretAccessKeyEncrypted && !isVaultUnlocked()) {
+      if (!providedPassword) {
+        setMessageType('error');
+        setError('Enter vault password above to disable encryption.');
+        return;
+      }
+
+      const unlockResult = await unlockCredentialVault(providedPassword);
+      if (!unlockResult.success) {
+        setMessageType('error');
+        setError(unlockResult.error || (vaultPasswordExists ? VAULT_PASSWORD_MISMATCH_ERROR : 'Unable to unlock encrypted keys.'));
+        return;
+      }
+
+      const unlockedSettings = loadR2Settings();
+      nextSecretAccessKey = trimmedSettings.secretAccessKey || unlockedSettings?.secretAccessKey || '';
+      if (!nextSecretAccessKey) {
+        setMessageType('error');
+        setError('Unable to decrypt secret key.');
+        return;
+      }
+
+      setSecretAccessKey(nextSecretAccessKey);
+    }
+
+    const payload = {
       accountId: trimmedSettings.accountId,
       accessKeyId: trimmedSettings.accessKeyId,
-      secretAccessKey: trimmedSettings.secretAccessKey,
+      secretAccessKey: encryptSecretKey ? '' : nextSecretAccessKey,
+      secretAccessKeyEncrypted: nextEncryptedSecret || null,
       bucket: trimmedSettings.bucket,
       permissions: trimmedSettings.permissions,
-    });
+    };
+
+    if (!payload.secretAccessKeyEncrypted) {
+      delete payload.secretAccessKeyEncrypted;
+    }
+
+    saveR2Settings(payload);
     setSavedSettings({
-      accountId: trimmedSettings.accountId,
-      accessKeyId: trimmedSettings.accessKeyId,
-      secretAccessKey: trimmedSettings.secretAccessKey,
-      bucket: trimmedSettings.bucket,
-      permissions: trimmedSettings.permissions,
+      ...payload,
+      secretAccessKey: nextSecretAccessKey,
+      requiresPassword: false,
+      isEncrypted: Boolean(payload.secretAccessKeyEncrypted),
     });
 
     // Update permissions on any already-registered R2 sources matching this account/bucket
@@ -228,17 +328,54 @@ function R2Form({ onConnect, onBack, onClose }) {
       ) {
         src.config.config.permissions = { ...trimmedSettings.permissions };
         src.config.config.accessKeyId = trimmedSettings.accessKeyId;
-        src.config.config.secretAccessKey = trimmedSettings.secretAccessKey;
-        try { await saveSource(src.toJSON()); } catch (e) { console.warn('[R2Form] Failed to persist source update', e); }
+        src.config.config.secretAccessKey = nextSecretAccessKey;
+        try { await persistSourceConfig(src); } catch (e) { console.warn('[R2Form] Failed to persist source update', e); }
       }
     }
+
+    setUnlockPasswordInput('');
 
     setHasDetectedPermissions(true);
     setStatus('idle');
     setMessageType('error');
     setError(null);
     await loadExistingCollections();
-  }, [isSettingsReady, trimmedSettings, loadExistingCollections]);
+  }, [encryptSecretKey, isSettingsReady, loadExistingCollections, persistSourceConfig, savedSettings?.secretAccessKeyEncrypted, trimmedSettings, unlockPasswordInput, vaultPasswordExists]);
+
+  const handleUnlockVault = useCallback(async () => {
+    const password = unlockPasswordInput.trim();
+    if (!password) {
+      setMessageType('error');
+      setError('Enter vault password to unlock encrypted keys.');
+      return;
+    }
+
+    setUnlockingVault(true);
+    setMessageType('error');
+    setError(null);
+    const result = await unlockCredentialVault(password);
+    setUnlockingVault(false);
+
+    if (!result.success) {
+      setMessageType('error');
+      setError(result.error || (vaultPasswordExists ? VAULT_PASSWORD_MISMATCH_ERROR : 'Unable to unlock encrypted keys.'));
+      return;
+    }
+
+    const unlocked = loadR2Settings();
+    if (unlocked) {
+      setSavedSettings(unlocked);
+      setAccountId(unlocked.accountId || '');
+      setAccessKeyId(unlocked.accessKeyId || '');
+      setSecretAccessKey(unlocked.secretAccessKey || '');
+      setBucket(unlocked.bucket || '');
+      setPermissions({ canRead: true, ...(unlocked.permissions || { canWrite: false, canDelete: false }) });
+      setEncryptSecretKey(Boolean(unlocked.secretAccessKeyEncrypted));
+    }
+
+    setUnlockPasswordInput('');
+    setVaultPasswordExists(hasVaultPassword());
+  }, [unlockPasswordInput]);
 
   const handleChooseExisting = useCallback((collection) => {
     setSelectedExisting(collection);
@@ -271,7 +408,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       if (result.success) {
         setHasManifest(source.config.config.hasManifest);
         registerSource(source);
-        await saveSource(source.toJSON());
+        await persistSourceConfig(source);
         setStatus('success');
         setTimeout(() => onClose?.(), 500);
       } else {
@@ -284,7 +421,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       setError(err.message);
       setStatus('error');
     }
-  }, [accountId, accessKeyId, secretAccessKey, bucket, onClose, selectedExisting, trimmedSettings]);
+  }, [accountId, accessKeyId, secretAccessKey, bucket, onClose, persistSourceConfig, selectedExisting, trimmedSettings]);
 
   const handleConnectAndSwitch = useCallback(async () => {
     if (!selectedExisting) return;
@@ -309,7 +446,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       if (result.success) {
         setHasManifest(source.config.config.hasManifest);
         registerSource(source);
-        await saveSource(source.toJSON());
+        await persistSourceConfig(source);
         setStatus('success');
         setTimeout(() => onConnect(source), 500);
       } else {
@@ -322,7 +459,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       setError(err.message);
       setStatus('error');
     }
-  }, [accountId, accessKeyId, secretAccessKey, bucket, onConnect, selectedExisting, trimmedSettings]);
+  }, [accountId, accessKeyId, secretAccessKey, bucket, onConnect, persistSourceConfig, selectedExisting, trimmedSettings]);
 
   const handleCreateNew = useCallback(async () => {
     if (!r2Configured) {
@@ -352,7 +489,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       if (result.success) {
         setHasManifest(source.config.config.hasManifest);
         registerSource(source);
-        await saveSource(source.toJSON());
+        await persistSourceConfig(source);
 
         if (hasWritePermission && uploadExisting && queueFiles.length > 0) {
           setStatus('uploading');
@@ -376,7 +513,7 @@ function R2Form({ onConnect, onBack, onClose }) {
       setError(err.message);
       setStatus('error');
     }
-  }, [r2Configured, accountId, accessKeyId, secretAccessKey, bucket, collectionName, slugify, onConnect, hasWritePermission, uploadExisting, queueFiles, trimmedSettings]);
+  }, [r2Configured, accountId, accessKeyId, secretAccessKey, bucket, collectionName, slugify, onConnect, hasWritePermission, persistSourceConfig, uploadExisting, queueFiles, trimmedSettings]);
 
   if (!r2Configured) {
     return (
@@ -387,6 +524,46 @@ function R2Form({ onConnect, onBack, onClose }) {
 
         <h3>Connect to Cloudflare R2</h3>
         <p class="dialog-subtitle">Enter your R2 settings, then test to discover read/write/delete permissions automatically.</p>
+
+        {r2PasswordLocked && (
+          <div class="form-notice" style={{ marginTop: '12px' }}>
+            <FontAwesomeIcon icon={faLock} style={{ marginTop: '2px', flexShrink: 0 }} />
+            {' '}This R2 secret is encrypted. Unlock once per browser session.
+          </div>
+        )}
+
+        {showVaultPasswordInput && (
+          <div class="form-field" style={{ marginTop: '12px' }}>
+            <label>Vault password</label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="password"
+                placeholder="Vault password"
+                value={unlockPasswordInput}
+                onInput={(e) => setUnlockPasswordInput(e.target.value)}
+                style={{ flex: '2 1 0' }}
+              />
+              <button
+                class="secondary-button"
+                onClick={handleUnlockVault}
+                disabled={unlockingVault || !unlockPasswordInput.trim()}
+                style={{ marginTop: 0, flex: '1 1 0' }}
+              >
+                {unlockingVault ? (
+                  <>
+                    <FontAwesomeIcon icon={faSpinner} spin />
+                    {' '}Unlocking
+                  </>
+                ) : (
+                  'Unlock'
+                )}
+              </button>
+            </div>
+            <span class="field-hint" style={{ marginTop: '6px', display: 'block' }}>
+              Shared with Cloud GPU encryption.
+            </span>
+          </div>
+        )}
 
         <div class="form-field" style={{ marginTop: '12px' }}>
           <label>Detected permissions</label>
@@ -436,11 +613,34 @@ function R2Form({ onConnect, onBack, onClose }) {
           <div class="form-field">
             <label>Secret access key</label>
             <input
-              type="text"
+              type="password"
               placeholder="R2 secret access key"
               value={secretAccessKey}
               onInput={(e) => setSecretAccessKey(e.target.value)}
             />
+          </div>
+
+          <div class="form-field">
+            <label class="checkbox-inline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={encryptSecretKey}
+                disabled={vaultLockedForConfigChanges}
+                onChange={(e) => setEncryptSecretKey(e.target.checked)}
+              />
+              <span>
+                Encrypt key
+                {' '}
+                <FontAwesomeIcon
+                  icon={faInfoCircle}
+                  title="Encrypted at rest in local storage; details coming soon."
+                  style={{ opacity: 0.8 }}
+                />
+              </span>
+            </label>
+            <span class="field-hint">
+              {vaultLockedForConfigChanges ? 'Vault key already set. Unlock above to change encryption.' : (vaultPasswordExists ? 'Vault key already set.' : 'No vault key set yet.')}
+            </span>
           </div>
 
           <div class="form-field">
@@ -511,6 +711,37 @@ function R2Form({ onConnect, onBack, onClose }) {
       </button>
 
       <h3>R2 Collection</h3>
+
+      {showVaultPasswordInput && (
+        <div class="form-field" style={{ marginTop: '12px' }}>
+          <label>Vault password</label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="password"
+              placeholder="Enter password"
+              value={unlockPasswordInput}
+              onInput={(e) => setUnlockPasswordInput(e.target.value)}
+              style={{ flex: '2 1 0' }}
+            />
+            <button
+              class="secondary-button"
+              onClick={handleUnlockVault}
+              disabled={unlockingVault || !unlockPasswordInput.trim()}
+              style={{ marginTop: 0, flex: '1 1 0' }}
+            >
+              {unlockingVault ? (
+                <>
+                  <FontAwesomeIcon icon={faSpinner} spin />
+                  {' '}Unlocking
+                </>
+              ) : (
+                'Unlock'
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div class="form-section">
         <div class="form-row">
           <div>
@@ -575,11 +806,34 @@ function R2Form({ onConnect, onBack, onClose }) {
             <div class="form-field">
               <label>Secret access key</label>
               <input
-                type="text"
+                type="password"
                 placeholder="R2 secret access key"
                 value={secretAccessKey}
                 onInput={(e) => setSecretAccessKey(e.target.value)}
               />
+            </div>
+
+            <div class="form-field">
+              <label class="checkbox-inline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="checkbox"
+                  checked={encryptSecretKey}
+                  disabled={vaultLockedForConfigChanges}
+                  onChange={(e) => setEncryptSecretKey(e.target.checked)}
+                />
+                <span>
+                  Encrypt key
+                  {' '}
+                  <FontAwesomeIcon
+                    icon={faInfoCircle}
+                    title="Encrypted at rest in local storage; details coming soon."
+                    style={{ opacity: 0.8 }}
+                  />
+                </span>
+              </label>
+              <span class="field-hint">
+                {vaultLockedForConfigChanges ? 'Vault key already set. Unlock above to change encryption.' : (vaultPasswordExists ? 'Vault key already set.' : 'No vault key set yet.')}
+              </span>
             </div>
 
             <div class="form-field">

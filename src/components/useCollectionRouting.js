@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { loadFromStorageSource } from '../fileLoader';
 import { setCurrentMesh, requestRender } from '../viewer';
 import { getSource, getSourcesArray } from '../storage/index.js';
+import { loadR2Settings } from '../storage/r2Settings.js';
 import { resetSplatManager } from '../splatManager';
 import { clearBackground } from '../backgroundManager';
 
@@ -110,9 +111,27 @@ export const useCollectionRouting = ({
       return;
     }
 
+    const r2Settings = loadR2Settings();
+    const isR2Locked = matchedSource?.type === 'r2-bucket'
+      && Boolean(r2Settings?.requiresPassword)
+      && r2Settings?.accountId === matchedSource?.config?.config?.accountId
+      && r2Settings?.bucket === matchedSource?.config?.config?.bucket;
+
     try {
       routeSyncInFlightRef.current = true;
       setLandingVisible(false);
+
+      if (isR2Locked) {
+        const state = useStore.getState();
+        state.setAssets([]);
+        state.setCurrentAssetIndex(-1);
+        state.setActiveSourceId(matchedSource.id);
+        setHasDefaultSource(false);
+        setLandingVisible(false);
+        syncPathToActiveSource(matchedSource, true);
+        return;
+      }
+
       if (!matchedSource.isConnected()) {
         const result = await matchedSource.connect(false);
         if (!result?.success) {

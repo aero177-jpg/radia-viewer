@@ -340,6 +340,10 @@ export const clearSelectedLocalData = async (options = {}) => {
     clearR2ManifestCache();
   }
 
+  if (options.clearCloudGpuSettings || options.clearR2Settings) {
+    summary.localStorageEntriesCleared += clearLocalStorageKey('credential-vault-meta');
+  }
+
   if (options.clearViewerPrefs) {
     summary.localStorageEntriesCleared += clearLocalStorageKey(QUALITY_PRESET_KEY);
     summary.localStorageEntriesCleared += clearLocalStorageKey(DEBUG_STOCHASTIC_KEY);

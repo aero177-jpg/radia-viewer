@@ -9,9 +9,12 @@ import {
   faCloud,
   faCheck,
   faUpload,
+  faLock,
+  faSpinner,
 } from '@fortawesome/free-solid-svg-icons';
 import { CubeIcon, ImageIcon } from '../icons/customIcons';
 import { loadCloudGpuSettings } from '../storage/cloudGpuSettings.js';
+import { unlockCredentialVault } from '../storage/credentialVault.js';
 import Modal from './Modal';
 
 function UploadOptionItem({ title, subtitle, icon: Icon, selected, onSelect, onConfirm, disabled }) {
@@ -67,19 +70,52 @@ function UploadChoiceModal({
   note = '',
 }) {
   const [mode, setMode] = useState('assets'); // 'assets' | 'images'
-  const cloudGpuSettings = useMemo(() => loadCloudGpuSettings(), [isOpen]);
-  const isCloudGpuConfigured = Boolean(cloudGpuSettings?.apiUrl && cloudGpuSettings?.apiKey);
+  const [cloudGpuSettings, setCloudGpuSettings] = useState(() => loadCloudGpuSettings());
+  const [vaultPasswordInput, setVaultPasswordInput] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
-    if (!isCloudGpuConfigured && mode === 'images') {
+    if (!isOpen) return;
+    setCloudGpuSettings(loadCloudGpuSettings());
+    setVaultPasswordInput('');
+    setUnlockError('');
+  }, [isOpen]);
+
+  const hasStoredCloudGpuKey = Boolean(cloudGpuSettings?.hasStoredApiKey || cloudGpuSettings?.apiKeyEncrypted || cloudGpuSettings?.apiKey);
+  const isCloudGpuConfigured = Boolean(cloudGpuSettings?.apiUrl && hasStoredCloudGpuKey);
+  const cloudGpuNeedsUnlock = Boolean(cloudGpuSettings?.requiresPassword && cloudGpuSettings?.apiKeyEncrypted);
+
+  const handleUnlockVault = async () => {
+    const password = vaultPasswordInput.trim();
+    if (!password) {
+      setUnlockError('Enter vault password.');
+      return;
+    }
+
+    setUnlocking(true);
+    setUnlockError('');
+    const result = await unlockCredentialVault(password);
+    setUnlocking(false);
+    if (!result.success) {
+      setUnlockError(result.error || 'Unable to unlock Cloud GPU key.');
+      return;
+    }
+
+    setVaultPasswordInput('');
+    setCloudGpuSettings(loadCloudGpuSettings());
+  };
+
+  useEffect(() => {
+    if ((!isCloudGpuConfigured || cloudGpuNeedsUnlock) && mode === 'images') {
       setMode('assets');
     }
-  }, [isCloudGpuConfigured, mode]);
+  }, [cloudGpuNeedsUnlock, isCloudGpuConfigured, mode]);
 
   if (!isOpen) return null;
 
   const handleUpload = () => {
-    if (mode === 'images' && !isCloudGpuConfigured) return;
+    if (mode === 'images' && (!isCloudGpuConfigured || cloudGpuNeedsUnlock)) return;
     if (mode === 'assets') {
       onPickAssets();
     } else if (mode === 'images') {
@@ -116,7 +152,7 @@ function UploadChoiceModal({
           selected={mode === 'images'}
           onSelect={() => setMode('images')}
           onConfirm={handleUpload}
-          disabled={!isCloudGpuConfigured}
+          disabled={!isCloudGpuConfigured || cloudGpuNeedsUnlock}
         />
       </div>
 
@@ -132,6 +168,45 @@ function UploadChoiceModal({
              )}
            </p>
          }
+
+         {isCloudGpuConfigured && cloudGpuNeedsUnlock && (
+           <div style={{ marginTop: '8px' }}>
+             <p style={{ fontSize: '0.9em', color: 'var(--text-muted, #888)' }}>
+               <FontAwesomeIcon icon={faLock} style={{ marginRight: '6px' }} />
+               Cloud GPU key is encrypted. Enter vault password for this session.
+             </p>
+             <div className="form-field" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+               <input
+                 type="password"
+                 placeholder="Vault password"
+                 value={vaultPasswordInput}
+                 onInput={(e) => setVaultPasswordInput(e.target.value)}
+                 style={{ flex: '2 1 0' }}
+               />
+               <button
+                 class="secondary-button"
+                 type="button"
+                 onClick={handleUnlockVault}
+                 disabled={unlocking || !vaultPasswordInput.trim()}
+                 style={{ marginTop: 0, flex: '1 1 0' }}
+               >
+                 {unlocking ? (
+                   <>
+                     <FontAwesomeIcon icon={faSpinner} spin />
+                     {' '}Unlocking
+                   </>
+                 ) : (
+                   'Unlock'
+                 )}
+               </button>
+             </div>
+             {unlockError && (
+               <div class="field-hint" style={{ color: '#fca5a5', marginTop: '6px' }}>
+                 {unlockError}
+               </div>
+             )}
+           </div>
+         )}
       </div>
 
       {note && (
@@ -151,7 +226,7 @@ function UploadChoiceModal({
         <button
           class="primary-button"
           onClick={handleUpload}
-          disabled={mode === 'images' && !isCloudGpuConfigured}
+          disabled={mode === 'images' && (!isCloudGpuConfigured || cloudGpuNeedsUnlock)}
           style={{ height: '36px', padding: '0 16px' }}
         >
           <FontAwesomeIcon icon={faUpload} />

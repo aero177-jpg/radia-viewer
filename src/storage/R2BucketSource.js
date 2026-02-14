@@ -18,7 +18,7 @@ import { createSourceId, MANIFEST_VERSION, SUPPORTED_MANIFEST_VERSIONS } from '.
 import { saveSource } from './sourceManager.js';
 import { getSupportedExtensions } from '../formats/index.js';
 import { getR2Client, buildR2Endpoint } from './r2Client.js';
-import { loadR2ManifestCache, saveR2ManifestCache } from './r2Settings.js';
+import { loadR2ManifestCache, loadR2Settings, saveR2ManifestCache } from './r2Settings.js';
 
 const METADATA_SUFFIXES = ['.meta.json', '.metadata.json'];
 
@@ -118,10 +118,18 @@ export class R2BucketSource extends AssetSource {
 	}
 
 	_client() {
+		const fallbackSettings = loadR2Settings();
+		const fallbackSecret = (
+			fallbackSettings?.accountId === this.config.config.accountId &&
+			fallbackSettings?.bucket === this.config.config.bucket
+		)
+			? fallbackSettings.secretAccessKey
+			: '';
+
 		return getR2Client({
 			accountId: this.config.config.accountId,
 			accessKeyId: this.config.config.accessKeyId,
-			secretAccessKey: this.config.config.secretAccessKey,
+			secretAccessKey: this.config.config.secretAccessKey || fallbackSecret,
 			endpoint: this.config.config.endpoint,
 		});
 	}

@@ -2,7 +2,7 @@
  * Landing title card overlay for loading assets.
  * Sits above the app layout and handles file/storage/demo actions.
  */
-import { useEffect, useState, useCallback } from 'preact/hooks';
+import { useEffect, useState, useCallback, useRef } from 'preact/hooks';
 import { useStore } from '../store';
 import FrostedTitle from './FrostedTitle';
 import { testSharpCloud } from '../testSharpCloud';
@@ -34,6 +34,8 @@ function TitleCard({
   // Sources state for collections button
   const [sources, setSources] = useState(() => getSourcesArray());
   const [showCollectionsModal, setShowCollectionsModal] = useState(false);
+  const [fastExit, setFastExit] = useState(false);
+  const closeCollectionsTimerRef = useRef(null);
   const openControlsModalWithSections = useStore((state) => state.openControlsModalWithSections);
 
 
@@ -51,13 +53,39 @@ function TitleCard({
   }, []);
 
   const handleCloseCollections = useCallback(() => {
+    if (closeCollectionsTimerRef.current) {
+      clearTimeout(closeCollectionsTimerRef.current);
+      closeCollectionsTimerRef.current = null;
+    }
     setShowCollectionsModal(false);
   }, []);
 
   const handleSelectSource = useCallback((sourceId) => {
-    setShowCollectionsModal(false);
+    setFastExit(true);
+    if (closeCollectionsTimerRef.current) {
+      clearTimeout(closeCollectionsTimerRef.current);
+      closeCollectionsTimerRef.current = null;
+    }
+    closeCollectionsTimerRef.current = setTimeout(() => {
+      setShowCollectionsModal(false);
+      closeCollectionsTimerRef.current = null;
+    }, 90);
     onSelectSource?.(sourceId);
   }, [onSelectSource]);
+
+  useEffect(() => {
+    if (show) {
+      setFastExit(false);
+    }
+  }, [show]);
+
+  useEffect(() => {
+    return () => {
+      if (closeCollectionsTimerRef.current) {
+        clearTimeout(closeCollectionsTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let unmountTimer;
@@ -103,7 +131,7 @@ function TitleCard({
   const showCollectionsButton = sources.length > 1 && !onlyDemoSources;
 
   // Render always and let parent control visibility via CSS class to allow fade transitions
-  const overlayClass = `title-card-overlay ${show ? 'is-visible' : 'is-hidden'}`;
+  const overlayClass = `title-card-overlay ${show ? 'is-visible' : 'is-hidden'} ${fastExit ? 'is-fast-exit' : ''}`;
 
   if (!mounted) return null;
 

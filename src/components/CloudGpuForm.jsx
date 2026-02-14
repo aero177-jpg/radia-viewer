@@ -12,8 +12,17 @@ import {
   faQuestion,
   faChevronRight,
   faChevronDown,
+  faInfoCircle,
+  faLock,
 } from '@fortawesome/free-solid-svg-icons';
 import { loadCloudGpuSettings, saveCloudGpuSettings } from '../storage/cloudGpuSettings.js';
+import {
+  encryptCredentialValue,
+  getVaultSecretIds,
+  hasVaultPassword,
+  isVaultUnlocked,
+  unlockCredentialVault,
+} from '../storage/credentialVault.js';
 
 /**
  * Expandable FAQ item
@@ -25,6 +34,8 @@ const GPU_OPTIONS = [
   { value: 'a100', label: 'A100 $2.50 High performance' },
   { value: 'h100', label: 'H100 $3.95 Fastest' },
 ];
+
+const VAULT_PASSWORD_MISMATCH_ERROR = 'Password does not match the existing vault password.';
 
 function FaqItem({ question, children }) {
   const [expanded, setExpanded] = useState(false);
@@ -56,6 +67,10 @@ function CloudGpuForm({ onBack }) {
       return {
         apiUrl: saved?.apiUrl || '',
         apiKey: saved?.apiKey || '',
+        apiKeyEncrypted: saved?.apiKeyEncrypted || null,
+        hasStoredApiKey: Boolean(saved?.hasStoredApiKey || saved?.apiKeyEncrypted || saved?.apiKey),
+        requiresPassword: Boolean(saved?.requiresPassword),
+        isEncrypted: Boolean(saved?.isEncrypted || saved?.apiKeyEncrypted),
         gpuType: saved?.gpuType || 'a10',
         batchUploads: saved?.batchUploads ?? true,
       };
@@ -69,6 +84,23 @@ function CloudGpuForm({ onBack }) {
   const [batchUploads, setBatchUploads] = useState(initialSettings.batchUploads);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
+  const [encryptApiKey, setEncryptApiKey] = useState(Boolean(initialSettings.apiKeyEncrypted));
+  const [unlockPasswordInput, setUnlockPasswordInput] = useState('');
+  const [unlockingVault, setUnlockingVault] = useState(false);
+  const [vaultPasswordExists, setVaultPasswordExists] = useState(() => hasVaultPassword());
+
+  const hasEncryptedStoredKey = Boolean(savedSettings?.apiKeyEncrypted || savedSettings?.isEncrypted);
+  const cloudPasswordLocked = Boolean(hasEncryptedStoredKey && !apiKey.trim());
+  const vaultLockedForConfigChanges = Boolean(vaultPasswordExists && !isVaultUnlocked());
+  const showVaultPasswordInput = Boolean(
+    !isVaultUnlocked() && (
+      cloudPasswordLocked ||
+      encryptApiKey ||
+      Boolean(savedSettings?.apiKeyEncrypted) ||
+      vaultPasswordExists
+    )
+  );
+  const hasStoredApiKey = Boolean(savedSettings?.hasStoredApiKey || savedSettings?.apiKeyEncrypted || savedSettings?.apiKey || apiKey.trim());
 
   const trimmedSettings = useMemo(() => ({
     apiUrl: apiUrl.trim(),
@@ -82,28 +114,95 @@ function CloudGpuForm({ onBack }) {
     gpuType: savedSettings.gpuType?.trim?.().toLowerCase?.() || 'a10',
     batchUploads: Boolean(savedSettings.batchUploads),
   }), [savedSettings]);
-  const isSettingsReady = Boolean(trimmedSettings.apiUrl && trimmedSettings.apiKey);
+  const isSettingsReady = Boolean(trimmedSettings.apiUrl && (trimmedSettings.apiKey || hasStoredApiKey));
   const settingsChanged =
     trimmedSettings.apiUrl !== trimmedSaved.apiUrl ||
     trimmedSettings.apiKey !== trimmedSaved.apiKey ||
     trimmedSettings.gpuType !== trimmedSaved.gpuType ||
-    trimmedSettings.batchUploads !== trimmedSaved.batchUploads;
+    trimmedSettings.batchUploads !== trimmedSaved.batchUploads ||
+    Boolean(encryptApiKey) !== Boolean(savedSettings.apiKeyEncrypted);
 
-  const handleSave = useCallback(() => {
-    if (!trimmedSettings.apiUrl || !trimmedSettings.apiKey) {
+  const handleSave = useCallback(async () => {
+    const typedApiKey = trimmedSettings.apiKey;
+    const canReuseEncrypted = Boolean(!typedApiKey && savedSettings?.apiKeyEncrypted);
+    const providedPassword = unlockPasswordInput.trim();
+
+    if (!trimmedSettings.apiUrl || (!typedApiKey && !hasStoredApiKey)) {
       setError('Enter API URL and API key.');
       return;
+    }
+
+    let nextEncryptedApiKey = null;
+    if (encryptApiKey) {
+      if (canReuseEncrypted) {
+        nextEncryptedApiKey = savedSettings.apiKeyEncrypted;
+      }
+
+      if (!nextEncryptedApiKey && !typedApiKey) {
+        setError('Enter API key before enabling encryption.');
+        return;
+      }
+
+      if (!nextEncryptedApiKey && !providedPassword && !isVaultUnlocked()) {
+        setError(vaultPasswordExists
+          ? 'Vault key already set. Enter vault password above.'
+          : 'Create a vault password to encrypt this key.');
+        return;
+      }
+
+      if (!nextEncryptedApiKey) {
+        try {
+        nextEncryptedApiKey = await encryptCredentialValue(
+          getVaultSecretIds().cloudGpu,
+          typedApiKey,
+          providedPassword || undefined
+        );
+        setVaultPasswordExists(hasVaultPassword());
+        } catch (err) {
+          setError(err?.message || 'Failed to encrypt Cloud GPU API key.');
+          return;
+        }
+      }
+    } else if (savedSettings?.apiKeyEncrypted) {
+      if (!isVaultUnlocked()) {
+        if (!providedPassword) {
+          setError('Enter vault password above to disable encryption.');
+          return;
+        }
+        const unlockResult = await unlockCredentialVault(providedPassword);
+        if (!unlockResult.success) {
+          setError(unlockResult.error || (vaultPasswordExists ? VAULT_PASSWORD_MISMATCH_ERROR : 'Unable to unlock encrypted keys.'));
+          return;
+        }
+      }
+
+      if (!typedApiKey) {
+        const unlocked = loadCloudGpuSettings();
+        const decryptedKey = unlocked?.apiKey || '';
+        if (!decryptedKey) {
+          setError('Unable to decrypt Cloud GPU API key.');
+          return;
+        }
+        setApiKey(decryptedKey);
+      }
     }
 
     setStatus('saving');
     setError(null);
 
-    const ok = saveCloudGpuSettings({
+    const payload = {
       apiUrl: trimmedSettings.apiUrl,
-      apiKey: trimmedSettings.apiKey,
+      apiKey: encryptApiKey ? '' : (typedApiKey || savedSettings.apiKey || ''),
+      apiKeyEncrypted: nextEncryptedApiKey || null,
       gpuType: trimmedSettings.gpuType,
       batchUploads: trimmedSettings.batchUploads,
-    });
+    };
+
+    if (!payload.apiKeyEncrypted) {
+      delete payload.apiKeyEncrypted;
+    }
+
+    const ok = saveCloudGpuSettings(payload);
 
     if (!ok) {
       setStatus('idle');
@@ -112,14 +211,47 @@ function CloudGpuForm({ onBack }) {
     }
 
     setSavedSettings({
-      apiUrl: trimmedSettings.apiUrl,
-      apiKey: trimmedSettings.apiKey,
-      gpuType: trimmedSettings.gpuType,
-      batchUploads: trimmedSettings.batchUploads,
+      ...payload,
+      apiKey: typedApiKey || savedSettings.apiKey || '',
+      hasStoredApiKey: Boolean(payload.apiKeyEncrypted || payload.apiKey),
+      requiresPassword: false,
+      isEncrypted: Boolean(payload.apiKeyEncrypted),
     });
+    setUnlockPasswordInput('');
     setStatus('success');
     setTimeout(() => setStatus('idle'), 800);
-  }, [trimmedSettings]);
+  }, [encryptApiKey, hasStoredApiKey, savedSettings, trimmedSettings, unlockPasswordInput, vaultPasswordExists]);
+
+  const handleUnlockVault = useCallback(async () => {
+    const password = unlockPasswordInput.trim();
+    if (!password) {
+      setError('Enter vault password to unlock encrypted keys.');
+      return;
+    }
+
+    setUnlockingVault(true);
+    setError(null);
+    const result = await unlockCredentialVault(password);
+    setUnlockingVault(false);
+
+    if (!result.success) {
+      setError(result.error || (vaultPasswordExists ? VAULT_PASSWORD_MISMATCH_ERROR : 'Unable to unlock encrypted keys.'));
+      return;
+    }
+
+    const unlocked = loadCloudGpuSettings();
+    if (unlocked) {
+      setSavedSettings(unlocked);
+      setApiUrl(unlocked.apiUrl || '');
+      setApiKey(unlocked.apiKey || '');
+      setGpuType(unlocked.gpuType || 'a10');
+      setBatchUploads(Boolean(unlocked.batchUploads));
+      setEncryptApiKey(Boolean(unlocked.apiKeyEncrypted));
+    }
+
+    setUnlockPasswordInput('');
+    setVaultPasswordExists(hasVaultPassword());
+  }, [unlockPasswordInput]);
 
   return (
     <div class="storage-form">
@@ -128,6 +260,43 @@ function CloudGpuForm({ onBack }) {
       </button>
 
       <h3>Cloud GPU Configuration</h3>
+
+      {cloudPasswordLocked && (
+        <div class="form-notice" style={{ marginTop: '12px' }}>
+          <FontAwesomeIcon icon={faLock} style={{ marginTop: '2px', flexShrink: 0 }} />
+          {' '}Cloud GPU API key is encrypted. Unlock once per browser session.
+        </div>
+      )}
+
+      {showVaultPasswordInput && (
+        <div class="form-field" style={{ marginTop: '12px' }}>
+          <label>Vault password</label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              type="password"
+              placeholder="Enter password"
+              value={unlockPasswordInput}
+              onInput={(e) => setUnlockPasswordInput(e.target.value)}
+              style={{ flex: '2 1 0' }}
+            />
+            <button
+              class="secondary-button"
+              onClick={handleUnlockVault}
+              disabled={unlockingVault || !unlockPasswordInput.trim()}
+              style={{ marginTop: 0, flex: '1 1 0' }}
+            >
+              {unlockingVault ? (
+                <>
+                  <FontAwesomeIcon icon={faSpinner} spin />
+                  {' '}Unlocking
+                </>
+              ) : (
+                'Unlock'
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ 
         background: 'rgba(255, 255, 255, 0.03)', 
@@ -174,11 +343,34 @@ function CloudGpuForm({ onBack }) {
         <div class="form-field">
           <label>API key</label>
           <input
-            placeholder="cloud gpu api key"
-            type='text'
+            placeholder={hasEncryptedStoredKey ? '••••••••' : 'cloud gpu api key'}
+            type='password'
             value={apiKey}
             onInput={(e) => setApiKey(e.target.value)}
           />
+        </div>
+
+        <div class="form-field">
+          <label class="checkbox-inline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="checkbox"
+              checked={encryptApiKey}
+              disabled={vaultLockedForConfigChanges}
+              onChange={(e) => setEncryptApiKey(e.target.checked)}
+            />
+            <span>
+              Encrypt key
+              {' '}
+              <FontAwesomeIcon
+                icon={faInfoCircle}
+                title="Encrypted at rest in local storage; details coming soon."
+                style={{ opacity: 0.8 }}
+              />
+            </span>
+          </label>
+          <span class="field-hint">
+            {vaultLockedForConfigChanges ? 'Vault key already set. Apply password above to change encryption.' : (vaultPasswordExists ? 'Vault key already set.' : 'No vault key set yet.')}
+          </span>
         </div>
 
         <div class="form-field">

@@ -157,6 +157,15 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
               </ul>
 
             </Section>
+              <Section title="Local Encryption" isOpen={isSubsectionOpen('connections.storage')}>
+             <p className='controls-modal__subtitle' style={{marginBottom: "12px", fontSize: "13px"}}>This is not required, but you can choose to encrypt stored R2 and Modal access keys with a single password.</p>
+              <ul>
+                <li>You will be prompted for this password whenever decrypted keys are required, only needed once per session</li>
+                <li>Keys are stored encrypted in local storage, so only accessible on the device they were set up on</li>
+                <li>Password cannot be reset. You will need to reset the keys and set up your connections again</li>
+              </ul>
+
+            </Section>
 
             <Section title="Cloud GPU" isOpen={isSubsectionOpen('connections.cloud-gpu')}>
              Using our ml-sharp fork and github action, you can set up a containerized version of ml-sharp on modal.com using their free tier. It connects to this viewer for seamless uploads and processing. If you are in a supabase or r2 collection, the results will be send to your storage and automatically added to the viewer. Otherwise, the files will be downloaded to your device to manually be added. 

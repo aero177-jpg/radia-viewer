@@ -1,3 +1,5 @@
+import { getUnlockedSecret, getVaultSecretIds, isEncryptedCredentialPayload } from './credentialVault.js';
+
 const STORAGE_KEY = 'r2-settings';
 const MANIFEST_CACHE_PREFIX = 'r2-manifest-cache:';
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -34,12 +36,20 @@ export const loadR2Settings = () => {
       return null;
     }
 
-    if (!parsed.accountId || !parsed.accessKeyId || !parsed.secretAccessKey || !parsed.bucket) {
+    const hasEncryptedSecret = isEncryptedCredentialPayload(parsed.secretAccessKeyEncrypted);
+    const resolvedSecret = hasEncryptedSecret
+      ? (getUnlockedSecret(getVaultSecretIds().r2) || '')
+      : String(parsed.secretAccessKey || '').trim();
+
+    if (!parsed.accountId || !parsed.accessKeyId || (!resolvedSecret && !hasEncryptedSecret) || !parsed.bucket) {
       return null;
     }
 
     return {
       ...parsed,
+      secretAccessKey: resolvedSecret,
+      requiresPassword: Boolean(hasEncryptedSecret && !resolvedSecret),
+      isEncrypted: hasEncryptedSecret,
       permissions,
     };
   } catch {

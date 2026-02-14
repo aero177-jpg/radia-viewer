@@ -25,13 +25,16 @@ import { startAnchorTransition } from '../cameraAnimations';
 import { cancelLoadZoomAnimation } from '../customAnimations';
 import { cancelContinuousZoomAnimation, cancelContinuousOrbitAnimation, cancelContinuousVerticalOrbitAnimation } from '../cameraAnimations';
 import { startSlideshow, stopSlideshow } from '../slideshowController';
-import { loadNextAsset, loadPrevAsset, resize } from '../fileLoader';
+import { loadFromStorageSource, loadNextAsset, loadPrevAsset, resize } from '../fileLoader';
 import { resetSplatManager } from '../splatManager';
 import { clearBackground } from '../backgroundManager';
 import { getSource } from '../storage/index.js';
+import { loadR2Settings } from '../storage/r2Settings.js';
+import { unlockCredentialVault } from '../storage/credentialVault.js';
 import { registerTapListener } from '../utils/tapDetector';
 import ViewerEmptyState from './ViewerEmptyState.jsx';
 import UploadStatusOverlay from './UploadStatusOverlay.jsx';
+import R2UnlockState from './R2UnlockState.jsx';
 
 
 /** Tags that should not trigger keyboard shortcuts */
@@ -75,10 +78,25 @@ function Viewer({ viewerReady, dropOverlay }) {
   const setCustomMetadataControlsVisible = useStore((state) => state.setCustomMetadataControlsVisible);
   const setCameraSettingsExpanded = useStore((state) => state.setCameraSettingsExpanded);
   const setPanelOpen = useStore((state) => state.setPanelOpen);
+  const setStatus = useStore((state) => state.setStatus);
+  const clearActiveSource = useStore((state) => state.clearActiveSource);
+  const setAssets = useStore((state) => state.setAssets);
+  const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
   
   // Store actions
   const addLog = useStore((state) => state.addLog);
   const togglePanel = useStore((state) => state.togglePanel);
+
+  const showEmptyState = Boolean(activeSourceId) && assets.length === 0 && !isLoading;
+  const activeSource = activeSourceId ? getSource(activeSourceId) : null;
+  const r2BaseSettings = activeSource?.type === 'r2-bucket' ? loadR2Settings() : null;
+  const requiresR2Unlock = Boolean(
+    showEmptyState
+    && activeSource?.type === 'r2-bucket'
+    && r2BaseSettings?.requiresPassword
+    && r2BaseSettings?.accountId === activeSource?.config?.config?.accountId
+    && r2BaseSettings?.bucket === activeSource?.config?.config?.bucket
+  );
 
   const handleDismissUploadError = useCallback(() => {
     setUploadState({ isUploading: false, uploadProgress: null });
@@ -89,6 +107,49 @@ function Viewer({ viewerReady, dropOverlay }) {
     setCameraSettingsExpanded(true);
     setPanelOpen(true);
   }, [setCustomMetadataControlsVisible, setCameraSettingsExpanded, setPanelOpen]);
+
+  const handleUnlockR2Collection = useCallback(async (password) => {
+    const vault = await unlockCredentialVault(password);
+    if (!vault.success) {
+      return { success: false, error: vault.error || 'Vault unlock failed.' };
+    }
+
+    if (!activeSource) {
+      return { success: false, error: 'Collection source is unavailable.' };
+    }
+
+    const connectResult = await activeSource.connect(false);
+    if (!connectResult?.success) {
+      return { success: false, error: connectResult?.error || 'Failed to reconnect source.' };
+    }
+
+    try {
+      await loadFromStorageSource(activeSource);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  }, [activeSource]);
+
+  const handleGoHomeFromR2Lock = useCallback(() => {
+    if (window.location.pathname !== '/') {
+      window.location.replace('/');
+      return;
+    }
+
+    clearActiveSource();
+    setAssets([]);
+    setCurrentAssetIndex(-1);
+    resetSplatManager();
+    setCurrentMesh(null);
+    clearBackground();
+    const pageEl = document.querySelector('.page');
+    if (pageEl) {
+      pageEl.classList.remove('has-glow');
+    }
+    requestRender();
+    setStatus('Returned to home.');
+  }, [clearActiveSource, setAssets, setCurrentAssetIndex, setStatus]);
   
   // Ref for viewer container
   const viewerRef = useRef(null);
@@ -102,9 +163,6 @@ function Viewer({ viewerReady, dropOverlay }) {
   const cursorIdleTimeoutRef = useRef(null);
 
   const { hasOriginalMetadata, customMetadataMode } = useStore();
-
-  const showEmptyState = Boolean(activeSourceId) && assets.length === 0 && !isLoading;
-  const activeSource = activeSourceId ? getSource(activeSourceId) : null;
 
   const showEmptyUploadStatus = showEmptyState
     && isUploading
@@ -421,7 +479,14 @@ function Viewer({ viewerReady, dropOverlay }) {
   return (
     <div id="viewer" class={`viewer ${debugLoadingMode ? 'loading' : ''} ${showEmptyState ? 'is-empty' : ''}`} ref={viewerRef}>
       {dropOverlay}
-      {showEmptyState && !showEmptyUploadStatus && (
+      {requiresR2Unlock && (
+        <R2UnlockState
+          sourceName={activeSource?.name}
+          onUnlock={handleUnlockR2Collection}
+          onBack={handleGoHomeFromR2Lock}
+        />
+      )}
+      {showEmptyState && !showEmptyUploadStatus && !requiresR2Unlock && (
         <ViewerEmptyState source={activeSource} />
       )}
       {showEmptyUploadStatus && (
@@ -482,7 +547,6 @@ function Viewer({ viewerReady, dropOverlay }) {
         </div>
       )}
       <div class="loading-overlay">
-        <div class="loading-spinner"></div>
       </div>
     </div>
   );

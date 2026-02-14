@@ -3,6 +3,8 @@
  * Stores API URL and API Key for the image conversion service.
  */
 
+import { getUnlockedSecret, getVaultSecretIds, isEncryptedCredentialPayload } from './credentialVault.js';
+
 const STORAGE_KEY = 'cloud-gpu-settings';
 
 export const loadCloudGpuSettings = () => {
@@ -10,9 +12,21 @@ export const loadCloudGpuSettings = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed.apiUrl || !parsed.apiKey) return null;
+    const hasPlainApiKey = Boolean(String(parsed.apiKey || '').trim());
+    const hasEncryptedApiKey = isEncryptedCredentialPayload(parsed.apiKeyEncrypted);
+    const hasStoredApiKey = hasPlainApiKey || hasEncryptedApiKey;
+    const resolvedApiKey = hasEncryptedApiKey
+      ? (getUnlockedSecret(getVaultSecretIds().cloudGpu) || '')
+      : String(parsed.apiKey || '').trim();
+
+    if (!parsed.apiUrl || !hasStoredApiKey) return null;
+
     return {
       ...parsed,
+      apiKey: resolvedApiKey,
+      hasStoredApiKey,
+      requiresPassword: Boolean(hasEncryptedApiKey && !resolvedApiKey),
+      isEncrypted: hasEncryptedApiKey,
       batchUploads: Boolean(parsed.batchUploads),
     };
   } catch {

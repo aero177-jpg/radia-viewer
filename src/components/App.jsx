@@ -24,6 +24,7 @@ import { faExpandAlt, faCompressAlt } from '@fortawesome/free-solid-svg-icons';
 import { FocusIcon, Rotate3DIcon, MaximizeIcon, MinimizeIcon, slideShowToggleIcon as SlideShowToggleIcon } from '../icons/customIcons';
 import { initVrSupport } from '../vrMode';
 import { getSource, createPublicUrlSource, registerSource, saveSource } from '../storage/index.js';
+import { loadR2Settings } from '../storage/r2Settings.js';
 import ConnectStorageDialog from './ConnectStorageDialog';
 import ControlsModal from './ControlsModal';
 import { startSlideshow, stopSlideshow, resetSlideshow } from '../slideshowController';
@@ -32,6 +33,7 @@ import { useViewerDrop } from './useViewerDrop.jsx';
 import PwaReloadPrompt from './PwaReloadPrompt';
 import SlideshowOptionsModal from './SlideshowOptionsModal';
 import { resetSplatManager } from '../splatManager';
+import { clearBackground } from '../backgroundManager';
 import { useCollectionRouting } from './useCollectionRouting.js';
 
 /** Delay before resize after panel toggle animation completes */
@@ -55,6 +57,7 @@ function App() {
   const assets = useStore((state) => state.assets);
   const currentAssetIndex = useStore((state) => state.currentAssetIndex);
   const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
+  const setActiveSourceId = useStore((state) => state.setActiveSourceId);
   const setAssets = useStore((state) => state.setAssets);
   const toggleAssetSidebar = useStore((state) => state.toggleAssetSidebar);
   const setStatus = useStore((state) => state.setStatus);
@@ -517,12 +520,26 @@ function App() {
   const handleSelectSource = useCallback(async (source) => {
     try {
       setLandingVisible(false);
+
+      const r2Settings = loadR2Settings();
+      const isR2Locked = source?.type === 'r2-bucket'
+        && Boolean(r2Settings?.requiresPassword)
+        && r2Settings?.accountId === source?.config?.config?.accountId
+        && r2Settings?.bucket === source?.config?.config?.bucket;
+
+      if (isR2Locked) {
+        setAssets([]);
+        setCurrentAssetIndex(-1);
+        setActiveSourceId(source.id);
+        return;
+      }
+
       await loadFromStorageSource(source);
     } catch (err) {
       addLog('Failed to load from source: ' + (err?.message || err));
       console.warn('Failed to load from source:', err);
     }
-  }, [addLog]);
+  }, [addLog, setActiveSourceId, setAssets, setCurrentAssetIndex]);
 
   /**
    * Handle opening cloud GPU dialog from collections modal
@@ -635,6 +652,23 @@ function App() {
       setLandingVisible(false);
     }
   }, [assets.length, activeSourceId, hasDefaultSource]);
+
+  useEffect(() => {
+    if (!isLandingEmptyState) return;
+
+    resetSplatManager();
+    setCurrentMesh(null);
+    clearBackground();
+
+    const pageEl = document.querySelector('.page');
+    if (pageEl) {
+      pageEl.classList.remove('has-glow');
+    }
+
+    resetViewWithImmersive();
+    resize();
+    requestRender();
+  }, [isLandingEmptyState]);
 
   return (
     <div class={`page ${panelOpen ? 'panel-open' : ''} ${isLandingEmptyState ? 'landing-empty' : ''}`}>
