@@ -12,7 +12,7 @@ import SidePanel from './SidePanel';
 import MobileSheet from './MobileSheet';
 import AssetSidebar from './AssetSidebar';
 import AssetNavigation from './AssetNavigation';
-import { initViewer, startRenderLoop, currentMesh, camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, resetViewer, setCurrentMesh } from '../viewer';
+import { initViewer, startRenderLoop, currentMesh, camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, resetViewer } from '../viewer';
 import { resize, loadFromStorageSource, loadNextAsset, loadPrevAsset, reloadCurrentAsset } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
 import { enableImmersiveMode, disableImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, syncImmersiveBaseline } from '../immersiveMode';
@@ -33,8 +33,8 @@ import { useViewerDrop } from './useViewerDrop.jsx';
 import PwaReloadPrompt from './PwaReloadPrompt';
 import SlideshowOptionsModal from './SlideshowOptionsModal';
 import { resetSplatManager } from '../splatManager';
-import { clearBackground } from '../backgroundManager';
 import { useCollectionRouting } from './useCollectionRouting.js';
+import { resetLandingView } from '../utils/resetLandingView.js';
 
 /** Delay before resize after panel toggle animation completes */
 const PANEL_TRANSITION_MS = 350;
@@ -656,18 +656,8 @@ function App() {
   useEffect(() => {
     if (!isLandingEmptyState) return;
 
-    resetSplatManager();
-    setCurrentMesh(null);
-    clearBackground();
-
-    const pageEl = document.querySelector('.page');
-    if (pageEl) {
-      pageEl.classList.remove('has-glow');
-    }
-
+    resetLandingView();
     resetViewWithImmersive();
-    resize();
-    requestRender();
   }, [isLandingEmptyState]);
 
   return (

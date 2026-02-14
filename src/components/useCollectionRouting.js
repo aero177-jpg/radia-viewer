@@ -1,11 +1,59 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { useStore } from '../store';
 import { loadFromStorageSource } from '../fileLoader';
-import { setCurrentMesh, requestRender } from '../viewer';
 import { getSource, getSourcesArray } from '../storage/index.js';
 import { loadR2Settings } from '../storage/r2Settings.js';
-import { resetSplatManager } from '../splatManager';
-import { clearBackground } from '../backgroundManager';
+import { resetLandingView } from '../utils/resetLandingView.js';
+
+const normalizeBasePath = (value) => {
+  const text = String(value || '/').trim();
+  const withLeadingSlash = text.startsWith('/') ? text : `/${text}`;
+  return withLeadingSlash.endsWith('/') ? withLeadingSlash : `${withLeadingSlash}/`;
+};
+
+const APP_BASE = normalizeBasePath(import.meta.env.BASE_URL || '/');
+
+const normalizePathname = (value) => {
+  let path = String(value || '/');
+  if (!path.startsWith('/')) {
+    path = `/${path}`;
+  }
+  return path;
+};
+
+const normalizeComparablePath = (value) => {
+  const normalized = normalizePathname(value);
+  if (normalized.length > 1 && normalized.endsWith('/')) {
+    return normalized.slice(0, -1);
+  }
+  return normalized;
+};
+
+const buildAppPath = (segment = '') => {
+  const trimmedSegment = String(segment || '').replace(/^\/+/, '');
+  if (!trimmedSegment) return APP_BASE;
+  return `${APP_BASE}${trimmedSegment}`;
+};
+
+const isWithinAppBase = (pathname) => {
+  const path = normalizePathname(pathname);
+  if (APP_BASE === '/') return true;
+  const baseWithoutTrailingSlash = APP_BASE.slice(0, -1);
+  return path === baseWithoutTrailingSlash || path.startsWith(APP_BASE);
+};
+
+const stripAppBase = (pathname) => {
+  const path = normalizePathname(pathname);
+  if (APP_BASE === '/') return path;
+
+  const baseWithoutTrailingSlash = APP_BASE.slice(0, -1);
+  if (path === baseWithoutTrailingSlash) return '/';
+  if (path === APP_BASE) return '/';
+  if (path.startsWith(APP_BASE)) {
+    return `/${path.slice(APP_BASE.length).replace(/^\/+/, '')}`;
+  }
+  return null;
+};
 
 const normalizeRouteSegment = (value) => {
   const text = String(value ?? '')
@@ -17,12 +65,15 @@ const normalizeRouteSegment = (value) => {
 
 const getCollectionPathFromSource = (source) => {
   const slug = normalizeRouteSegment(source?.name || source?.id || '');
-  if (!slug) return '/';
-  return `/${encodeURIComponent(slug)}`;
+  if (!slug) return buildAppPath();
+  return buildAppPath(encodeURIComponent(slug));
 };
 
 const getSinglePathSegment = (pathname) => {
-  const trimmed = String(pathname || '/').replace(/^\/+|\/+$/g, '');
+  const relativePath = stripAppBase(pathname);
+  if (relativePath == null) return '__out_of_scope__';
+
+  const trimmed = String(relativePath || '/').replace(/^\/+|\/+$/g, '');
   if (!trimmed) return null;
   if (trimmed.includes('/')) return '__invalid__';
   try {
@@ -54,35 +105,27 @@ export const useCollectionRouting = ({
   const routeSyncInFlightRef = useRef(false);
 
   const navigateHome = useCallback((replace = false) => {
-    if (window.location.pathname !== '/') {
+    const homePath = buildAppPath();
+    if (normalizeComparablePath(window.location.pathname) !== normalizeComparablePath(homePath)) {
       // Hard redirect so the viewer/canvas is fully reinitialized.
       if (replace) {
-        window.location.replace('/');
+        window.location.replace(homePath);
       } else {
-        window.location.assign('/');
+        window.location.assign(homePath);
       }
       return;
     }
 
-    resetSplatManager();
-    setCurrentMesh(null);
-    clearBackground();
-    const pageEl = document.querySelector('.page');
-    if (pageEl) {
-      pageEl.classList.remove('has-glow');
-    }
-
-    useStore.getState().setAssets([]);
-    useStore.getState().setCurrentAssetIndex(-1);
-    useStore.getState().clearActiveSource();
-    setHasDefaultSource(false);
-    setLandingVisible(true);
-    requestRender();
+    resetLandingView({
+      setHasDefaultSource,
+      setLandingVisible,
+    });
   }, [setHasDefaultSource, setLandingVisible]);
 
   const syncPathToActiveSource = useCallback((source, replace = false) => {
-    const targetPath = source ? getCollectionPathFromSource(source) : '/';
-    if (window.location.pathname === targetPath) return;
+    const targetPath = source ? getCollectionPathFromSource(source) : buildAppPath();
+    if (normalizeComparablePath(window.location.pathname) === normalizeComparablePath(targetPath)) return;
+    if (!isWithinAppBase(targetPath)) return;
 
     const state = { ...window.history.state };
     if (replace) {
@@ -94,6 +137,10 @@ export const useCollectionRouting = ({
 
   const applyPathRoute = useCallback(async (replaceInvalid = true) => {
     const segment = getSinglePathSegment(window.location.pathname);
+    if (segment === '__out_of_scope__') {
+      navigateHome(replaceInvalid);
+      return;
+    }
     if (segment === '__invalid__') {
       navigateHome(replaceInvalid);
       return;
