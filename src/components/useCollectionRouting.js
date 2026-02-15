@@ -106,14 +106,21 @@ export const useCollectionRouting = ({
 
   const navigateHome = useCallback((replace = false) => {
     const homePath = buildAppPath();
-    if (normalizeComparablePath(window.location.pathname) !== normalizeComparablePath(homePath)) {
-      // Hard redirect so the viewer/canvas is fully reinitialized.
-      if (replace) {
-        window.location.replace(homePath);
-      } else {
-        window.location.assign(homePath);
-      }
+
+    // If somehow outside app base, do a hard redirect back into scope.
+    if (!isWithinAppBase(window.location.pathname)) {
+      window.location.replace(homePath);
       return;
+    }
+
+    // In-scope: avoid full document navigation (keeps PWA shell behavior stable).
+    if (normalizeComparablePath(window.location.pathname) !== normalizeComparablePath(homePath)) {
+      const state = { ...window.history.state };
+      if (replace) {
+        window.history.replaceState(state, '', homePath);
+      } else {
+        window.history.pushState(state, '', homePath);
+      }
     }
 
     resetLandingView({
