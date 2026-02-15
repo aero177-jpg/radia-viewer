@@ -224,6 +224,78 @@ export const cancelContinuousVerticalOrbitAnimation = () => {
 };
 
 // ============================================================================
+// Same-base continuous handoff queue
+// ============================================================================
+
+/**
+ * Queued handoff for seamless same-base view transitions.
+ * When the current continuous animation completes, it picks this up
+ * instead of stopping — glides to the next view and starts a new animation.
+ */
+let pendingHandoff = null;
+
+/**
+ * Queue a seamless handoff to the next view's continuous animation.
+ * Call this while a continuous tween is still running; the tween's onComplete
+ * will pick it up and chain directly.
+ *
+ * @param {Object} handoff
+ * @param {string} handoff.slideMode - e.g. 'continuous-orbit'
+ * @param {number} handoff.duration - slide-in duration (ms)
+ * @param {number} handoff.amount - motion amount
+ * @param {number} handoff.glideDuration - seconds for the glide to the new start offset
+ * @param {Function} handoff.onApply - synchronous callback that applies model/aspect/camera/store
+ * @param {Function} [handoff.onStarted] - called after the new animation begins
+ */
+export const queueContinuousHandoff = (handoff) => {
+  pendingHandoff = handoff;
+};
+
+export const clearContinuousHandoff = () => {
+  pendingHandoff = null;
+};
+
+/**
+ * Process a queued handoff: capture current camera, apply next view state,
+ * then start the next continuous animation with a glide from the old position.
+ */
+const processPendingHandoff = () => {
+  const handoff = pendingHandoff;
+  pendingHandoff = null;
+  if (!handoff) return false;
+
+  // Snapshot where camera is NOW (end of previous animation)
+  const glideFrom = {
+    position: camera.position.clone(),
+    target: controls.target.clone(),
+    fov: camera.fov,
+  };
+
+  // Apply all state changes (model, aspect, camera pose, store) — synchronous, no render
+  handoff.onApply();
+
+  // Look up the correct continuous function
+  const fnMap = {
+    'continuous-zoom': continuousZoomSlideIn,
+    'continuous-dolly-zoom': continuousDollyZoomSlideIn,
+    'continuous-orbit': continuousOrbitSlideIn,
+    'continuous-orbit-vertical': continuousVerticalOrbitSlideIn,
+  };
+  const fn = fnMap[handoff.slideMode];
+
+  if (fn) {
+    fn(handoff.duration, handoff.amount, {
+      glideDuration: handoff.glideDuration,
+      glideFrom,
+      skipFade: true,
+    });
+  }
+
+  handoff.onStarted?.();
+  return true;
+};
+
+// ============================================================================
 // Continuous slide-in animations
 // ============================================================================
 
@@ -234,14 +306,22 @@ export const cancelContinuousVerticalOrbitAnimation = () => {
 export const continuousZoomSlideIn = (duration, amount, options = {}) => {
   return new Promise((resolve) => {
     cancelContinuousZoomAnimation();
-    const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
-    if (!canAnimate) { resolve(); return; }
+
+    const skipFade = options.skipFade ?? false;
+    const glideFrom = options.glideFrom ?? null; // { position, target }
+
+    if (!skipFade) {
+      const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
+      if (!canAnimate) { resolve(); return; }
+      scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
+    } else {
+      if (!camera || !controls) { resolve(); return; }
+    }
 
     const currentPosition = camera.position.clone();
     const currentTarget = controls.target.clone();
     const distance = currentPosition.distanceTo(currentTarget);
     const forward = new THREE.Vector3().subVectors(currentTarget, currentPosition).normalize();
-
 
     const durationSec = getContinuousDurationSeconds('continuous-zoom', CONTINUOUS_ZOOM_DURATION);
     const { start: startRatio, end: endRatio } = getContinuousZoomRatios();
@@ -261,18 +341,29 @@ export const continuousZoomSlideIn = (duration, amount, options = {}) => {
         duration: durationSec,
         ease: "none",
         onUpdate: () => { controls.update(); requestRender(); },
-        onComplete: () => { continuousZoomTween = null; },
+        onComplete: () => {
+          continuousZoomTween = null;
+          if (pendingHandoff) { processPendingHandoff(); return; }
+          if (skipFade) resolve();
+        },
       });
     };
 
     if (glideDuration > 0) {
+      const glideStartPos = glideFrom?.position ?? currentPosition;
+      const glideStartTarget = glideFrom?.target ?? currentTarget;
+      // Snap camera back to glideFrom immediately so there's no flash frame
+      camera.position.copy(glideStartPos);
+      controls.target.copy(glideStartTarget);
+      controls.update();
       const glideProxy = { t: 0 };
       continuousZoomTween = gsap.to(glideProxy, {
         t: 1,
         duration: glideDuration,
         ease: "power2.inOut",
         onUpdate: () => {
-          camera.position.lerpVectors(currentPosition, startPosition, glideProxy.t);
+          camera.position.lerpVectors(glideStartPos, startPosition, glideProxy.t);
+          controls.target.lerpVectors(glideStartTarget, currentTarget, glideProxy.t);
           controls.update();
           requestRender();
         },
@@ -284,8 +375,6 @@ export const continuousZoomSlideIn = (duration, amount, options = {}) => {
       requestRender();
       startMainAnimation();
     }
-
-    scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
   });
 };
 
@@ -299,8 +388,17 @@ export const continuousDollyZoomSlideIn = (duration, amount, options = {}) => {
     cancelContinuousZoomAnimation();
     cancelContinuousOrbitAnimation();
     cancelContinuousVerticalOrbitAnimation();
-    const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
-    if (!canAnimate) { resolve(); return; }
+
+    const skipFade = options.skipFade ?? false;
+    const glideFrom = options.glideFrom ?? null;
+
+    if (!skipFade) {
+      const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
+      if (!canAnimate) { resolve(); return; }
+      scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
+    } else {
+      if (!camera || !controls) { resolve(); return; }
+    }
 
     const { startDelta, endDelta } = getContinuousDollyZoomDeltas();
 
@@ -315,31 +413,65 @@ export const continuousDollyZoomSlideIn = (duration, amount, options = {}) => {
     const endFov = THREE.MathUtils.clamp(baseFov + endDelta, 20, 120);
 
     const durationSec = getContinuousDurationSeconds('continuous-dolly-zoom', CONTINUOUS_ZOOM_DURATION);
-    const proxy = { t: 0 };
+    const glideDuration = options.glideDuration ?? 0;
 
-    continuousDollyZoomTween = gsap.to(proxy, {
-      t: 1,
-      duration: durationSec,
-      ease: "none",
-      onUpdate: () => {
-        const newFov = THREE.MathUtils.lerp(startFov, endFov, proxy.t);
-        const newTan = Math.tan(THREE.MathUtils.degToRad(newFov / 2));
-        const newDistance = baseDistance * (baseTan / newTan);
+    const startMainAnimation = () => {
+      const proxy = { t: 0 };
+      continuousDollyZoomTween = gsap.to(proxy, {
+        t: 1,
+        duration: durationSec,
+        ease: "none",
+        onUpdate: () => {
+          const newFov = THREE.MathUtils.lerp(startFov, endFov, proxy.t);
+          const newTan = Math.tan(THREE.MathUtils.degToRad(newFov / 2));
+          const newDistance = baseDistance * (baseTan / newTan);
 
-        camera.position.copy(controls.target).addScaledVector(baseDirection, newDistance);
-        camera.fov = newFov;
-        camera.updateProjectionMatrix();
-        controls.update();
-        getStoreState().setFov(Math.round(newFov));
-        requestRender();
-      },
-      onComplete: () => {
-        continuousDollyZoomTween = null;
-        updateDollyZoomBaselineFromCamera();
-      },
-    });
+          camera.position.copy(controls.target).addScaledVector(baseDirection, newDistance);
+          camera.fov = newFov;
+          camera.updateProjectionMatrix();
+          controls.update();
+          getStoreState().setFov(Math.round(newFov));
+          requestRender();
+        },
+        onComplete: () => {
+          continuousDollyZoomTween = null;
+          updateDollyZoomBaselineFromCamera();
+          if (pendingHandoff) { processPendingHandoff(); return; }
+          if (skipFade) resolve();
+        },
+      });
+    };
 
-    scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
+    if (glideDuration > 0 && glideFrom) {
+      const glideStartPos = glideFrom.position;
+      const glideStartTarget = glideFrom.target;
+      const targetPos = camera.position.clone();
+      const targetTarget = controls.target.clone();
+      const startFovGlide = glideFrom.fov ?? camera.fov;
+      // Snap camera back to glideFrom immediately so there's no flash frame
+      camera.position.copy(glideStartPos);
+      controls.target.copy(glideStartTarget);
+      camera.fov = startFovGlide;
+      camera.updateProjectionMatrix();
+      controls.update();
+      const glideProxy = { t: 0 };
+      continuousDollyZoomTween = gsap.to(glideProxy, {
+        t: 1,
+        duration: glideDuration,
+        ease: "power2.inOut",
+        onUpdate: () => {
+          camera.position.lerpVectors(glideStartPos, targetPos, glideProxy.t);
+          controls.target.lerpVectors(glideStartTarget, targetTarget, glideProxy.t);
+          camera.fov = THREE.MathUtils.lerp(startFovGlide, baseFov, glideProxy.t);
+          camera.updateProjectionMatrix();
+          controls.update();
+          requestRender();
+        },
+        onComplete: startMainAnimation,
+      });
+    } else {
+      startMainAnimation();
+    }
   });
 };
 
@@ -350,8 +482,17 @@ export const continuousDollyZoomSlideIn = (duration, amount, options = {}) => {
 export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
   return new Promise((resolve) => {
     cancelContinuousOrbitAnimation();
-    const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
-    if (!canAnimate) { resolve(); return; }
+
+    const skipFade = options.skipFade ?? false;
+    const glideFrom = options.glideFrom ?? null;
+
+    if (!skipFade) {
+      const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
+      if (!canAnimate) { resolve(); return; }
+      scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
+    } else {
+      if (!camera || !controls) { resolve(); return; }
+    }
 
     const currentPosition = camera.position.clone();
     const currentTarget = controls.target.clone();
@@ -398,19 +539,27 @@ export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
             restoreOrbitLimitOverride(continuousOrbitState);
             continuousOrbitState = null;
           }
+          if (pendingHandoff) { processPendingHandoff(); return; }
+          if (skipFade) resolve();
         },
       });
     };
 
     if (glideDuration > 0) {
+      const glideStartPos = glideFrom?.position ?? currentPosition;
+      const glideStartTarget = glideFrom?.target ?? currentTarget;
+      // Snap camera back to glideFrom immediately so there's no flash frame
+      camera.position.copy(glideStartPos);
+      controls.target.copy(glideStartTarget);
+      controls.update();
       const glideProxy = { t: 0 };
       continuousOrbitTween = gsap.to(glideProxy, {
         t: 1,
         duration: glideDuration,
         ease: "power2.inOut",
         onUpdate: () => {
-          camera.position.lerpVectors(currentPosition, startPosition, glideProxy.t);
-          controls.target.lerpVectors(currentTarget, startTarget, glideProxy.t);
+          camera.position.lerpVectors(glideStartPos, startPosition, glideProxy.t);
+          controls.target.lerpVectors(glideStartTarget, startTarget, glideProxy.t);
           controls.update();
           requestRender();
         },
@@ -423,8 +572,6 @@ export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
       requestRender();
       startMainAnimation();
     }
-
-    scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
   });
 };
 
@@ -435,8 +582,17 @@ export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
 export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) => {
   return new Promise((resolve) => {
     cancelContinuousVerticalOrbitAnimation();
-    const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
-    if (!canAnimate) { resolve(); return; }
+
+    const skipFade = options.skipFade ?? false;
+    const glideFrom = options.glideFrom ?? null;
+
+    if (!skipFade) {
+      const { viewerEl, fadeDurationSec, canAnimate } = beginContinuousSlideIn(duration);
+      if (!canAnimate) { resolve(); return; }
+      scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
+    } else {
+      if (!camera || !controls) { resolve(); return; }
+    }
 
     const currentPosition = camera.position.clone();
     const currentTarget = controls.target.clone();
@@ -484,19 +640,27 @@ export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) =
             restoreOrbitLimitOverride(continuousVerticalOrbitState);
             continuousVerticalOrbitState = null;
           }
+          if (pendingHandoff) { processPendingHandoff(); return; }
+          if (skipFade) resolve();
         },
       });
     };
 
     if (glideDuration > 0) {
+      const glideStartPos = glideFrom?.position ?? currentPosition;
+      const glideStartTarget = glideFrom?.target ?? currentTarget;
+      // Snap camera back to glideFrom immediately so there's no flash frame
+      camera.position.copy(glideStartPos);
+      controls.target.copy(glideStartTarget);
+      controls.update();
       const glideProxy = { t: 0 };
       continuousVerticalOrbitTween = gsap.to(glideProxy, {
         t: 1,
         duration: glideDuration,
         ease: "power2.inOut",
         onUpdate: () => {
-          camera.position.lerpVectors(currentPosition, startPosition, glideProxy.t);
-          controls.target.lerpVectors(currentTarget, startTarget, glideProxy.t);
+          camera.position.lerpVectors(glideStartPos, startPosition, glideProxy.t);
+          controls.target.lerpVectors(glideStartTarget, startTarget, glideProxy.t);
           controls.update();
           requestRender();
         },
@@ -509,8 +673,6 @@ export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) =
       requestRender();
       startMainAnimation();
     }
-
-    scheduleSlideInCleanup(viewerEl, fadeDurationSec, resolve);
   });
 };
 

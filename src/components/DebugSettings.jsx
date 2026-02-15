@@ -263,7 +263,7 @@ function DebugSettings() {
             width: result.width,
             height: result.height,
             format: result.format,
-          });
+          }, asset.previewStorageKey || asset.name);
           addLog(`[Debug] Preview saved to IndexedDB`);
         }
       } else {

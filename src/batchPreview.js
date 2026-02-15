@@ -192,7 +192,7 @@ export const generateAllPreviews = async (options = {}) => {
             width: result.width,
             height: result.height,
             format: result.format,
-          });
+          }, asset.previewStorageKey || asset.name);
           store.updateAssetPreview(i, asset.preview);
           successCount++;
           store.addLog(`[BatchPreview] ✓ ${asset.name}`);

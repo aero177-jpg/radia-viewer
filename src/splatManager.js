@@ -12,6 +12,8 @@ let splatGroup = null;
 const cache = new Map();
 const loading = new Map();
 
+const getCacheKey = (asset) => asset?.cacheKey || asset?.baseAssetId || asset?.id;
+
 // Export cache for direct access (used during preloaded transitions)
 export const getSplatCache = () => cache;
 
@@ -104,7 +106,7 @@ const createEntry = async (asset) => {
 
   const mesh = await formatHandler.loadData({ file, bytes });
   mesh.visible = false;
-  mesh.userData.assetId = asset.id;
+  mesh.userData.assetId = getCacheKey(asset);
   ensureGroup().add(mesh);
 
   let storedSettings = null;
@@ -134,7 +136,7 @@ const createEntry = async (asset) => {
   }
 
   return {
-    id: asset.id,
+    id: getCacheKey(asset),
     asset,
     mesh,
     cameraMetadata: cameraMetadata ?? null,
@@ -145,27 +147,29 @@ const createEntry = async (asset) => {
 };
 
 export const isSplatCached = (asset) => {
-  if (!asset?.id) return false;
-  return cache.has(asset.id);
+  const cacheKey = getCacheKey(asset);
+  if (!cacheKey) return false;
+  return cache.has(cacheKey);
 };
 
 export const ensureSplatEntry = async (asset) => {
-  if (!asset?.id) return null;
-  if (cache.has(asset.id)) return cache.get(asset.id);
-  if (loading.has(asset.id)) return loading.get(asset.id);
+  const cacheKey = getCacheKey(asset);
+  if (!cacheKey) return null;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  if (loading.has(cacheKey)) return loading.get(cacheKey);
 
   const promise = createEntry(asset)
     .then((entry) => {
-      cache.set(asset.id, entry);
-      loading.delete(asset.id);
+      cache.set(cacheKey, entry);
+      loading.delete(cacheKey);
       return entry;
     })
     .catch((err) => {
-      loading.delete(asset.id);
+      loading.delete(cacheKey);
       throw err;
     });
 
-  loading.set(asset.id, promise);
+  loading.set(cacheKey, promise);
   return promise;
 };
 
@@ -215,12 +219,13 @@ export const clearCustomAnimationInCache = (assetId) => {
 export const activateSplatEntry = async (asset) => {
   const entry = await ensureSplatEntry(asset);
   if (!entry) return null;
+  const cacheKey = getCacheKey(asset);
 
   // Only toggle visibility - DO NOT reset transforms!
   // The mesh has CV-to-Three axis flip applied via applyMatrix4()
   // which modifies position/rotation/scale. Resetting them corrupts the view.
   cache.forEach((cached, id) => {
-    cached.mesh.visible = id === asset.id;
+    cached.mesh.visible = id === cacheKey;
   });
 
   return entry;

@@ -327,7 +327,8 @@ input[type="checkbox"]:disabled:checked {
 .metadata-warning {
   position: absolute;
   top: 12px;
-  right: 12px;
+  left: 12px;
+  top: 12px;
   z-index: 12;
   display: flex;
   align-items: center;
@@ -3306,7 +3307,7 @@ border-radius: 10px;
 
 .primary-button {
   width: 100%;
-  padding: 12px 20px;
+  padding: 10px 16px;
   background: #31516345;
   border: 1px solid #4b5a64;
   color: rgb(134 171 196);
@@ -4188,8 +4189,8 @@ background: #3e576c52;
 .custom-metadata-section {
   margin-top: 16px;
   padding: 12px;
-  background: rgba(255, 180, 0, 0.1);
-  border: 1px solid rgba(255, 180, 0, 0.3);
+  background: rgba(110, 180, 255, 0.08);
+  border: 1px solid rgba(110, 180, 255, 0.25);
   border-radius: 8px;
 }
 
@@ -4202,12 +4203,12 @@ background: #3e576c52;
 
 .custom-metadata-section .section-title {
   font-weight: 600;
-  color: #ffb400;
+  color: rgb(170 188 202);
 }
 
 .custom-metadata-section .section-hint {
   font-size: 11px;
-  color: #888;
+  color: #8a9bb8;
 }
 
 .custom-metadata-section .control-row {
@@ -4233,9 +4234,9 @@ background: #3e576c52;
 .clear-custom-btn {
   padding: 4px 10px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid #4b5a64;
   border-radius: 4px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgb(134 171 196);
   font-size: 11px;
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s, background 0.2s;
@@ -4243,40 +4244,17 @@ background: #3e576c52;
 
 .clear-custom-btn.is-reset {
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .clear-custom-btn:hover:not(:disabled) {
-  color: #ff6b6b;
-  border-color: rgba(255, 107, 107, 0.4);
-  background: rgba(255, 107, 107, 0.08);
+  color: rgb(170 188 202);
+  border-color: #5d6c857a;
+  background: #3e576c52;
 }
 
 .clear-custom-btn:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.save-view-button {
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px 16px;
-  background: #ffb400;
-  border: none;
-  border-radius: 6px;
-  color: #1a1a1a;
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.save-view-button:hover:not(:disabled) {
-  background: #ffc733;
-}
-
-.save-view-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
 }
 

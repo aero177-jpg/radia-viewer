@@ -17,6 +17,7 @@ import {
   setCurrentMesh,
   setOriginalImageAspect,
   requestRender,
+  updateDollyZoomBaselineFromCamera,
   THREE,
 } from "./viewer.js";
 import { applyPreviewBackground, captureAndApplyBackground, clearBackground, hasBackgroundForPreview } from "./backgroundManager.js";
@@ -36,7 +37,16 @@ import {
   applyFullOrbitConstraints,
   restoreOrbitConstraints,
 } from "./customMetadata.js";
-import { slideOutAnimation, slideInAnimation, cancelContinuousZoomAnimation, cancelContinuousDollyZoomAnimation, cancelContinuousOrbitAnimation, cancelContinuousVerticalOrbitAnimation } from "./cameraAnimations.js";
+import {
+  slideOutAnimation,
+  slideInAnimation,
+  cancelContinuousZoomAnimation,
+  cancelContinuousDollyZoomAnimation,
+  cancelContinuousOrbitAnimation,
+  cancelContinuousVerticalOrbitAnimation,
+  clearContinuousHandoff,
+} from "./cameraAnimations.js";
+import { resolveSlideInOptions } from "./slideConfig.js";
 import { resetSlideshowTimer } from "./slideshowController.js";
 import { isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode } from "./immersiveMode.js";
 import { applyIntrinsicsAspect, updateViewerAspectRatio, resize } from "./layout.js";
@@ -144,6 +154,170 @@ const normalizeAssetCandidate = (candidate) => {
   return null;
 };
 
+const getBaseAssetId = (asset) => asset?.baseAssetId || asset?.id;
+export { getBaseAssetId };
+const getBaseAssetName = (asset) => asset?.baseAssetName || asset?.name;
+const isProxyViewAsset = (asset) => Boolean(asset?.isProxyView && asset?.baseAssetId && asset?.viewId);
+const makeProxyAssetId = (baseAssetId, viewId) => `${baseAssetId}::view::${viewId}`;
+const makePreviewStorageKey = (assetName, viewId) => `${assetName}::${viewId}`;
+
+const getViewDisplayName = (assetName, view, order) => {
+  const viewName = typeof view?.name === 'string' && view.name.trim() ? view.name.trim() : `View ${order + 1}`;
+  return `${assetName} · ${viewName}`;
+};
+
+const aspectRatioToKey = (ratio) => {
+  if (!ratio || ratio === null) return 'full';
+  const tolerance = 0.01;
+  if (Math.abs(ratio - 1) < tolerance) return '1:1';
+  if (Math.abs(ratio - 16 / 9) < tolerance) return '16:9';
+  if (Math.abs(ratio - 9 / 16) < tolerance) return '9:16';
+  if (Math.abs(ratio - 4 / 3) < tolerance) return '4:3';
+  if (Math.abs(ratio - 3 / 4) < tolerance) return '3:4';
+  return 'full';
+};
+
+const buildProxyViewAsset = (baseAsset, view, order) => {
+  const baseId = getBaseAssetId(baseAsset);
+  const baseName = getBaseAssetName(baseAsset);
+  return {
+    ...baseAsset,
+    id: makeProxyAssetId(baseId, view.id),
+    isProxyView: true,
+    baseAssetId: baseId,
+    baseAssetName: baseName,
+    viewId: view.id,
+    groupOrder: order,
+    displayName: getViewDisplayName(baseName, view, order),
+    previewStorageKey: makePreviewStorageKey(baseName, view.id),
+    cacheKey: baseId,
+    loaded: false,
+    // Clear inherited preview so hydrateAssetPreviewFromStorage can load the
+    // correct per-view preview from IndexedDB instead of reusing the base's.
+    preview: null,
+    previewSource: null,
+    previewMeta: null,
+  };
+};
+
+const ensureBaseAssetViewFields = (asset, view, order = 0) => {
+  if (!asset) return;
+  const baseName = getBaseAssetName(asset);
+  asset.isProxyView = false;
+  asset.baseAssetId = getBaseAssetId(asset);
+  asset.baseAssetName = baseName;
+  asset.viewId = view?.id || null;
+  asset.groupOrder = order;
+  asset.displayName = view
+    ? getViewDisplayName(baseName, view, order)
+    : baseName;
+  asset.previewStorageKey = view?.id
+    ? makePreviewStorageKey(baseName, view.id)
+    : baseName;
+  asset.cacheKey = asset.baseAssetId;
+};
+
+const findBaseAssetIndex = (assets, baseAssetId) => assets.findIndex(
+  (item) => !item?.isProxyView && getBaseAssetId(item) === baseAssetId,
+);
+
+const removeProxyViewsForBase = (assets, baseAssetId) => {
+  for (let i = assets.length - 1; i >= 0; i--) {
+    const item = assets[i];
+    if (item?.isProxyView && item.baseAssetId === baseAssetId) {
+      assets.splice(i, 1);
+    }
+  }
+};
+
+const syncAssetProxyViews = async ({ store, currentAsset, views }) => {
+  if (!store || !currentAsset) return;
+  const assets = getAssetList();
+  if (!assets?.length) return;
+
+  const baseAssetId = getBaseAssetId(currentAsset);
+  const baseIndex = findBaseAssetIndex(assets, baseAssetId);
+  if (baseIndex < 0) return;
+
+  const baseAsset = assets[baseIndex];
+  const normalizedViews = Array.isArray(views) ? views : [];
+
+  removeProxyViewsForBase(assets, baseAssetId);
+
+  const firstView = normalizedViews[0] || null;
+  const prevKey = baseAsset.previewStorageKey;
+  ensureBaseAssetViewFields(baseAsset, firstView, 0);
+
+  // Re-hydrate base asset preview if the storage key changed (e.g. from raw
+  // filename to a view-specific key after metadata was loaded).
+  if (baseAsset.previewStorageKey && baseAsset.previewStorageKey !== prevKey) {
+    const oldPreview = baseAsset.preview;
+    baseAsset.preview = null; // clear so hydrateAssetPreviewFromStorage can run
+    const hydrated = await hydrateAssetPreviewFromStorage(baseAsset);
+    if (!hydrated && oldPreview) {
+      baseAsset.preview = oldPreview; // keep fallback if nothing found
+    }
+  }
+
+  const proxyAssets = normalizedViews
+    .slice(1)
+    .map((view, idx) => buildProxyViewAsset(baseAsset, view, idx + 1));
+
+  for (const proxy of proxyAssets) {
+    // eslint-disable-next-line no-await-in-loop
+    await hydrateAssetPreviewFromStorage(proxy);
+  }
+
+  if (proxyAssets.length > 0) {
+    assets.splice(baseIndex + 1, 0, ...proxyAssets);
+  }
+
+  store.setAssets([...assets]);
+};
+
+const resolveAssetView = async (asset) => {
+  const assetName = getBaseAssetName(asset);
+  if (!assetName) return { metadata: null, views: [], selectedView: null };
+  const metadata = await loadCustomMetadataForAsset(assetName);
+  const views = metadata?.views ?? [];
+  let selectedView = null;
+  if (views.length > 0) {
+    if (asset?.isProxyView && asset?.viewId) {
+      selectedView = views.find((view) => view.id === asset.viewId) || null;
+    } else {
+      // Base asset should always represent the first saved custom view.
+      selectedView = views[0] || null;
+    }
+
+    if (!selectedView) {
+      selectedView = views.find((view) => view.id === metadata?.activeViewId) || views[0];
+    }
+  }
+
+  return { metadata, views, selectedView };
+};
+
+const getSlideModeForStore = (store, { slideDirection } = {}) => {
+  const immersiveActive = isImmersiveModeActive();
+  const forceFadeForNonSequential = !slideDirection;
+  const baseSlideMode = store.slideMode ?? 'horizontal';
+  const shouldUseContinuous = store.slideshowMode && store.slideshowPlaying && store.slideshowContinuousMode && baseSlideMode !== 'fade';
+  const resolvedSlideMode = shouldUseContinuous
+    ? (baseSlideMode === 'horizontal'
+      ? 'continuous-orbit'
+      : baseSlideMode === 'vertical'
+        ? 'continuous-orbit-vertical'
+        : baseSlideMode === 'zoom'
+          ? (store.continuousDollyZoom ? 'continuous-dolly-zoom' : 'continuous-zoom')
+          : baseSlideMode)
+    : baseSlideMode;
+
+  return {
+    immersiveActive,
+    slideMode: (immersiveActive || forceFadeForNonSequential) ? 'fade' : resolvedSlideMode,
+  };
+};
+
 const collectNeighborAssets = (assets, centerIndex) => {
   if (!assets || assets.length === 0) return [];
   const n = assets.length;
@@ -162,8 +336,9 @@ const collectNeighborAssets = (assets, centerIndex) => {
   const results = [];
   for (const idx of indices) {
     const asset = assets[idx];
-    if (!asset || seen.has(asset.id)) continue;
-    seen.add(asset.id);
+    const cacheKey = asset?.cacheKey || getBaseAssetId(asset) || asset?.id;
+    if (!asset || seen.has(cacheKey)) continue;
+    seen.add(cacheKey);
     results.push(asset);
   }
   return results;
@@ -242,27 +417,11 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
   const store = getStoreState();
   const { slideDirection } = options;
-  const immersiveActive = isImmersiveModeActive();
+  const { immersiveActive, slideMode } = getSlideModeForStore(store, { slideDirection });
+  const forceFadeForNonSequential = !slideDirection;
   const isFirstLoad = !hasLoadedFirstAsset; // Detect first asset load before any mesh exists
-  const forceFadeForNonSequential = !slideDirection; // random asset clicks should use fade transition
-  const baseSlideMode = store.slideMode ?? 'horizontal';
-  // Only use continuous animation when slideshow is actively playing.
-  // When paused and manually advancing, use standard fade transition.
-  const shouldUseContinuous = store.slideshowMode && store.slideshowPlaying && store.slideshowContinuousMode && baseSlideMode !== 'fade';
-  const resolvedSlideMode = shouldUseContinuous
-    ? (baseSlideMode === 'horizontal'
-      ? 'continuous-orbit'
-      : baseSlideMode === 'vertical'
-        ? 'continuous-orbit-vertical'
-        : baseSlideMode === 'zoom'
-          ? (store.continuousDollyZoom ? 'continuous-dolly-zoom' : 'continuous-zoom')
-          : baseSlideMode)
-    : baseSlideMode;
-
-  const slideMode = (immersiveActive || forceFadeForNonSequential)
-    ? 'fade'
-    : resolvedSlideMode;
   const wasAlreadyCached = isSplatCached(asset);
+  const activeCacheKey = asset.cacheKey || getBaseAssetId(asset) || asset.id;
 
   // For first load, immediately hide content to prevent flash before fade-in
   // This must happen BEFORE any async work that might cause a render
@@ -336,7 +495,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
           }
           const cache = getSplatCache();
           cache.forEach((cached, id) => {
-            cached.mesh.visible = id === asset.id;
+            cached.mesh.visible = id === activeCacheKey;
           });
           requestRender();
         }
@@ -356,7 +515,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       // Activate the preloaded entry
       const cache = getSplatCache();
       cache.forEach((cached, id) => {
-        cached.mesh.visible = id === asset.id;
+        cached.mesh.visible = id === activeCacheKey;
       });
       requestRender(); // Immediately render the new mesh
     }
@@ -370,12 +529,12 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     spark?.update?.({ scene });
 
     // Fire-and-forget neighbor preloading (don't block current asset)
-    const neighborIds = new Set(neighborAssets.map((neighbor) => neighbor.id));
+    const neighborIds = new Set(neighborAssets.map((neighbor) => neighbor.cacheKey || getBaseAssetId(neighbor) || neighbor.id));
     retainOnlySplats(neighborIds);
     
     // Preload neighbors in background without awaiting
     neighborAssets
-      .filter((neighbor) => neighbor.id !== asset.id)
+      .filter((neighbor) => (neighbor.cacheKey || getBaseAssetId(neighbor) || neighbor.id) !== activeCacheKey)
       .forEach((neighbor) => {
         ensureSplatEntry(neighbor)
           .then(() => spark?.update?.({ scene }))
@@ -385,15 +544,23 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       });
 
     const { cameraMetadata, storedSettings, focusDistanceOverride, formatLabel } = entry;
-    const customMetadata = await loadCustomMetadataForAsset(asset.name);
-    const hasCustomMetadata = Boolean(customMetadata?.cameraPose);
+    const { views: customViews, selectedView } = await resolveAssetView(asset);
+    const hasCustomMetadata = Boolean(selectedView?.cameraPose);
+
+    if (!cameraMetadata?.intrinsics) {
+      await syncAssetProxyViews({
+        store,
+        currentAsset: asset,
+        views: customViews,
+      });
+    }
 
     // For non-ML Sharp splats, always apply CV→GL coordinate flip
     // This is the same transform ML Sharp files get automatically
     const shouldApplyFlip = !cameraMetadata?.intrinsics;
     const modelOverrides = {
       applyCoordinateFlip: shouldApplyFlip,
-      modelScale: customMetadata?.model?.modelScale ?? 1,
+      modelScale: selectedView?.model?.modelScale ?? 1,
     };
 
     if (shouldApplyFlip || hasCustomMetadata) {
@@ -402,9 +569,9 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
     store.setCustomModelScale(modelOverrides.modelScale);
 
-    const metadataMissing = !cameraMetadata?.intrinsics && !hasCustomMetadata;
+    const metadataMissing = !cameraMetadata?.intrinsics && customViews.length === 0;
     store.setMetadataMissing(metadataMissing);
-    store.setCustomMetadataAvailable(hasCustomMetadata);
+    store.setCustomMetadataAvailable(customViews.length > 0);
     store.setCustomMetadataControlsVisible(metadataMissing);
 
     const shouldDisableOrbitLimits = metadataMissing || hasCustomMetadata || store.slideshowMode;
@@ -415,8 +582,8 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     }
 
     const applyCameraForAsset = () => {
-      if (hasCustomMetadata && customMetadata?.cameraPose) {
-        applyCameraPose(customMetadata.cameraPose);
+      if (hasCustomMetadata && selectedView?.cameraPose) {
+        applyCameraPose(selectedView.cameraPose);
       } else if (cameraMetadata) {
         applyMetadataCamera(entry.mesh, cameraMetadata, resize);
       } else {
@@ -448,7 +615,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     }
 
     // Extract custom aspect ratio from metadata (for non-ML Sharp assets)
-    const customAspectRatio = customMetadata?.view?.aspectRatio;
+    const customAspectRatio = selectedView?.view?.aspectRatio;
 
     if (cameraMetadata?.intrinsics) {
       const { intrinsics } = cameraMetadata;
@@ -464,18 +631,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       // Apply custom aspect ratio from saved metadata
       setOriginalImageAspect(customAspectRatio);
       console.log(`[Aspect] ${asset.name}: custom override ${customAspectRatio.toFixed(4)}`);
-      
-      // Sync dropdown state - convert ratio to key
-      const aspectRatioToKey = (ratio) => {
-        if (!ratio || ratio === null) return 'full';
-        const tolerance = 0.01;
-        if (Math.abs(ratio - 1) < tolerance) return '1:1';
-        if (Math.abs(ratio - 16/9) < tolerance) return '16:9';
-        if (Math.abs(ratio - 9/16) < tolerance) return '9:16';
-        if (Math.abs(ratio - 4/3) < tolerance) return '4:3';
-        if (Math.abs(ratio - 3/4) < tolerance) return '3:4';
-        return 'full'; // fallback for custom ratios not in list
-      };
+
       store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
     } else {
       setOriginalImageAspect(null);
@@ -682,7 +838,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
                     width: previewResult.width,
                     height: previewResult.height,
                     format: previewResult.format,
-                  }).catch((err) => {
+                  }, asset.previewStorageKey || asset.name).catch((err) => {
                     console.warn('Failed to save preview:', err);
                   });
                 })
@@ -993,6 +1149,138 @@ export const handleAddFiles = async (files, options = {}) => {
   }
 };
 
+/** Duration (ms) for the smooth camera glide between views on the same splat */
+const SAME_BASE_GLIDE_MS = 2000;
+
+const navigateWithinLoadedBaseAsset = async (asset, options = {}) => {
+  if (!asset || !currentMesh) return false;
+
+  const store = getStoreState();
+  const { selectedView, views } = await resolveAssetView(asset);
+  if (!selectedView?.cameraPose) return false;
+
+  await syncAssetProxyViews({ store, currentAsset: asset, views });
+
+  // Cancel any in-flight slide / continuous animations and stale handoffs
+  cleanupSlideTransitionState();
+  cancelContinuousZoomAnimation();
+  cancelContinuousDollyZoomAnimation();
+  cancelContinuousOrbitAnimation();
+  cancelContinuousVerticalOrbitAnimation();
+  clearContinuousHandoff();
+
+  // Apply model transform instantly
+  applyCustomModelTransform(currentMesh, {
+    applyCoordinateFlip: true,
+    modelScale: selectedView?.model?.modelScale ?? 1,
+  });
+  store.setCustomModelScale(selectedView?.model?.modelScale ?? 1);
+
+  // Apply aspect ratio instantly – bypass the CSS transition so the viewer
+  // snaps to the new size rather than animating width/height.
+  const customAspectRatio = selectedView?.view?.aspectRatio ?? null;
+  setOriginalImageAspect(customAspectRatio);
+  store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
+
+  const viewerEl = document.getElementById('viewer');
+  if (viewerEl) viewerEl.style.transition = 'none';
+  updateViewerAspectRatio();
+  resize();
+  requestRender();
+  if (viewerEl) {
+    void viewerEl.offsetHeight; // force reflow before restoring transition
+    viewerEl.style.transition = '';
+  }
+
+  // Smooth 2-second camera glide to the target pose (always animated)
+  await animateCameraMutation(() => {
+    applyCameraPose(selectedView.cameraPose);
+    try { store.setFov(camera.fov); } catch (_) { /* noop */ }
+    saveHomeView();
+    applyDebugZoomOut();
+  }, { animate: true, duration: SAME_BASE_GLIDE_MS });
+
+  store.setMetadataMissing(false);
+  store.setCustomMetadataAvailable(true);
+  store.setCustomMetadataControlsVisible(false);
+  store.setFileInfo({
+    name: getBaseAssetName(asset),
+    size: formatBytes(asset.file?.size ?? asset.size),
+  });
+  store.setStatus(`Loaded ${getBaseAssetName(asset)} view`);
+  requestRender();
+  return true;
+};
+
+/**
+ * Build a continuous-handoff payload for seamless same-base slideshow transitions.
+ * Pre-resolves the view and returns a handoff object whose onApply callback
+ * synchronously applies all state (model, aspect, camera, store).
+ *
+ * @param {Object} asset - The next proxy view asset
+ * @param {Object} opts
+ * @param {string} opts.slideMode - Continuous slide mode (e.g. 'continuous-orbit')
+ * @returns {Promise<Object|null>} handoff payload or null if view can't be resolved
+ */
+export const buildContinuousHandoff = async (asset, { slideMode }) => {
+  const { selectedView, views } = await resolveAssetView(asset);
+  if (!selectedView?.cameraPose) return null;
+
+  // Pre-sync proxy views (async work done now, not during handoff)
+  await syncAssetProxyViews({ store: getStoreState(), currentAsset: asset, views });
+
+  const { duration, amount } = resolveSlideInOptions(slideMode, { preset: 'transition' });
+
+  return {
+    slideMode,
+    duration,
+    amount,
+    glideDuration: SAME_BASE_GLIDE_MS / 1000,
+    onApply: () => {
+      const store = getStoreState();
+
+      // Model transform
+      if (currentMesh) {
+        applyCustomModelTransform(currentMesh, {
+          applyCoordinateFlip: true,
+          modelScale: selectedView?.model?.modelScale ?? 1,
+        });
+      }
+      store.setCustomModelScale(selectedView?.model?.modelScale ?? 1);
+
+      // Aspect ratio – instant, no CSS transition
+      const customAspectRatio = selectedView?.view?.aspectRatio ?? null;
+      setOriginalImageAspect(customAspectRatio);
+      store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
+      const viewerEl = document.getElementById('viewer');
+      if (viewerEl) viewerEl.style.transition = 'none';
+      updateViewerAspectRatio();
+      resize();
+      if (viewerEl) {
+        void viewerEl.offsetHeight;
+        viewerEl.style.transition = '';
+      }
+
+      // Camera pose (so the continuous fn calculates offsets from the new view)
+      applyCameraPose(selectedView.cameraPose);
+      try { store.setFov(camera.fov); } catch (_) { /* noop */ }
+      saveHomeView();
+      applyDebugZoomOut();
+      updateDollyZoomBaselineFromCamera();
+
+      // Store state
+      store.setMetadataMissing(false);
+      store.setCustomMetadataAvailable(true);
+      store.setCustomMetadataControlsVisible(false);
+      store.setFileInfo({
+        name: getBaseAssetName(asset),
+        size: formatBytes(asset.file?.size ?? asset.size),
+      });
+      store.setStatus(`Loaded ${getBaseAssetName(asset)} view`);
+    },
+  };
+};
+
 /**
  * Loads a specific asset by index.
  * Called from AssetGallery component when user clicks a thumbnail.
@@ -1004,6 +1292,8 @@ export const handleAddFiles = async (files, options = {}) => {
  * @param {number} index - Asset index to load
  */
 export const loadAssetByIndex = async (index) => {
+  const prevIndex = getCurrentAssetIndex();
+  const prevAsset = getAssetByIndex(prevIndex);
   const asset = getAssetByIndex(index);
   if (!asset) return;
   if (isNavigationLocked) return;
@@ -1020,7 +1310,18 @@ export const loadAssetByIndex = async (index) => {
     const store = getStoreState();
     setCurrentAssetIndexManager(index);
     store.setCurrentAssetIndex(index);
-    await loadSplatFile(asset);
+    const sameBase = prevAsset
+      && getBaseAssetId(prevAsset) === getBaseAssetId(asset)
+      && prevAsset.id !== asset.id;
+
+    if (sameBase) {
+      const reused = await navigateWithinLoadedBaseAsset(asset, { slideDirection: null });
+      if (!reused) {
+        await loadSplatFile(asset);
+      }
+    } else {
+      await loadSplatFile(asset);
+    }
   } finally {
     isNavigationLocked = false;
     // Resume immersive mode after navigation completes
@@ -1165,12 +1466,24 @@ export const loadNextAsset = async () => {
   }
   
   try {
+    const prevAsset = getAssetByIndex(getCurrentAssetIndex());
     const asset = nextAsset();
     if (asset) {
       const index = getCurrentAssetIndex();
       const store = getStoreState();
       store.setCurrentAssetIndex(index);
-      await loadSplatFile(asset, { slideDirection: 'next' });
+      const sameBase = prevAsset
+        && getBaseAssetId(prevAsset) === getBaseAssetId(asset)
+        && prevAsset.id !== asset.id;
+
+      if (sameBase) {
+        const reused = await navigateWithinLoadedBaseAsset(asset, { slideDirection: 'next' });
+        if (!reused) {
+          await loadSplatFile(asset, { slideDirection: 'next' });
+        }
+      } else {
+        await loadSplatFile(asset, { slideDirection: 'next' });
+      }
     }
   } finally {
     isNavigationLocked = false;
@@ -1199,12 +1512,24 @@ export const loadPrevAsset = async () => {
   }
   
   try {
+    const prevLoadedAsset = getAssetByIndex(getCurrentAssetIndex());
     const asset = prevAsset();
     if (asset) {
       const index = getCurrentAssetIndex();
       const store = getStoreState();
       store.setCurrentAssetIndex(index);
-      await loadSplatFile(asset, { slideDirection: 'prev' });
+      const sameBase = prevLoadedAsset
+        && getBaseAssetId(prevLoadedAsset) === getBaseAssetId(asset)
+        && prevLoadedAsset.id !== asset.id;
+
+      if (sameBase) {
+        const reused = await navigateWithinLoadedBaseAsset(asset, { slideDirection: 'prev' });
+        if (!reused) {
+          await loadSplatFile(asset, { slideDirection: 'prev' });
+        }
+      } else {
+        await loadSplatFile(asset, { slideDirection: 'prev' });
+      }
     }
   } finally {
     isNavigationLocked = false;

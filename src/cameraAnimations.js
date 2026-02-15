@@ -24,6 +24,12 @@ export {
   pauseContinuousAnimations,
   resumeContinuousAnimations,
   getActiveContinuousTween,
+  continuousZoomSlideIn,
+  continuousDollyZoomSlideIn,
+  continuousOrbitSlideIn,
+  continuousVerticalOrbitSlideIn,
+  queueContinuousHandoff,
+  clearContinuousHandoff,
 } from "./continuousAnimations.js";
 
 // Internal imports from split modules

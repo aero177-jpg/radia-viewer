@@ -519,7 +519,7 @@ function Viewer({ viewerReady, dropOverlay }) {
         </div>
       )}
       {!hasOriginalMetadata && customMetadataMode && (
-        <div className="metadata-missing-overlay">
+        <div className="metadata-missing-overlay" >
           <div className="metadata-missing-badge">
             <span className="metadata-missing-icon">⚠️</span>
             <span className="metadata-missing-text">

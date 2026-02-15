@@ -7,8 +7,14 @@
  */
 
 import { useStore } from "./store.js";
-import { loadNextAsset } from "./fileLoader.js";
-import { hasMultipleAssets } from "./assetManager.js";
+import { loadNextAsset, buildContinuousHandoff, getBaseAssetId } from "./fileLoader.js";
+import {
+  hasMultipleAssets,
+  getCurrentAssetIndex,
+  getAssetByIndex,
+  getAssetCount,
+  setCurrentAssetIndex as setCurrentAssetIndexManager,
+} from "./assetManager.js";
 import { cancelLoadZoomAnimation } from "./customAnimations.js";
 import {
   cancelContinuousZoomAnimation,
@@ -24,6 +30,8 @@ import {
   continuousDollyZoomSlideIn,
   continuousOrbitSlideIn,
   continuousVerticalOrbitSlideIn,
+  queueContinuousHandoff,
+  clearContinuousHandoff,
 } from "./continuousAnimations.js";
 import { resolveSlideInOptions } from "./slideConfig.js";
 import { camera, controls, requestRender, THREE } from "./viewer.js";
@@ -90,6 +98,9 @@ export const stopSlideshow = () => {
     glideTween.kill();
     glideTween = null;
   }
+
+  // Clear any queued same-base handoff
+  clearContinuousHandoff();
 
   // Capture remaining hold time
   let remainingHoldMs = 0;
@@ -159,6 +170,7 @@ export const resetSlideshow = () => {
   cancelContinuousDollyZoomAnimation();
   cancelContinuousOrbitAnimation();
   cancelContinuousVerticalOrbitAnimation();
+  clearContinuousHandoff();
 
   if (glideTween) {
     glideTween.kill();
@@ -262,23 +274,27 @@ const beginFreshPlayback = () => {
 };
 
 /**
+ * Resolves the continuous slide mode from current store state.
+ * Returns null if continuous mode isn't applicable.
+ */
+const resolveContinuousSlideMode = (store) => {
+  if (!store.slideshowContinuousMode) return null;
+  const baseSlideMode = store.slideMode ?? 'horizontal';
+  if (baseSlideMode === 'fade') return null;
+  return baseSlideMode === 'horizontal' ? 'continuous-orbit'
+    : baseSlideMode === 'vertical'   ? 'continuous-orbit-vertical'
+    : baseSlideMode === 'zoom'
+      ? (store.continuousDollyZoom ? 'continuous-dolly-zoom' : 'continuous-zoom')
+      : null;
+};
+
+/**
  * Determines the current continuous mode (if any) and starts the
  * appropriate continuous animation on the current asset.
  */
 const startContinuousForCurrentMode = () => {
   const store = getStoreState();
-  if (!store.slideshowContinuousMode) return;
-
-  const baseSlideMode = store.slideMode ?? 'horizontal';
-  if (baseSlideMode === 'fade') return;
-
-  const mode =
-    baseSlideMode === 'horizontal' ? 'continuous-orbit' :
-    baseSlideMode === 'vertical'   ? 'continuous-orbit-vertical' :
-    baseSlideMode === 'zoom'
-      ? (store.continuousDollyZoom ? 'continuous-dolly-zoom' : 'continuous-zoom')
-      : null;
-    null;
+  const mode = resolveContinuousSlideMode(store);
   if (!mode) return;
 
   const { duration, amount } = resolveSlideInOptions(mode, { preset: 'transition' });
@@ -329,13 +345,59 @@ const scheduleNextAdvanceMs = (ms) => {
 
 /**
  * Advances to the next asset then schedules another advance.
+ * For same-base proxy views in continuous mode, queues a seamless handoff
+ * instead of going through the full load path.
  */
 const advanceAndSchedule = async () => {
   if (!isPlaying) return;
 
-  // Clear snapshot  we're moving to a new asset
+  // Clear snapshot — we're moving to a new asset
   pauseSnapshot = null;
 
+  const store = getStoreState();
+  const slideMode = resolveContinuousSlideMode(store);
+  const activeTween = getActiveContinuousTween();
+
+  // Peek ahead: is the next asset a same-base proxy view?
+  if (slideMode && activeTween) {
+    const currentIdx = getCurrentAssetIndex();
+    const count = getAssetCount();
+    const nextIdx = (currentIdx + 1) % count;
+    const currentAssetObj = getAssetByIndex(currentIdx);
+    const nextAssetObj = getAssetByIndex(nextIdx);
+
+    const sameBase = currentAssetObj && nextAssetObj
+      && getBaseAssetId(currentAssetObj) === getBaseAssetId(nextAssetObj)
+      && currentAssetObj.id !== nextAssetObj.id;
+
+    if (sameBase) {
+      console.log('[Slideshow] Same-base proxy detected — queuing continuous handoff');
+
+      try {
+        const handoff = await buildContinuousHandoff(nextAssetObj, { slideMode });
+
+        if (handoff) {
+          // Advance the asset index
+          setCurrentAssetIndexManager(nextIdx);
+          store.setCurrentAssetIndex(nextIdx);
+
+          // Queue handoff — the current animation's onComplete will process it
+          queueContinuousHandoff({
+            ...handoff,
+            onStarted: () => {
+              // Schedule next advance AFTER the new animation begins
+              if (isPlaying) scheduleNextAdvance();
+            },
+          });
+          return; // Don't call loadNextAsset or schedule here
+        }
+      } catch (err) {
+        console.warn('[Slideshow] Handoff build failed, falling back:', err);
+      }
+    }
+  }
+
+  // Normal path: full asset load with transitions
   console.log('[Slideshow] Advancing to next asset');
 
   try {

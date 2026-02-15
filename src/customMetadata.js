@@ -17,11 +17,13 @@ import {
 } from "./fileStorage.js";
 import { useStore } from "./store.js";
 
-const CUSTOM_METADATA_VERSION = 2;
+const CUSTOM_METADATA_VERSION = 3;
 const MIN_MODEL_SCALE = 0.1;
 const MAX_MODEL_SCALE = 10.0;
 const DEFAULT_MODEL_SCALE = 1.0;
 const DEFAULT_ASPECT_RATIO = null;
+const DEFAULT_VIEW_ID = 'view-1';
+const CUSTOM_METADATA_SCHEMA_VERSION = 3;
 
 /**
  * Clamp scale to valid range
@@ -216,6 +218,112 @@ export const captureCustomMetadataPayload = (overrides = {}) => {
   };
 };
 
+const makeViewId = () => `view-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeViewRecord = (view, fallbackId) => {
+  if (!view || !view.cameraPose) return null;
+  return {
+    id: view.id || fallbackId || makeViewId(),
+    name: typeof view.name === 'string' && view.name.trim()
+      ? view.name.trim()
+      : null,
+    cameraPose: view.cameraPose,
+    view: {
+      aspectRatio: normalizeAspectRatio(view?.view?.aspectRatio ?? null),
+    },
+    model: {
+      applyCoordinateFlip: view?.model?.applyCoordinateFlip !== false,
+      modelScale: clampScale(view?.model?.modelScale ?? DEFAULT_MODEL_SCALE),
+    },
+    savedAt: Number.isFinite(view.savedAt) ? view.savedAt : Date.now(),
+  };
+};
+
+const normalizeLegacyMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object') return null;
+
+  // New schema: { views: [...] }
+  if (Array.isArray(metadata.views)) {
+    const normalizedViews = metadata.views
+      .map((view, idx) => normalizeViewRecord(view, `view-${idx + 1}`))
+      .filter(Boolean);
+
+    if (normalizedViews.length === 0) return null;
+
+    const activeViewId = metadata.activeViewId
+      && normalizedViews.some((view) => view.id === metadata.activeViewId)
+      ? metadata.activeViewId
+      : normalizedViews[0].id;
+
+    return {
+      version: CUSTOM_METADATA_SCHEMA_VERSION,
+      activeViewId,
+      views: normalizedViews,
+      savedAt: Number.isFinite(metadata.savedAt) ? metadata.savedAt : Date.now(),
+    };
+  }
+
+  // Legacy schema: single payload at top-level
+  if (metadata.cameraPose) {
+    const legacyView = normalizeViewRecord({
+      id: DEFAULT_VIEW_ID,
+      name: metadata.name || null,
+      cameraPose: metadata.cameraPose,
+      view: metadata.view,
+      model: metadata.model,
+      savedAt: metadata.savedAt,
+    }, DEFAULT_VIEW_ID);
+
+    if (!legacyView) return null;
+
+    return {
+      version: CUSTOM_METADATA_SCHEMA_VERSION,
+      activeViewId: legacyView.id,
+      views: [legacyView],
+      savedAt: legacyView.savedAt,
+    };
+  }
+
+  return null;
+};
+
+const writeNormalizedMetadata = async (assetName, metadata) => {
+  if (!assetName) return false;
+  if (!metadata) return clearCustomMetadata(assetName);
+  return saveCustomMetadata(assetName, metadata);
+};
+
+const updateMetadataViews = (record, updater) => {
+  const current = normalizeLegacyMetadata(record);
+  const normalized = current || {
+    version: CUSTOM_METADATA_SCHEMA_VERSION,
+    activeViewId: DEFAULT_VIEW_ID,
+    views: [],
+    savedAt: Date.now(),
+  };
+
+  const next = updater({
+    ...normalized,
+    views: [...normalized.views],
+  });
+
+  if (!next || !Array.isArray(next.views) || next.views.length === 0) {
+    return null;
+  }
+
+  const activeViewId = next.activeViewId
+    && next.views.some((view) => view.id === next.activeViewId)
+    ? next.activeViewId
+    : next.views[0].id;
+
+  return {
+    version: CUSTOM_METADATA_SCHEMA_VERSION,
+    activeViewId,
+    views: next.views,
+    savedAt: Date.now(),
+  };
+};
+
 /**
  * Enable 360° orbit (no angle limits)
  */
@@ -251,7 +359,26 @@ export const restoreOrbitConstraints = (rangeDegrees = 26) => {
  */
 export const loadCustomMetadataForAsset = async (assetName) => {
   if (!assetName) return null;
-  return loadCustomMetadata(assetName);
+  const raw = await loadCustomMetadata(assetName);
+  return normalizeLegacyMetadata(raw);
+};
+
+export const listCustomViewsForAsset = async (assetName) => {
+  const metadata = await loadCustomMetadataForAsset(assetName);
+  return metadata?.views ?? [];
+};
+
+export const getCustomViewForAsset = async (assetName, viewId = null) => {
+  const metadata = await loadCustomMetadataForAsset(assetName);
+  if (!metadata?.views?.length) return null;
+
+  if (viewId) {
+    const match = metadata.views.find((view) => view.id === viewId);
+    if (match) return match;
+  }
+
+  const active = metadata.views.find((view) => view.id === metadata.activeViewId);
+  return active || metadata.views[0] || null;
 };
 
 /**
@@ -259,7 +386,98 @@ export const loadCustomMetadataForAsset = async (assetName) => {
  */
 export const saveCustomMetadataForAsset = async (assetName, payload) => {
   if (!assetName || !payload) return false;
-  return saveCustomMetadata(assetName, payload);
+  return saveCustomMetadataViewForAsset(assetName, payload, { viewId: null });
+};
+
+export const saveCustomMetadataViewForAsset = async (assetName, payload, options = {}) => {
+  if (!assetName || !payload) return { saved: false, viewId: null, metadata: null };
+
+  const record = await loadCustomMetadata(assetName);
+  const requestedViewId = options?.viewId || null;
+
+  const nextMetadata = updateMetadataViews(record, (normalized) => {
+    const views = normalized.views;
+    const existingIndex = requestedViewId
+      ? views.findIndex((view) => view.id === requestedViewId)
+      : (views.findIndex((view) => view.id === normalized.activeViewId));
+
+    const targetId = existingIndex >= 0
+      ? views[existingIndex].id
+      : (requestedViewId || views[0]?.id || DEFAULT_VIEW_ID);
+
+    const nextView = normalizeViewRecord({
+      ...payload,
+      id: targetId,
+      name: options?.viewName ?? payload?.name ?? views[existingIndex]?.name ?? null,
+      savedAt: Date.now(),
+    }, targetId);
+
+    if (!nextView) {
+      return normalized;
+    }
+
+    if (existingIndex >= 0) {
+      views.splice(existingIndex, 1, nextView);
+    } else if (views.length > 0) {
+      views.splice(0, 1, nextView);
+    } else {
+      views.push(nextView);
+    }
+
+    return {
+      ...normalized,
+      views,
+      activeViewId: nextView.id,
+    };
+  });
+
+  const saved = await writeNormalizedMetadata(assetName, nextMetadata);
+  return {
+    saved,
+    viewId: nextMetadata?.activeViewId || null,
+    metadata: nextMetadata,
+  };
+};
+
+export const addCustomMetadataViewForAsset = async (assetName, payload, options = {}) => {
+  if (!assetName || !payload) return { saved: false, viewId: null, metadata: null };
+
+  const record = await loadCustomMetadata(assetName);
+  const nextViewId = makeViewId();
+
+  const nextMetadata = updateMetadataViews(record, (normalized) => {
+    const views = normalized.views;
+    const insertAfterViewId = options?.insertAfterViewId || normalized.activeViewId;
+    const insertAfterIndex = views.findIndex((view) => view.id === insertAfterViewId);
+    const insertIndex = insertAfterIndex >= 0 ? insertAfterIndex + 1 : views.length;
+    const nextViewNumber = insertIndex + 1;
+
+    const nextView = normalizeViewRecord({
+      ...payload,
+      id: nextViewId,
+      name: options?.viewName || `View ${nextViewNumber}`,
+      savedAt: Date.now(),
+    }, nextViewId);
+
+    if (!nextView) {
+      return normalized;
+    }
+
+    views.splice(insertIndex, 0, nextView);
+
+    return {
+      ...normalized,
+      views,
+      activeViewId: nextView.id,
+    };
+  });
+
+  const saved = await writeNormalizedMetadata(assetName, nextMetadata);
+  return {
+    saved,
+    viewId: nextMetadata?.activeViewId || null,
+    metadata: nextMetadata,
+  };
 };
 
 /**
@@ -270,11 +488,44 @@ export const clearCustomMetadataForAsset = async (assetName) => {
   return clearCustomMetadata(assetName);
 };
 
+export const clearCustomMetadataViewForAsset = async (assetName, viewId) => {
+  if (!assetName) return { cleared: false, removedViewId: null, metadata: null };
+  if (!viewId) {
+    const cleared = await clearCustomMetadataForAsset(assetName);
+    return { cleared, removedViewId: null, metadata: null };
+  }
+
+  const record = await loadCustomMetadata(assetName);
+  const nextMetadata = updateMetadataViews(record, (normalized) => {
+    const views = normalized.views.filter((view) => view.id !== viewId);
+    if (views.length === normalized.views.length) {
+      return normalized;
+    }
+    return {
+      ...normalized,
+      views,
+      activeViewId: views[0]?.id || null,
+    };
+  });
+
+  if (!nextMetadata) {
+    const cleared = await clearCustomMetadata(assetName);
+    return { cleared, removedViewId: viewId, metadata: null };
+  }
+
+  const cleared = await writeNormalizedMetadata(assetName, nextMetadata);
+  return {
+    cleared,
+    removedViewId: viewId,
+    metadata: nextMetadata,
+  };
+};
+
 /**
  * Check if asset has custom metadata
  */
 export const hasCustomMetadataForAsset = async (assetName) => {
   if (!assetName) return false;
-  const data = await loadCustomMetadata(assetName);
-  return data !== null;
+  const data = await loadCustomMetadataForAsset(assetName);
+  return Boolean(data?.views?.length);
 };

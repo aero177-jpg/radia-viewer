@@ -16,14 +16,15 @@ import { saveFocusDistance, clearFocusDistance } from '../fileStorage';
 import { updateFocusDistanceInCache, clearFocusDistanceInCache } from '../splatManager';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faEye, faEyeSlash, faSpinner } from '@fortawesome/free-solid-svg-icons';
-import { loadSplatFile } from '../fileLoader';
-import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
+import { loadSplatFile, loadAssetByIndex } from '../fileLoader';
+import { captureCurrentAssetPreview, getAssetList } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
 import {
   applyCustomModelTransform,
   captureCustomMetadataPayload,
-  saveCustomMetadataForAsset,
-  clearCustomMetadataForAsset,
+  saveCustomMetadataViewForAsset,
+  addCustomMetadataViewForAsset,
+  clearCustomMetadataViewForAsset,
   applyFullOrbitConstraints,
   restoreOrbitConstraints,
 } from "../customMetadata.js";
@@ -49,6 +50,12 @@ const aspectKeyToRatio = (key) => {
   const option = ASPECT_OPTIONS.find((opt) => opt.value === key);
   return option ? option.ratio : null;
 };
+
+const getBaseAssetId = (asset) => asset?.baseAssetId || asset?.id;
+const getBaseAssetName = (asset) => asset?.baseAssetName || asset?.name;
+const makePreviewStorageKey = (assetName, viewId) => `${assetName}::${viewId}`;
+const makeProxyAssetId = (baseAssetId, viewId) => `${baseAssetId}::view::${viewId}`;
+const viewDisplayName = (assetName, order) => `${assetName} · View ${order + 1}`;
 
 /** Focus mode states */
 const FOCUS_MODE = {
@@ -157,6 +164,8 @@ function CameraControls() {
   const currentFileName = useStore((state) => state.fileInfo?.name);
   const assets = useStore((state) => state.assets);
   const currentAssetIndex = useStore((state) => state.currentAssetIndex);
+  const setAssets = useStore((state) => state.setAssets);
+  const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
   const hasCustomFocus = useStore((state) => state.hasCustomFocus);
   const setHasCustomFocus = useStore((state) => state.setHasCustomFocus);
   const setFocusSettingActive = useStore((state) => state.setFocusSettingActive);
@@ -293,7 +302,7 @@ function CameraControls() {
       });
       const asset = assets[currentAssetIndex];
       if (asset?.id) {
-        updateFocusDistanceInCache(asset.id, hitDistance);
+        updateFocusDistanceInCache(asset.cacheKey || asset.baseAssetId || asset.id, hitDistance);
       }
       setHasCustomFocus(true);
     }
@@ -357,7 +366,7 @@ function CameraControls() {
       });
       const asset = assets[currentAssetIndex];
       if (asset?.id) {
-        updateFocusDistanceInCache(asset.id, hitDistance);
+        updateFocusDistanceInCache(asset.cacheKey || asset.baseAssetId || asset.id, hitDistance);
       }
       setHasCustomFocus(true);
     }
@@ -380,7 +389,7 @@ function CameraControls() {
       if (success) {
         const asset = assets[currentAssetIndex];
         if (asset?.id) {
-          clearFocusDistanceInCache(asset.id);
+          clearFocusDistanceInCache(asset.cacheKey || asset.baseAssetId || asset.id);
           // Reload the current asset to immediately restore default focus
           loadSplatFile(asset, { slideDirection: null }).catch(err => {
             console.warn('Failed to reload asset after clearing focus:', err);
@@ -587,6 +596,13 @@ function CameraControls() {
     };
   }, [isMobile]);
 
+  const activeAsset = assets[currentAssetIndex] || null;
+  const isFirstUnsavedCustomView = Boolean(
+    metadataMissing
+    && !customMetadataAvailable
+    && !activeAsset?.viewId
+  );
+
   const orbitLimitsDisabled = customMetadataAvailable || metadataMissing || slideshowMode;
 
   // Enable full orbit whenever orbit limits are disabled
@@ -692,77 +708,197 @@ function CameraControls() {
       return;
     }
 
+    const currentAsset = assets[currentAssetIndex];
+    if (!currentAsset) {
+      addLog('No active asset to save metadata');
+      return;
+    }
+
     const payload = captureCustomMetadataPayload({
       modelScale: customModelScale,
       aspectRatio: aspectKeyToRatio(customAspectRatio),
     });
 
-    const saved = await saveCustomMetadataForAsset(currentFileName, payload);
-    if (!saved) {
+    const result = await saveCustomMetadataViewForAsset(currentFileName, payload, {
+      viewId: currentAsset.viewId || null,
+    });
+    if (!result?.saved) {
       addLog('Failed to save custom metadata');
       return;
     }
 
+    const nextViewId = result.viewId || currentAsset.viewId;
+    if (nextViewId) {
+      currentAsset.viewId = nextViewId;
+      currentAsset.baseAssetId = getBaseAssetId(currentAsset);
+      currentAsset.baseAssetName = getBaseAssetName(currentAsset);
+      currentAsset.cacheKey = currentAsset.baseAssetId;
+      currentAsset.isProxyView = Boolean(currentAsset.isProxyView);
+      currentAsset.previewStorageKey = makePreviewStorageKey(currentAsset.baseAssetName, nextViewId);
+    }
+
     const previewResult = await captureCurrentAssetPreview();
     if (previewResult?.blob) {
-      const asset = assets[currentAssetIndex];
-      if (asset?.name) {
-        await savePreviewBlob(asset.name, previewResult.blob, {
+      if (currentAsset?.name) {
+        await savePreviewBlob(currentAsset.name, previewResult.blob, {
           width: previewResult.width,
           height: previewResult.height,
           format: previewResult.format,
-        });
+        }, currentAsset.previewStorageKey || currentAsset.name);
       }
       if (currentAssetIndex >= 0) {
-        updateAssetPreview(currentAssetIndex, previewResult.dataUrl);
+        updateAssetPreview(currentAssetIndex, currentAsset.preview);
       }
     }
 
+    setAssets([...getAssetList()]);
     setCustomMetadataAvailable(true);
     setMetadataMissing(false);
     setCustomMetadataControlsVisible(false);
     addLog('Custom metadata saved');
-  }, [currentFileName, customModelScale, customAspectRatio, addLog, assets, currentAssetIndex, updateAssetPreview, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible]);
+  }, [currentFileName, customModelScale, customAspectRatio, addLog, assets, currentAssetIndex, updateAssetPreview, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible, setAssets]);
+
+  const handleSaveAndAddNewView = useCallback(async () => {
+    if (!currentFileName || currentFileName === '-') {
+      addLog('No active file to save metadata');
+      return;
+    }
+
+    const currentAsset = assets[currentAssetIndex];
+    if (!currentAsset) {
+      addLog('No active asset to duplicate view from');
+      return;
+    }
+
+    const payload = captureCustomMetadataPayload({
+      modelScale: customModelScale,
+      aspectRatio: aspectKeyToRatio(customAspectRatio),
+    });
+
+    const result = await addCustomMetadataViewForAsset(currentFileName, payload, {
+      insertAfterViewId: currentAsset.viewId || null,
+    });
+    if (!result?.saved || !result?.viewId) {
+      addLog('Failed to add a new custom view');
+      return;
+    }
+
+    const list = getAssetList();
+    const baseAssetId = getBaseAssetId(currentAsset);
+    const insertAfterIndex = Math.max(0, currentAssetIndex);
+    const baseAssetName = getBaseAssetName(currentAsset);
+    const groupOrder = (currentAsset.groupOrder ?? 0) + 1;
+
+    // Reindex following views in this group to keep contiguous ordering
+    for (let i = insertAfterIndex + 1; i < list.length; i++) {
+      const candidate = list[i];
+      if (getBaseAssetId(candidate) !== baseAssetId) break;
+      candidate.groupOrder = (candidate.groupOrder ?? i - insertAfterIndex) + 1;
+      candidate.displayName = viewDisplayName(baseAssetName, candidate.groupOrder);
+    }
+
+    const proxyAsset = {
+      ...currentAsset,
+      id: makeProxyAssetId(baseAssetId, result.viewId),
+      isProxyView: true,
+      baseAssetId,
+      baseAssetName,
+      viewId: result.viewId,
+      groupOrder,
+      displayName: viewDisplayName(baseAssetName, groupOrder),
+      previewStorageKey: makePreviewStorageKey(baseAssetName, result.viewId),
+      cacheKey: baseAssetId,
+      loaded: false,
+    };
+
+    list.splice(insertAfterIndex + 1, 0, proxyAsset);
+    setAssets([...list]);
+
+    setCustomMetadataAvailable(true);
+    setMetadataMissing(false);
+    setCustomMetadataControlsVisible(false);
+
+    const nextIndex = insertAfterIndex + 1;
+    setCurrentAssetIndex(nextIndex);
+    addLog('Custom view added');
+    await loadAssetByIndex(nextIndex);
+
+    const refreshedAssets = getAssetList();
+    const selectedAsset = refreshedAssets[nextIndex] || proxyAsset;
+    const previewResult = await captureCurrentAssetPreview();
+    if (previewResult?.blob && selectedAsset?.name) {
+      await savePreviewBlob(selectedAsset.name, previewResult.blob, {
+        width: previewResult.width,
+        height: previewResult.height,
+        format: previewResult.format,
+      }, selectedAsset.previewStorageKey || selectedAsset.name);
+
+      if (selectedAsset.preview) {
+        updateAssetPreview(nextIndex, selectedAsset.preview);
+      }
+      setAssets([...refreshedAssets]);
+    }
+  }, [currentFileName, assets, currentAssetIndex, customModelScale, customAspectRatio, setAssets, setCurrentAssetIndex, addLog, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible, updateAssetPreview]);
 
   const handleClearCustomMetadata = useCallback(async () => {
     if (!currentFileName || currentFileName === '-' || isClearingCustomMetadata) return;
 
     setIsClearingCustomMetadata(true);
     try {
-      const cleared = await clearCustomMetadataForAsset(currentFileName);
-      if (!cleared) {
+      const currentAsset = assets[currentAssetIndex];
+      if (!currentAsset) return;
+
+      const result = await clearCustomMetadataViewForAsset(currentFileName, currentAsset.viewId || null);
+      if (!result?.cleared) {
         addLog('Failed to clear custom metadata');
         return;
       }
 
-      setCustomMetadataAvailable(false);
-      setMetadataMissing(true);
-      setCustomMetadataControlsVisible(true);
+      const list = getAssetList();
+      const removedIndex = currentAssetIndex;
+      list.splice(removedIndex, 1);
+
+      const sameBaseAssets = list.filter((item) => getBaseAssetId(item) === getBaseAssetId(currentAsset));
+      if (sameBaseAssets.length > 0) {
+        sameBaseAssets.forEach((item, idx) => {
+          item.groupOrder = idx;
+          item.displayName = viewDisplayName(getBaseAssetName(currentAsset), idx);
+          item.isProxyView = idx > 0;
+        });
+      }
+
+      const nextIndex = Math.min(removedIndex, Math.max(0, list.length - 1));
+      setAssets([...list]);
+      if (list.length > 0) {
+        setCurrentAssetIndex(nextIndex);
+        await loadAssetByIndex(nextIndex);
+      } else {
+        setCurrentAssetIndex(-1);
+      }
+
+      const hasRemainingViews = sameBaseAssets.length > 0;
+      setCustomMetadataAvailable(hasRemainingViews);
+      setMetadataMissing(!hasRemainingViews);
+      setCustomMetadataControlsVisible(!hasRemainingViews);
       setCustomModelScale(1);
       setCustomAspectRatio('full');
       setOriginalImageAspect(null);
       updateViewerAspectRatio();
       resize();
-      addLog('Custom metadata cleared');
+      addLog('Custom view reset');
 
-      const asset = assets[currentAssetIndex];
-      if (asset) {
-        if (currentFileName && currentFileName !== '-') {
-          const focusCleared = await clearFocusDistance(currentFileName);
-          if (focusCleared && asset?.id) {
-            clearFocusDistanceInCache(asset.id);
-          }
-          setHasCustomFocus(false);
-          setFocusMode(FOCUS_MODE.IDLE);
+      if (!hasRemainingViews && currentFileName && currentFileName !== '-') {
+        const focusCleared = await clearFocusDistance(currentFileName);
+        if (focusCleared && currentAsset?.id) {
+          clearFocusDistanceInCache(currentAsset.cacheKey || currentAsset.baseAssetId || currentAsset.id);
         }
-        loadSplatFile(asset, { slideDirection: null }).catch((err) => {
-          console.warn('Failed to reload asset after clearing custom metadata:', err);
-        });
+        setHasCustomFocus(false);
+        setFocusMode(FOCUS_MODE.IDLE);
       }
     } finally {
       setIsClearingCustomMetadata(false);
     }
-  }, [currentFileName, isClearingCustomMetadata, addLog, assets, currentAssetIndex, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible, setCustomModelScale, setCustomAspectRatio]);
+  }, [currentFileName, isClearingCustomMetadata, addLog, assets, currentAssetIndex, setCustomMetadataAvailable, setMetadataMissing, setCustomMetadataControlsVisible, setCustomModelScale, setCustomAspectRatio, setAssets, setCurrentAssetIndex, setHasCustomFocus]);
 
   /**
    * Resets view with immersive mode support.
@@ -1032,22 +1168,24 @@ function CameraControls() {
               <span class="section-hint">Position camera, then save</span>
             </div>
             
-            <div class="control-row">
-              <span class="control-label">Model scale</span>
-              <div class="control-track">
-                <input
-                  type="range"
-                  min="0.1"
-                  max="10"
-                  step="0.1"
-                  value={customModelScale}
-                  onInput={handleCustomModelScaleChange}
-                />
-                <span class="control-value">
-                  {customModelScale.toFixed(1)}×
-                </span>
+            {isFirstUnsavedCustomView && (
+              <div class="control-row">
+                <span class="control-label">Model scale</span>
+                <div class="control-track">
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="10"
+                    step="0.1"
+                    value={customModelScale}
+                    onInput={handleCustomModelScaleChange}
+                  />
+                  <span class="control-value">
+                    {customModelScale.toFixed(1)}×
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             <div class="control-row">
               <span class="control-label">Aspect ratio</span>
@@ -1066,14 +1204,7 @@ function CameraControls() {
               </div>
             </div>
 
-            <button 
-              class="save-view-button"
-              onClick={handleSaveCustomMetadata}
-            >
-              Save View
-            </button>
-
-            <div class="control-row clear-custom-row">
+            <div class="control-row clear-custom-row clear-custom-row--top">
               <button
                 type="button"
                 class="clear-custom-btn is-reset"
@@ -1083,6 +1214,22 @@ function CameraControls() {
                 {isClearingCustomMetadata ? 'Resetting...' : 'Reset'}
               </button>
             </div>
+
+            <button 
+              class="primary-button"
+              onClick={handleSaveCustomMetadata}
+            >
+              Save View
+            </button>
+
+            {!isFirstUnsavedCustomView && (
+              <button
+                class="secondary-button"
+                onClick={handleSaveAndAddNewView}
+              >
+                Save as new view
+              </button>
+            )}
           </div>
         )}
 

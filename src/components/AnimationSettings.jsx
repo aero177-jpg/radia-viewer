@@ -270,13 +270,14 @@ function AnimationSettings() {
             capturePreviewBlob()
               ?.then((preview) => {
                 if (!preview || !currentFileName || currentFileName === '-') return;
+                const currentAsset = assets?.[currentAssetIndex];
                 const sizeKB = (preview.blob.size / 1024).toFixed(1);
                 console.log(`Preview updated (${sizeKB} KB, ${preview.format ?? 'image/webp'})`);
                 savePreviewBlob(currentFileName, preview.blob, {
                   width: preview.width,
                   height: preview.height,
                   format: preview.format,
-                }).catch(err => {
+                }, currentAsset?.previewStorageKey || currentFileName).catch(err => {
                   console.warn('Failed to save preview:', err);
                 });
               })
@@ -288,7 +289,7 @@ function AnimationSettings() {
         requestAnimationFrame(waitAndCapture);
       }
     });
-  }, [currentFileName]);
+  }, [currentFileName, assets, currentAssetIndex]);
 
   return (
     <div class="settings-group">

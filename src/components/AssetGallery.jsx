@@ -74,17 +74,17 @@ function AssetGallery() {
             <button
               key={asset.id || index}
               class={`asset-item ${index === currentAssetIndex ? 'active' : ''}`}
-              title={asset.name}
+              title={asset.displayName || asset.name}
               onClick={() => handleAssetClick(index)}
             >
               <div class={`asset-preview ${asset.preview ? '' : 'loading'}`}>
                 {asset.preview ? (
-                  <img src={asset.preview} alt={asset.name} loading="lazy" />
+                  <img src={asset.preview} alt={asset.displayName || asset.name} loading="lazy" />
                 ) : (
                   <div class="preview-spinner" />
                 )}
               </div>
-              <span class="asset-name">{truncateFileName(asset.name)}</span>
+              <span class="asset-name">{truncateFileName(asset.displayName || asset.name)}</span>
             </button>
           ))}
         </div>

@@ -36,7 +36,11 @@ export const replacePreviewUrl = (asset, url) => {
 
 export const hydrateAssetPreviewFromStorage = async (asset) => {
   if (!asset || asset.preview) return null;
-  const storedPreview = await loadPreviewBlob(asset.name);
+  const preferredKey = asset.previewStorageKey || asset.name;
+  let storedPreview = await loadPreviewBlob(asset.name, preferredKey);
+  if (!storedPreview && preferredKey !== asset.name) {
+    storedPreview = await loadPreviewBlob(asset.name, asset.name);
+  }
   if (storedPreview?.blob) {
     const objectUrl = URL.createObjectURL(storedPreview.blob);
     replacePreviewUrl(asset, objectUrl);

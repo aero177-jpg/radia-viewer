@@ -460,13 +460,14 @@ export const listPreviewRecords = async () => {
  * Saves a preview Blob for a file.
  * We persist binary data in IndexedDB to avoid base64 size overhead.
  */
-export const savePreviewBlob = async (fileName, blob, metadata = {}) => {
+export const savePreviewBlob = async (fileName, blob, metadata = {}, storageKey = null) => {
   try {
     if (!blob) return false;
     const db = await openDatabase();
+    const key = storageKey || metadata?.storageKey || fileName;
 
     const record = {
-      fileName,
+      fileName: key,
       blob,
       version: PREVIEW_VERSION,
       width: metadata.width,
@@ -480,10 +481,10 @@ export const savePreviewBlob = async (fileName, blob, metadata = {}) => {
       const store = transaction.objectStore(PREVIEW_STORE_NAME);
       const request = store.put(record);
       request.onsuccess = () => resolve(true);
-      request.onerror = () => reject(new Error(`Failed to save preview for ${fileName}`));
+      request.onerror = () => reject(new Error(`Failed to save preview for ${key}`));
     });
   } catch (error) {
-    console.error(`Failed to save preview for ${fileName}:`, error);
+    console.error(`Failed to save preview for ${storageKey || fileName}:`, error);
     return false;
   }
 };
@@ -492,23 +493,24 @@ export const savePreviewBlob = async (fileName, blob, metadata = {}) => {
  * Loads a preview Blob for a file.
  * @returns {Promise<{fileName:string, blob:Blob, width?:number, height?:number, format?:string, updated?:number, version:number}|null>}
  */
-export const loadPreviewBlob = async (fileName) => {
+export const loadPreviewBlob = async (fileName, storageKey = null) => {
   try {
     const db = await openDatabase();
+    const key = storageKey || fileName;
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([PREVIEW_STORE_NAME], 'readonly');
       const store = transaction.objectStore(PREVIEW_STORE_NAME);
-      const request = store.get(fileName);
+      const request = store.get(key);
 
       request.onsuccess = () => {
         resolve(normalizePreviewRecord(request.result));
       };
 
-      request.onerror = () => reject(new Error(`Failed to load preview for ${fileName}`));
+      request.onerror = () => reject(new Error(`Failed to load preview for ${key}`));
     });
   } catch (error) {
-    console.error(`Failed to load preview for ${fileName}:`, error);
+    console.error(`Failed to load preview for ${storageKey || fileName}:`, error);
     return null;
   }
 };
@@ -516,18 +518,19 @@ export const loadPreviewBlob = async (fileName) => {
 /**
  * Deletes a stored preview Blob for a file.
  */
-export const deletePreviewBlob = async (fileName) => {
+export const deletePreviewBlob = async (fileName, storageKey = null) => {
   try {
     const db = await openDatabase();
+    const key = storageKey || fileName;
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([PREVIEW_STORE_NAME], 'readwrite');
       const store = transaction.objectStore(PREVIEW_STORE_NAME);
-      const request = store.delete(fileName);
+      const request = store.delete(key);
       request.onsuccess = () => resolve(true);
-      request.onerror = () => reject(new Error(`Failed to delete preview for ${fileName}`));
+      request.onerror = () => reject(new Error(`Failed to delete preview for ${key}`));
     });
   } catch (error) {
-    console.error(`Failed to delete preview for ${fileName}:`, error);
+    console.error(`Failed to delete preview for ${storageKey || fileName}:`, error);
     return false;
   }
 };
