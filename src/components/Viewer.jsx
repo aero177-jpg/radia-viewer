@@ -216,11 +216,19 @@ function Viewer({ viewerReady, dropOverlay }) {
     setShowLargeFileNotice(false);
 
     const isLarge = Number.isFinite(currentAssetSize) && currentAssetSize >= 100 * 1024 * 1024;
-    const isCurrentMeshActive = currentAsset?.id && currentMeshAssetId === currentAsset.id;
+    // The mesh's userData.assetId is the cache key (baseAssetId), so for
+    // proxy views we must also compare against cacheKey/baseAssetId — not
+    // just the proxy's unique id — to avoid a false "Loading..." notice
+    // when switching between views of an already-loaded splat.
+    const meshId = currentMeshAssetId;
+    const assetId = currentAsset?.id;
+    const baseMeshId = currentAsset?.cacheKey || currentAsset?.baseAssetId;
+    const isCurrentMeshActive = assetId && (meshId === assetId || meshId === baseMeshId);
     if (!isLarge || isCurrentMeshActive) return;
 
     largeFileTimeoutRef.current = setTimeout(() => {
-      const stillActive = currentAsset?.id && currentMeshAssetId !== currentAsset.id;
+      // Re-read current values from the asset at timeout time
+      const stillActive = assetId && meshId !== assetId && meshId !== baseMeshId;
       if (stillActive) {
         setShowLargeFileNotice(true);
       }

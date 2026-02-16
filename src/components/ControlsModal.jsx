@@ -48,49 +48,49 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
         <h2 class="controls-modal__title">App overview</h2>
         <div class="controls-modal__scroll">
           <Section title="Getting Started" isOpen={isGettingStartedOpen}>
-              <div class="controls-modal__intro">
-                <p class="controls-modal__subtitle">
-                  This viewer has a focus on 3dgs files with an intended perspective, viewed like an image. 
-                  This is not recommended for navigating large environmental splats or 360 exploration. 
-                  We highly recommend using <strong>.sog</strong> formatted files for storage and performance gains. 
-                </p>
-                <p class="controls-modal__subtitle" style={{marginTop: "4px"}}>
-                  <a
-                    href="https://github.com/aero177-jpg/ml-sharp-optimized"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Our ml-sharp fork
-                  </a>{' '}
-                  includes a fast .sog export in the pipeline, and includes camera metadata for clean integration with this viewer, as well as integrations with your connected storage.
-                </p>
-              </div>
- 
+            <div class="controls-modal__intro">
+              <p class="controls-modal__subtitle">
+                This viewer has a focus on 3dgs files with an intended perspective, viewed like an image.
+                This is not recommended for navigating large environmental splats or 360 exploration.
+                We highly recommend using <strong>.sog</strong> formatted files for storage and performance gains.
+              </p>
+              <p class="controls-modal__subtitle" style={{ marginTop: "4px" }}>
+                <a
+                  href="https://github.com/aero177-jpg/ml-sharp-optimized"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Our ml-sharp fork
+                </a>{' '}
+                includes a fast .sog export in the pipeline, and includes camera metadata for clean integration with this viewer, as well as integrations with your connected storage.
+              </p>
+            </div>
 
-              <Section title="Viewer overview" isOpen={isSubsectionOpen('getting-started.viewer-overview')}>
-                <ul>
-                  <li><strong>View image:</strong> Drag your .ply or .sog files onto the page to create a quick collection. If a cloud GPU is configured, you can add image files and you will be prompted to upload them. You can also click “browse” to search your device.</li>
-                  <li><strong>Gallery:</strong> Click, swipe, or hover on the left side of the screen, or click the button in the bottom left corner. Here you can browse, add more images, or delete with additional options.</li>
-                  <li><strong>Main Settings:</strong> On desktop or landscape mode on mobile, click, swipe, or hover on the right side of the screen, or click the arrow in the upper right corner. On mobile portrait mode, tap or swipe up on the bottom menu handle.</li>
-                  <li><strong>Viewer buttons:</strong> Advance next/back and play/pause slideshow (if slideshow mode is toggled on). Buttons on the right side, from top to bottom, are reset view, fit to screen toggle (if in fullscreen), fullscreen mode toggle, and immersive mode (on mobile).</li>
-                </ul>
-              </Section>
-               <Section title="Slideshow" isOpen={isSubsectionOpen('getting-started.slideshow')}>
-                <ul>
-                  <li><strong>Start slideshow: </strong>Click the play icon on the bottom left of the screen to toggle. pause by tapping the screen, or clicking the play/pause button between the arrow buttons.</li>
-                  <li><strong>Settings: </strong>Hold the slideshow button for a second to open slide settings.</li>
-                  <li><strong>Continuous mode:</strong> This replaces the side in and out animation with a single sliding animation.</li> 
-                  <li><strong>Zoom target:</strong> Sets a zoom limit for the current image, overriding slideshow continuous mode presets. "Far" is recommended for landscapes or distant subjects, for example.</li>
-                  <li><strong>Dolly zoom:</strong> Makes a visually interesting zoom effect, at the cost of revealing distortion or artifacts.</li>
 
-                  <li><strong>Transition Range:</strong> Adjusts how wide the orbit or zoom path is, but this can lead to seeing unwanted artifacts or deformed splats. </li>
-                </ul>
-              </Section>
-          
-          <div class="controls-section-divider" />
+            <Section title="Viewer overview" isOpen={isSubsectionOpen('getting-started.viewer-overview')}>
+              <ul>
+                <li><strong>View image:</strong> Drag your .ply or .sog files onto the page to create a quick collection. If a cloud GPU is configured, you can add image files and you will be prompted to upload them. You can also click “browse” to search your device.</li>
+                <li><strong>Gallery:</strong> Click, swipe, or hover on the left side of the screen, or click the button in the bottom left corner. Here you can browse, add more images, or delete with additional options.</li>
+                <li><strong>Main Settings:</strong> On desktop or landscape mode on mobile, click, swipe, or hover on the right side of the screen, or click the arrow in the upper right corner. On mobile portrait mode, tap or swipe up on the bottom menu handle.</li>
+                <li><strong>Viewer buttons:</strong> Advance next/back and play/pause slideshow (if slideshow mode is toggled on). Buttons on the right side, from top to bottom, are reset view, fit to screen toggle (if in fullscreen), fullscreen mode toggle, and immersive mode (on mobile).</li>
+              </ul>
+            </Section>
+            <Section title="Slideshow" isOpen={isSubsectionOpen('getting-started.slideshow')}>
+              <ul>
+                <li><strong>Start slideshow: </strong>Click the play icon on the bottom left of the screen to toggle. pause by tapping the screen, or clicking the play/pause button between the arrow buttons.</li>
+                <li><strong>Settings: </strong>Hold the slideshow button for a second to open slide settings.</li>
+                <li><strong>Continuous mode:</strong> This replaces the side in and out animation with a single sliding animation.</li>
+                <li><strong>Zoom target:</strong> Sets a zoom limit for the current image, overriding slideshow continuous mode presets. "Far" is recommended for landscapes or distant subjects, for example.</li>
+                <li><strong>Dolly zoom:</strong> Makes a visually interesting zoom effect, at the cost of revealing distortion or artifacts.</li>
+
+                <li><strong>Transition Range:</strong> Adjusts how wide the orbit or zoom path is, but this can lead to seeing unwanted artifacts or deformed splats. </li>
+              </ul>
+            </Section>
+
+            <div class="controls-section-divider" />
           </Section>
-            <Section title="Settings" isOpen={isSettingsOpen}>
-              <Section title="Main Settings" isOpen={isSubsectionOpen('settings.main-settings')}>
+          <Section title="Settings" isOpen={isSettingsOpen}>
+            <Section title="Main Settings" isOpen={isSubsectionOpen('settings.main-settings')}>
               <ul>
                 <li><strong>Quality:</strong> Adjusts splat density. Experimental is a last resort option, not recommended. Further adjustments can be made in advanced settings.</li>
                 <li><strong>Orbit range:</strong> ml-sharp splats degrade at greater angles, this mitigates this and keeps focus on the target view. Auto adjusts in immersive mode on mobile. Disabled for splats missing ml-sharp metadata.</li>
@@ -102,14 +102,14 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
 
             <Section title="Additional Settings" isOpen={isSubsectionOpen('settings.additional-settings')}>
               <ul>
-                <li><strong>Custom Camera:</strong> This viewer auto sets the camera for optimal viewing of ml-sharp splats (with metadata). For others, manually adjust: scale to fill, rotate, double click, and zoom to frame intended view. Hit-or-miss, but worth experimenting.</li>
+                <li><strong>Custom Camera:</strong> This viewer auto sets the camera for optimal viewing of ml-sharp splats (with metadata). For others, manually adjust: scale to fill, rotate, double click, and zoom to frame intended view. You can add additional views on the same splat, click "edit custom camera", adjust camera, and save as new view.</li>
                 <li><strong>Tilt Sensitivity:</strong> Adjusts how device rotation effects view in immersive mode.</li>
                 <li><strong>VR toggle:</strong> Appears if an HMD is detected.</li>
                 <li><strong>SBS separation:</strong> Appears if sbs enabled in advanced settings (experimental). Effects stereo depth perceived. Click focus icon for auto adjust.</li>
                 <li><strong>SBS stereo aspect:</strong> Manual aspect ratio adjustment to match display.</li>
               </ul>
             </Section>
-                      <div class="controls-section-divider" />
+            <div class="controls-section-divider" />
 
           </Section>
 
@@ -138,14 +138,14 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
                 <li><strong>Immersive mode:</strong> Only tested on Android. Toggle with the “3d rotate” icon in the viewer. Drag to pan while moving the device to orbit. Click the focus icon to fix device sensor drift or set the current device angle as centered.</li>
               </ul>
             </Section>
-                      <div class="controls-section-divider" />
+            <div class="controls-section-divider" />
 
           </Section>
 
           <Section title="Connections" isOpen={isConnectionsOpen}>
-            <p className='controls-modal__subtitle'>You can choose to add a remote connection, a local folder, or app storage (best for mobile or PWA desktop app). All remote connection configs are stored locally only, this app is strictly a frontend client. Configs can be exported/imported in advanced settings.         <br/>
-<br/>    Splats are not automatically cached in browser due to size constraints, but can be manually cached in advanced settings for offline viewing, and bandwidth savings.
-</p>
+            <p className='controls-modal__subtitle'>You can choose to add a remote connection, a local folder, or app storage (best for mobile or PWA desktop app). All remote connection configs are stored locally only, this app is strictly a frontend client. Configs can be exported/imported in advanced settings.         <br />
+              <br />    Splats are not automatically cached in browser due to size constraints, but can be manually cached in advanced settings for offline viewing, and bandwidth savings.
+            </p>
 
             <Section title="Storage" isOpen={isSubsectionOpen('connections.storage')}>
               <ul>
@@ -157,8 +157,8 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
               </ul>
 
             </Section>
-              <Section title="Local Encryption" isOpen={isSubsectionOpen('connections.storage')}>
-             <p className='controls-modal__subtitle' style={{marginBottom: "12px", fontSize: "13px"}}>This is not required, but you can choose to encrypt stored R2 and Modal access keys with a single password.</p>
+            <Section title="Local Encryption" isOpen={isSubsectionOpen('connections.storage')}>
+              <p className='controls-modal__subtitle' style={{ marginBottom: "12px", fontSize: "13px" }}>This is not required, but you can choose to encrypt stored R2 and Modal access keys with a single password.</p>
               <ul>
                 <li>You will be prompted for this password whenever decrypted keys are required, only needed once per session</li>
                 <li>Keys are stored encrypted in local storage, so only accessible on the device they were set up on</li>
@@ -168,12 +168,28 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
             </Section>
 
             <Section title="Cloud GPU" isOpen={isSubsectionOpen('connections.cloud-gpu')}>
-             Using our ml-sharp fork and github action, you can set up a containerized version of ml-sharp on modal.com using their free tier. It connects to this viewer for seamless uploads and processing. If you are in a supabase or r2 collection, the results will be send to your storage and automatically added to the viewer. Otherwise, the files will be downloaded to your device to manually be added. 
-          <ul>
-                <li><strong>Endpoint Url</strong> This is found on your modal dashboard, ml-sharp-optimized container, under process_image. It should look something like "https://{'<user>'}--ml-sharp-optimized-abc123.modal.run".</li>
-          </ul>
+              <p className='controls-modal__subtitle' style={{ marginBottom: "12px", fontSize: "13px" }}>
+                Using our  <a
+                  href="https://github.com/aero177-jpg/ml-sharp-optimized"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  our ml-sharp fork
+                </a>{' '} and github action, you can set up a containerized version of ml-sharp on
+                {' '}<a
+                  href="https://modal.com"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  modal.com
+                </a>{' '} using their free tier. It connects to this viewer for seamless uploads and processing. If you are in a supabase or r2 collection, the results will be send to your storage and automatically added to the viewer. Otherwise, the files will be downloaded to your device to manually be added.
+              </p>
+
+              <ul>
+                <li><strong>Endpoint Url: </strong> This is found on your modal dashboard, ml-sharp-optimized container, under process_image. It should look something like "https://{'<user>'}--ml-sharp-optimized-process-image.modal.run".</li>
+              </ul>
             </Section>
-                      <div class="controls-section-divider" />
+            <div class="controls-section-divider" />
 
           </Section>
 
@@ -191,7 +207,7 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
             <Section title="Collections" isOpen={isSubsectionOpen('troubleshooting.collections')}>
               <ul>
                 <li><strong>Files not appearing:</strong> If using a connected cloud storage, make sure you have the correct permissions set up. For Supabase, you can set up a policy with "select" permissions for the relevant table. For R2, make sure your access key and secret key are correct, and that your bucket is set to public.</li>
-                <li><strong>Issues with cloud GPU:</strong> Large upload batches (over 20 images) can cause occasional timeouts, and cause some inaccuracies with the progress bar. If the process is complete, but no new images, try manually refreshing the connection.</li>
+                <li><strong>Issues with cloud GPU:</strong> Large upload batches (over 20 images) can cause occasional timeouts, and cause some inaccuracies with the progress bar. If the process is complete, but no new images, try manually refreshing the collection.</li>
               </ul>
             </Section>
           </Section>

@@ -4,6 +4,7 @@
 import { useStore } from "./store.js";
 import {
   renderer,
+  composer,
   camera,
   controls,
   defaultCamera,
@@ -184,6 +185,14 @@ export const resize = () => {
   updateViewerAspectRatio();
   const { clientWidth, clientHeight } = viewerEl;
   renderer.setSize(clientWidth, clientHeight, false);
+
+  // Keep the EffectComposer's internal render targets in sync with the
+  // renderer so splats render at the correct resolution/aspect ratio.
+  // Without this, composer.render() writes to stale-sized targets and the
+  // result gets stretched onto the new canvas size.
+  if (composer) {
+    composer.setSize(clientWidth, clientHeight);
+  }
   
   if (activeCamera && activeCamera?.cameraMetadata) {
     applyCameraProjection(activeCamera.cameraMetadata, clientWidth, clientHeight);
@@ -193,5 +202,12 @@ export const resize = () => {
     camera.aspect = clientWidth / clientHeight;
     camera.updateProjectionMatrix();
   }
+
+  // Debug: log resize dimensions so we can verify correct values
+  console.debug('[resize]', clientWidth, '×', clientHeight,
+    'aspect:', (clientWidth / clientHeight).toFixed(3),
+    'camera.aspect:', camera.aspect.toFixed(3),
+    'activeCamera:', !!activeCamera);
+
   requestRender();
 };

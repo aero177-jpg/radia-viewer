@@ -20,7 +20,7 @@ import {
   updateDollyZoomBaselineFromCamera,
   THREE,
 } from "./viewer.js";
-import { applyPreviewBackground, captureAndApplyBackground, clearBackground, hasBackgroundForPreview } from "./backgroundManager.js";
+import { applyPreviewBackground, crossFadePreviewBackground, fadeOutBackground, captureAndApplyBackground, clearBackground, hasBackgroundForPreview } from "./backgroundManager.js";
 import { savePreviewBlob, listCachedFileNames } from "./fileStorage.js";
 import {
   fitViewToMesh,
@@ -242,6 +242,24 @@ const syncAssetProxyViews = async ({ store, currentAsset, views }) => {
   const baseAsset = assets[baseIndex];
   const normalizedViews = Array.isArray(views) ? views : [];
 
+  // Fast-path: if proxy views already match the expected view IDs, skip the
+  // expensive destroy-and-rebuild cycle that re-fetches all previews from
+  // IndexedDB on every view navigation.
+  const existingProxies = assets.filter(
+    (a) => a?.isProxyView && a.baseAssetId === baseAssetId,
+  );
+  const expectedProxyViewIds = normalizedViews.slice(1).map((v) => v.id);
+  const proxiesMatch =
+    existingProxies.length === expectedProxyViewIds.length &&
+    existingProxies.every((p, i) => p.viewId === expectedProxyViewIds[i]);
+
+  if (proxiesMatch) {
+    // Ensure base asset view fields are up to date (cheap, no async)
+    const firstView = normalizedViews[0] || null;
+    ensureBaseAssetViewFields(baseAsset, firstView, 0);
+    return;
+  }
+
   removeProxyViewsForBase(assets, baseAssetId);
 
   const firstView = normalizedViews[0] || null;
@@ -273,6 +291,35 @@ const syncAssetProxyViews = async ({ store, currentAsset, views }) => {
   }
 
   store.setAssets([...assets]);
+};
+
+const syncProxyViewsForAssetList = async (store, { onlyBaseIds } = {}) => {
+  if (!store) return;
+
+  const baseIdFilter = Array.isArray(onlyBaseIds) && onlyBaseIds.length > 0
+    ? new Set(onlyBaseIds)
+    : null;
+
+  const baseAssets = getAssetList().filter((asset) => !asset?.isProxyView);
+
+  for (const asset of baseAssets) {
+    const baseAssetId = getBaseAssetId(asset);
+    if (baseIdFilter && !baseIdFilter.has(baseAssetId)) continue;
+
+    const assetName = getBaseAssetName(asset);
+    if (!assetName) continue;
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const metadata = await loadCustomMetadataForAsset(assetName);
+      const views = metadata?.views ?? [];
+      if (!views.length) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await syncAssetProxyViews({ store, currentAsset: asset, views });
+    } catch (err) {
+      console.warn(`[FileLoader] Failed to sync proxy views for ${assetName}:`, err);
+    }
+  }
 };
 
 const resolveAssetView = async (asset) => {
@@ -370,6 +417,17 @@ const syncStoredAnimationSettings = async (animationSettings, wasImmersiveModeAc
 const syncStoredCustomAnimationSettings = (customAnimationSettings, store) => {
   const zoomProfile = customAnimationSettings?.zoomProfile ?? 'default';
   store.setFileCustomAnimation({ zoomProfile });
+};
+
+const refreshSparkForCurrentView = (reason = 'unspecified') => {
+  if (!spark?.update) return;
+
+  const viewToWorld = camera?.matrixWorld?.clone?.();
+  if (viewToWorld) {
+    spark.update({ scene, viewToWorld });
+  } else {
+    spark.update({ scene });
+  }
 };
 
 
@@ -616,6 +674,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
     // Extract custom aspect ratio from metadata (for non-ML Sharp assets)
     const customAspectRatio = selectedView?.view?.aspectRatio;
+    const shouldHardCutCustomViewAspect = !isFirstLoad && !cameraMetadata?.intrinsics && Boolean(selectedView?.cameraPose);
 
     if (cameraMetadata?.intrinsics) {
       const { intrinsics } = cameraMetadata;
@@ -640,26 +699,30 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
     // slide-out class was already added at the start of loadSplatFile for first load
 
-    if (aspectApplied) {
-      await waitForViewerResizeTransition();
-    }
+    if (shouldHardCutCustomViewAspect) {
+      applyInstantProxyAspectCutAndReset('load-custom-base-view');
+    } else {
+      if (aspectApplied) {
+        await waitForViewerResizeTransition();
+      }
 
-    updateViewerAspectRatio();
+      updateViewerAspectRatio();
 
-    // For custom aspect ratio on non-first loads, wait for CSS transition then resize renderer
-    if (customAspectRatio && !isFirstLoad) {
-      await waitForViewerResizeTransition();
-      resize();
-      requestRender();
-    }
+      // For custom aspect ratio on non-first loads, wait for CSS transition then resize renderer
+      if (customAspectRatio && !isFirstLoad) {
+        await waitForViewerResizeTransition();
+        resize();
+        requestRender();
+      }
 
-    // For first load, wait for aspect ratio transition then prepare for fade-in
-    if (isFirstLoad) {
-      // Wait for the CSS resize transition to complete
-      await waitForViewerResizeTransition();
-      // Resize renderer to match new viewer dimensions
-      resize();
-      hasLoadedFirstAsset = true;
+      // For first load, wait for aspect ratio transition then prepare for fade-in
+      if (isFirstLoad) {
+        // Wait for the CSS resize transition to complete
+        await waitForViewerResizeTransition();
+        // Resize renderer to match new viewer dimensions
+        resize();
+        hasLoadedFirstAsset = true;
+      }
     }
 
     clearMetadataCamera(resize);
@@ -689,6 +752,10 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
       saveHomeView();
       applyDebugZoomOut();
+
+      if (hasCustomMetadata && !cameraMetadata?.intrinsics) {
+        refreshSparkForCurrentView('post-camera-cached-custom-view');
+      }
       
       // Apply background BEFORE slideIn so it fades in sync with canvas
       if (asset.preview) {
@@ -725,6 +792,10 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
         saveHomeView();
         applyDebugZoomOut();
       }, { animate: shouldAnimateCamera });
+
+      if (hasCustomMetadata && !cameraMetadata?.intrinsics) {
+        refreshSparkForCurrentView('post-camera-custom-view');
+      }
       
       // Apply background BEFORE slideIn so it fades in sync with canvas
       if (shouldRunTransition && asset.preview) {
@@ -1105,6 +1176,10 @@ export const handleMultipleFiles = async (files) => {
     store.setCurrentAssetIndex(0);
     await loadSplatFile(result.assets[0]);
   }
+
+  void syncProxyViewsForAssetList(store).catch((err) => {
+    console.warn('[FileLoader] Failed to pre-sync proxy views for list', err);
+  });
 };
 
 /**
@@ -1147,10 +1222,58 @@ export const handleAddFiles = async (files, options = {}) => {
     store.setCurrentAssetIndex(firstNewIndex);
     await loadSplatFile(result.newAssets[0]);
   }
+
+  const newBaseIds = result.newAssets.map((asset) => getBaseAssetId(asset));
+  void syncProxyViewsForAssetList(store, { onlyBaseIds: newBaseIds }).catch((err) => {
+    console.warn('[FileLoader] Failed to pre-sync proxy views for added assets', err);
+  });
 };
 
 /** Duration (ms) for the smooth camera glide between views on the same splat */
 const SAME_BASE_GLIDE_MS = 2000;
+
+const applyInstantProxyAspectCutAndReset = (stage = 'proxy') => {
+  const viewerEl = document.getElementById('viewer');
+  if (viewerEl) viewerEl.style.transition = 'none';
+
+  updateViewerAspectRatio();
+  clearMetadataCamera(resize);
+  resize();
+  refreshSparkForCurrentView(`aspect-cut-${stage}`);
+  requestRender();
+
+  requestAnimationFrame(() => {
+    resize();
+    refreshSparkForCurrentView(`aspect-cut-${stage}-raf`);
+    requestRender();
+  });
+
+  if (viewerEl) {
+    void viewerEl.offsetHeight;
+    viewerEl.style.transition = '';
+  }
+};
+
+const forceProxyPostPoseRenderReflow = (label = 'proxy') => {
+  controls?.update?.();
+  resize();
+  refreshSparkForCurrentView(`reflow-${label}`);
+  requestRender();
+
+  requestAnimationFrame(() => {
+    controls?.update?.();
+    resize();
+    refreshSparkForCurrentView(`reflow-${label}-raf1`);
+    requestRender();
+
+    requestAnimationFrame(() => {
+      controls?.update?.();
+      resize();
+      refreshSparkForCurrentView(`reflow-${label}-raf2`);
+      requestRender();
+    });
+  });
+};
 
 const navigateWithinLoadedBaseAsset = async (asset, options = {}) => {
   if (!asset || !currentMesh) return false;
@@ -1181,15 +1304,12 @@ const navigateWithinLoadedBaseAsset = async (asset, options = {}) => {
   const customAspectRatio = selectedView?.view?.aspectRatio ?? null;
   setOriginalImageAspect(customAspectRatio);
   store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
+  applyInstantProxyAspectCutAndReset();
 
-  const viewerEl = document.getElementById('viewer');
-  if (viewerEl) viewerEl.style.transition = 'none';
-  updateViewerAspectRatio();
-  resize();
-  requestRender();
-  if (viewerEl) {
-    void viewerEl.offsetHeight; // force reflow before restoring transition
-    viewerEl.style.transition = '';
+  // Start background cross-fade in parallel with the camera glide so the
+  // blurred glow transitions smoothly instead of snapping.
+  if (asset.preview) {
+    crossFadePreviewBackground(asset.preview, SAME_BASE_GLIDE_MS);
   }
 
   // Smooth 2-second camera glide to the target pose (always animated)
@@ -1199,6 +1319,13 @@ const navigateWithinLoadedBaseAsset = async (asset, options = {}) => {
     saveHomeView();
     applyDebugZoomOut();
   }, { animate: true, duration: SAME_BASE_GLIDE_MS });
+
+  forceProxyPostPoseRenderReflow('after-proxy-glide');
+
+  // If there was no preview to cross-fade, apply a fallback (or clear) now
+  if (!asset.preview) {
+    applyPreviewBackground(null);
+  }
 
   store.setMetadataMissing(false);
   store.setCustomMetadataAvailable(true);
@@ -1252,14 +1379,7 @@ export const buildContinuousHandoff = async (asset, { slideMode }) => {
       const customAspectRatio = selectedView?.view?.aspectRatio ?? null;
       setOriginalImageAspect(customAspectRatio);
       store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
-      const viewerEl = document.getElementById('viewer');
-      if (viewerEl) viewerEl.style.transition = 'none';
-      updateViewerAspectRatio();
-      resize();
-      if (viewerEl) {
-        void viewerEl.offsetHeight;
-        viewerEl.style.transition = '';
-      }
+      applyInstantProxyAspectCutAndReset();
 
       // Camera pose (so the continuous fn calculates offsets from the new view)
       applyCameraPose(selectedView.cameraPose);
@@ -1267,6 +1387,7 @@ export const buildContinuousHandoff = async (asset, { slideMode }) => {
       saveHomeView();
       applyDebugZoomOut();
       updateDollyZoomBaselineFromCamera();
+      forceProxyPostPoseRenderReflow('continuous-handoff');
 
       // Store state
       store.setMetadataMissing(false);
@@ -1277,6 +1398,13 @@ export const buildContinuousHandoff = async (asset, { slideMode }) => {
         size: formatBytes(asset.file?.size ?? asset.size),
       });
       store.setStatus(`Loaded ${getBaseAssetName(asset)} view`);
+
+      // Cross-fade background to match the glide duration
+      if (asset.preview) {
+        crossFadePreviewBackground(asset.preview, SAME_BASE_GLIDE_MS);
+      } else {
+        applyPreviewBackground(null);
+      }
     },
   };
 };
@@ -1320,6 +1448,9 @@ export const loadAssetByIndex = async (index) => {
         await loadSplatFile(asset);
       }
     } else {
+      // Gracefully fade out the background when leaving a proxy view so it
+      // doesn't stay stuck at the old blur while the new asset loads.
+      if (isProxyViewAsset(prevAsset)) fadeOutBackground();
       await loadSplatFile(asset);
     }
   } finally {
@@ -1438,6 +1569,10 @@ export const loadFromStorageSource = async (source, options = {}) => {
       store.setCurrentAssetIndex(indexToLoad);
       await loadSplatFile(result.assets[indexToLoad]);
     }
+
+    void syncProxyViewsForAssetList(store).catch((err) => {
+      console.warn('[FileLoader] Failed to pre-sync proxy views for source assets', err);
+    });
     
   } catch (error) {
     console.error('Failed to load from storage source:', error);
@@ -1451,13 +1586,18 @@ export const loadFromStorageSource = async (source, options = {}) => {
 /**
  * Loads the next asset in the list.
  * Called from keyboard shortcut (arrow keys).
+ * @param {Object} [options]
+ * @param {boolean} [options.skipTimerReset] - When true, skip resetSlideshowTimer
+ *   (used by slideshowController which manages its own scheduling).
  */
-export const loadNextAsset = async () => {
+export const loadNextAsset = async (options = {}) => {
   if (!hasMultipleAssets()) return;
   if (isNavigationLocked) return;
   
   isNavigationLocked = true;
-  resetSlideshowTimer();
+  if (!options.skipTimerReset) {
+    resetSlideshowTimer();
+  }
   
   // Pause immersive mode immediately to prevent erratic camera during transition
   const wasImmersive = isImmersiveModeActive();
@@ -1482,6 +1622,7 @@ export const loadNextAsset = async () => {
           await loadSplatFile(asset, { slideDirection: 'next' });
         }
       } else {
+        if (isProxyViewAsset(prevAsset)) fadeOutBackground();
         await loadSplatFile(asset, { slideDirection: 'next' });
       }
     }
@@ -1497,13 +1638,18 @@ export const loadNextAsset = async () => {
 /**
  * Loads the previous asset in the list.
  * Called from keyboard shortcut (arrow keys).
+ * @param {Object} [options]
+ * @param {boolean} [options.skipTimerReset] - When true, skip resetSlideshowTimer
+ *   (used by slideshowController which manages its own scheduling).
  */
-export const loadPrevAsset = async () => {
+export const loadPrevAsset = async (options = {}) => {
   if (!hasMultipleAssets()) return;
   if (isNavigationLocked) return;
   
   isNavigationLocked = true;
-  resetSlideshowTimer();
+  if (!options.skipTimerReset) {
+    resetSlideshowTimer();
+  }
   
   // Pause immersive mode immediately to prevent erratic camera during transition
   const wasImmersive = isImmersiveModeActive();
@@ -1528,6 +1674,7 @@ export const loadPrevAsset = async () => {
           await loadSplatFile(asset, { slideDirection: 'prev' });
         }
       } else {
+        if (isProxyViewAsset(prevLoadedAsset)) fadeOutBackground();
         await loadSplatFile(asset, { slideDirection: 'prev' });
       }
     }

@@ -74,17 +74,21 @@ function UploadChoiceModal({
   const [vaultPasswordInput, setVaultPasswordInput] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
+  const [hasAttemptedLockedGpuSelection, setHasAttemptedLockedGpuSelection] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setCloudGpuSettings(loadCloudGpuSettings());
     setVaultPasswordInput('');
     setUnlockError('');
+    setHasAttemptedLockedGpuSelection(false);
   }, [isOpen]);
 
   const hasStoredCloudGpuKey = Boolean(cloudGpuSettings?.hasStoredApiKey || cloudGpuSettings?.apiKeyEncrypted || cloudGpuSettings?.apiKey);
   const isCloudGpuConfigured = Boolean(cloudGpuSettings?.apiUrl && hasStoredCloudGpuKey);
   const cloudGpuNeedsUnlock = Boolean(cloudGpuSettings?.requiresPassword && cloudGpuSettings?.apiKeyEncrypted);
+  const shouldShowCloudGpuUnlockMessage = Boolean(isCloudGpuConfigured && cloudGpuNeedsUnlock && hasAttemptedLockedGpuSelection);
+  const shouldDisableImageOption = Boolean(!isCloudGpuConfigured || shouldShowCloudGpuUnlockMessage);
 
   const handleUnlockVault = async () => {
     const password = vaultPasswordInput.trim();
@@ -104,6 +108,7 @@ function UploadChoiceModal({
 
     setVaultPasswordInput('');
     setCloudGpuSettings(loadCloudGpuSettings());
+    setHasAttemptedLockedGpuSelection(false);
   };
 
   useEffect(() => {
@@ -150,9 +155,15 @@ function UploadChoiceModal({
           subtitle={imageSubtitle || 'Image files: .jpg, .png, .webp, .heic, etc.'}
           icon={ImageIcon}
           selected={mode === 'images'}
-          onSelect={() => setMode('images')}
+          onSelect={() => {
+            if (cloudGpuNeedsUnlock && !hasAttemptedLockedGpuSelection) {
+              setHasAttemptedLockedGpuSelection(true);
+              return;
+            }
+            setMode('images');
+          }}
           onConfirm={handleUpload}
-          disabled={!isCloudGpuConfigured || cloudGpuNeedsUnlock}
+          disabled={shouldDisableImageOption}
         />
       </div>
 
@@ -169,7 +180,7 @@ function UploadChoiceModal({
            </p>
          }
 
-         {isCloudGpuConfigured && cloudGpuNeedsUnlock && (
+         {shouldShowCloudGpuUnlockMessage && (
            <div style={{ marginTop: '8px' }}>
              <p style={{ fontSize: '0.9em', color: 'var(--text-muted, #888)' }}>
                <FontAwesomeIcon icon={faLock} style={{ marginRight: '6px' }} />

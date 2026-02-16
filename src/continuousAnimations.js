@@ -288,10 +288,13 @@ const processPendingHandoff = () => {
       glideDuration: handoff.glideDuration,
       glideFrom,
       skipFade: true,
+      onMotionStart: () => {
+        handoff.onStarted?.();
+      },
     });
+  } else {
+    handoff.onStarted?.();
   }
-
-  handoff.onStarted?.();
   return true;
 };
 
@@ -332,8 +335,12 @@ export const continuousZoomSlideIn = (duration, amount, options = {}) => {
     const endPosition = currentPosition.clone().add(endOffset);
 
     const glideDuration = options.glideDuration ?? 0;
+    const onMotionStart = typeof options.onMotionStart === 'function'
+      ? options.onMotionStart
+      : null;
 
     const startMainAnimation = () => {
+      onMotionStart?.();
       continuousZoomTween = gsap.to(camera.position, {
         x: endPosition.x,
         y: endPosition.y,
@@ -414,8 +421,12 @@ export const continuousDollyZoomSlideIn = (duration, amount, options = {}) => {
 
     const durationSec = getContinuousDurationSeconds('continuous-dolly-zoom', CONTINUOUS_ZOOM_DURATION);
     const glideDuration = options.glideDuration ?? 0;
+    const onMotionStart = typeof options.onMotionStart === 'function'
+      ? options.onMotionStart
+      : null;
 
     const startMainAnimation = () => {
+      onMotionStart?.();
       const proxy = { t: 0 };
       continuousDollyZoomTween = gsap.to(proxy, {
         t: 1,
@@ -520,8 +531,12 @@ export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
     applyOrbitLimitOverride(continuousOrbitState);
 
     const glideDuration = options.glideDuration ?? 0;
+    const onMotionStart = typeof options.onMotionStart === 'function'
+      ? options.onMotionStart
+      : null;
 
     const startMainAnimation = () => {
+      onMotionStart?.();
       const proxy = { t: 0 };
       continuousOrbitTween = gsap.to(proxy, {
         t: 1,
@@ -618,8 +633,12 @@ export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) =
     applyOrbitLimitOverride(continuousVerticalOrbitState);
 
     const glideDuration = options.glideDuration ?? 0;
+    const onMotionStart = typeof options.onMotionStart === 'function'
+      ? options.onMotionStart
+      : null;
 
     const startMainAnimation = () => {
+      onMotionStart?.();
       const proxy = { t: 0 };
       continuousVerticalOrbitTween = gsap.to(proxy, {
         t: 1,

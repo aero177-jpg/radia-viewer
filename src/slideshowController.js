@@ -129,7 +129,6 @@ export const stopSlideshow = () => {
     assetIndex: getStoreState().currentAssetIndex,
   };
 
-  console.log(`[Slideshow] Paused  remaining hold: ${(remainingHoldMs / 1000).toFixed(1)}s`);
 };
 
 /**
@@ -238,11 +237,9 @@ const resumeFromPause = () => {
   // If the user navigated to a different asset while paused, snapshot is stale
   const currentIndex = getStoreState().currentAssetIndex;
   if (snap.assetIndex !== undefined && snap.assetIndex !== currentIndex) {
-    console.log('[Slideshow] Snapshot stale (asset changed) — starting fresh');
     beginFreshPlayback();
     return;
   }
-  console.log(`[Slideshow] Resuming  gliding back, then ${(snap.remainingHoldMs / 1000).toFixed(1)}s remaining`);
 
   glideCamera(snap.position, snap.target, () => {
     if (!isPlaying) return;
@@ -268,7 +265,6 @@ const resumeFromPause = () => {
  * Otherwise just schedules the hold timer.
  */
 const beginFreshPlayback = () => {
-  console.log('[Slideshow] Starting fresh playback on current asset');
   startContinuousForCurrentMode();
   scheduleNextAdvance();
 };
@@ -299,8 +295,6 @@ const startContinuousForCurrentMode = () => {
 
   const { duration, amount } = resolveSlideInOptions(mode, { preset: 'transition' });
   const opts = { glideDuration: GLIDE_DURATION };
-  console.log(`[Slideshow] Starting continuous ${mode} animation (glide ${GLIDE_DURATION}s)`);
-
   if (mode === 'continuous-zoom')                continuousZoomSlideIn(duration, amount, opts);
   else if (mode === 'continuous-dolly-zoom')     continuousDollyZoomSlideIn(duration, amount, opts);
   else if (mode === 'continuous-orbit')          continuousOrbitSlideIn(duration, amount, opts);
@@ -333,8 +327,6 @@ const scheduleNextAdvanceMs = (ms) => {
     clearTimeout(holdTimeoutId);
     holdTimeoutId = null;
   }
-
-  console.log(`[Slideshow] Scheduling next advance in ${(ms / 1000).toFixed(1)}s`);
 
   holdDeadline = Date.now() + ms;
   holdTimeoutId = setTimeout(() => {
@@ -371,8 +363,6 @@ const advanceAndSchedule = async () => {
       && currentAssetObj.id !== nextAssetObj.id;
 
     if (sameBase) {
-      console.log('[Slideshow] Same-base proxy detected — queuing continuous handoff');
-
       try {
         const handoff = await buildContinuousHandoff(nextAssetObj, { slideMode });
 
@@ -398,10 +388,10 @@ const advanceAndSchedule = async () => {
   }
 
   // Normal path: full asset load with transitions
-  console.log('[Slideshow] Advancing to next asset');
-
+  // Skip the timer reset inside loadNextAsset — we manage our own scheduling
+  // to prevent premature timers firing while a large file is still loading.
   try {
-    await loadNextAsset();
+    await loadNextAsset({ skipTimerReset: true });
 
     if (isPlaying) {
       scheduleNextAdvance();
