@@ -285,6 +285,7 @@ export const useStore = create(
   stereoEnabled: false,
   stereoEyeSep: 0.064,
   stereoAspect: 1.0,
+  stereoScale: 1.0,
   vrSupported: false,
   vrSessionActive: false,
   vrModelScale: 1,
@@ -372,7 +373,7 @@ export const useStore = create(
   immersiveSensitivity: 1.0,
   bgBlur: persistedUiPrefs.bgBlur ?? 40,
   disableTransparentUi: persistedUiPrefs.disableTransparentUi ?? false,
-  fillMode: true,
+  fillMode: false,
   
   // Debug
   debugLoadingMode: false,
@@ -425,6 +426,9 @@ export const useStore = create(
   /** Sets stereo aspect ratio */
   setStereoAspect: (aspect) => set({ stereoAspect: aspect }),
 
+  /** Sets stereo render scale */
+  setStereoScale: (scale) => set({ stereoScale: scale }),
+
   /** Marks whether WebXR/VR is available */
   setVrSupported: (vrSupported) => set({ vrSupported }),
 
@@ -434,10 +438,10 @@ export const useStore = create(
   /** Tracks model scale while in VR */
   setVrModelScale: (vrModelScale) => set({ vrModelScale }),
 
-  /** Toggles fill-to-screen vs fit-to-bounds projection */
+  /** Deprecated: toggles legacy fill-to-screen projection vs fit-to-bounds */
   toggleFillMode: () => set((state) => ({ fillMode: !state.fillMode })),
 
-  /** Sets fill-to-screen projection mode */
+  /** Deprecated: sets legacy fill-to-screen projection mode */
   setFillMode: (fillMode) => set({ fillMode }),
   
   /** Enables/disables load animation */

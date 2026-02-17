@@ -34,6 +34,7 @@ export let activeCamera = null;
 export let needsRender = true;
 export let originalImageAspect = null;
 export let stereoEnabled = false;
+export let stereoScale = 1;
 let renderSuspended = false;
 
 // Dolly zoom state
@@ -83,6 +84,12 @@ export const setStereoAspect = (aspect) => {
     stereoCamera.aspect = aspect;
     requestRender();
   }
+};
+
+export const setStereoScale = (scale) => {
+  const numericScale = Number(scale);
+  stereoScale = THREE.MathUtils.clamp(Number.isFinite(numericScale) ? numericScale : 1, 0.5, 1.0);
+  requestRender();
 };
 
 const applyStochasticRendering = (enabled) => {
@@ -139,6 +146,13 @@ const renderStereo = () => {
   stereoCamera.update(camera);
 
   const size = renderer.getSize(new THREE.Vector2());
+  const scale = THREE.MathUtils.clamp(stereoScale || 1, 0.5, 1.0);
+  const renderWidth = Math.max(2, Math.floor(size.width * scale));
+  const renderHeight = Math.max(2, Math.floor(size.height * scale));
+  const offsetX = Math.floor((size.width - renderWidth) * 0.5);
+  const offsetY = Math.floor((size.height - renderHeight) * 0.5);
+  const halfWidth = Math.max(1, Math.floor(renderWidth * 0.5));
+  const rightWidth = Math.max(1, renderWidth - halfWidth);
   const currentAutoClear = renderer.autoClear;
 
   renderer.autoClear = false;
@@ -146,13 +160,13 @@ const renderStereo = () => {
   renderer.setScissorTest(true);
 
   // Render left eye
-  renderer.setScissor(0, 0, size.width / 2, size.height);
-  renderer.setViewport(0, 0, size.width / 2, size.height);
+  renderer.setScissor(offsetX, offsetY, halfWidth, renderHeight);
+  renderer.setViewport(offsetX, offsetY, halfWidth, renderHeight);
   renderer.render(scene, stereoCamera.cameraL);
 
   // Render right eye
-  renderer.setScissor(size.width / 2, 0, size.width / 2, size.height);
-  renderer.setViewport(size.width / 2, 0, size.width / 2, size.height);
+  renderer.setScissor(offsetX + halfWidth, offsetY, rightWidth, renderHeight);
+  renderer.setViewport(offsetX + halfWidth, offsetY, rightWidth, renderHeight);
   renderer.render(scene, stereoCamera.cameraR);
 
   renderer.setScissorTest(false);
@@ -175,14 +189,21 @@ export const forceRenderNow = () => {
     if (camera.parent === null && camera.matrixWorldAutoUpdate === true) camera.updateMatrixWorld();
     stereoCamera.update(camera);
     const size = renderer.getSize(new THREE.Vector2());
+    const scale = THREE.MathUtils.clamp(stereoScale || 1, 0.5, 1.0);
+    const renderWidth = Math.max(2, Math.floor(size.width * scale));
+    const renderHeight = Math.max(2, Math.floor(size.height * scale));
+    const offsetX = Math.floor((size.width - renderWidth) * 0.5);
+    const offsetY = Math.floor((size.height - renderHeight) * 0.5);
+    const halfWidth = Math.max(1, Math.floor(renderWidth * 0.5));
+    const rightWidth = Math.max(1, renderWidth - halfWidth);
     renderer.autoClear = false;
     renderer.clear();
     renderer.setScissorTest(true);
-    renderer.setScissor(0, 0, size.width / 2, size.height);
-    renderer.setViewport(0, 0, size.width / 2, size.height);
+    renderer.setScissor(offsetX, offsetY, halfWidth, renderHeight);
+    renderer.setViewport(offsetX, offsetY, halfWidth, renderHeight);
     renderer.render(scene, stereoCamera.cameraL);
-    renderer.setScissor(size.width / 2, 0, size.width / 2, size.height);
-    renderer.setViewport(size.width / 2, 0, size.width / 2, size.height);
+    renderer.setScissor(offsetX + halfWidth, offsetY, rightWidth, renderHeight);
+    renderer.setViewport(offsetX + halfWidth, offsetY, rightWidth, renderHeight);
     renderer.render(scene, stereoCamera.cameraR);
     renderer.setScissorTest(false);
     renderer.autoClear = true;
@@ -568,6 +589,9 @@ export const resetViewer = (viewerEl, { preserveBackground = true } = {}) => {
     }
     if (Number.isFinite(store.stereoAspect)) {
       setStereoAspect(store.stereoAspect);
+    }
+    if (Number.isFinite(store.stereoScale)) {
+      setStereoScale(store.stereoScale);
     }
   }).catch(() => {});
 

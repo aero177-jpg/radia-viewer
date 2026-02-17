@@ -18,6 +18,30 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
+      manifest: {
+        id: './',
+        name: 'Radia',
+        short_name: 'Radia',
+        start_url: './',
+        scope: './',
+        display: 'fullscreen',
+        display_override: ['fullscreen', 'standalone'],
+        background_color: '#0c0d10',
+        theme_color: '#0c0d10',
+        icons: [
+          {
+            src: `${base}radiaIcon_192.png`,
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
+          {
+            src: `${base}radiaIcon_512.png`,
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      },
       workbox: {
         navigateFallback: `${base}index.html`,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff2}'],

@@ -73,8 +73,6 @@ function App() {
   const slideshowMode = useStore((state) => state.slideshowMode);
   const slideshowPlaying = useStore((state) => state.slideshowPlaying);
   const setSlideshowMode = useStore((state) => state.setSlideshowMode);
-  const fillMode = useStore((state) => state.fillMode);
-  const toggleFillMode = useStore((state) => state.toggleFillMode);
   const controlsModalOpen = useStore((state) => state.controlsModalOpen);
   const setControlsModalOpen = useStore((state) => state.setControlsModalOpen);
   const controlsModalDefaultSubsections = useStore((state) => state.controlsModalDefaultSubsections);
@@ -96,7 +94,8 @@ function App() {
   const [storageDialogInitialTier, setStorageDialogInitialTier] = useState(null);
 
   // Fullscreen state
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreenMode, setIsFullscreenMode] = useState(false);
+  const [isRegularFullscreen, setIsRegularFullscreen] = useState(false);
   const bottomControlsRef = useRef(null);
   const swipeTargetRef = useRef(null);
   const controlsRevealTimeout = useRef(null);
@@ -120,8 +119,23 @@ function App() {
     const viewerEl = document.getElementById('viewer');
     if (!fullscreenRoot || !viewerEl) return;
 
-    return setupFullscreenHandler(fullscreenRoot, viewerEl, setIsFullscreen);
+    return setupFullscreenHandler(fullscreenRoot, viewerEl, setIsFullscreenMode);
   }, [hasMesh]); // Re-run when hasMesh changes (when controls appear/disappear)
+
+  useEffect(() => {
+    const syncRegularFullscreen = () => {
+      const fullscreenRoot = document.getElementById('app');
+      setIsRegularFullscreen(Boolean(document.fullscreenElement));
+      if (!document.fullscreenElement && fullscreenRoot?.classList.contains('fullscreen-mode-fallback')) {
+        fullscreenRoot.classList.remove('fullscreen-mode-fallback');
+        setIsFullscreenMode(false);
+      }
+    };
+
+    syncRegularFullscreen();
+    document.addEventListener('fullscreenchange', syncRegularFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncRegularFullscreen);
+  }, []);
 
   /**
    * Track mesh loading state with stability to prevent flickering.
@@ -205,8 +219,8 @@ function App() {
     onSwipe: handleSwipe,
   });
 
-  const handleToggleFullscreen = useCallback(async () => {
-    // Use the app root for fullscreen so all UI stays visible
+  const handleToggleFullscreenMode = useCallback(async () => {
+    // App fullscreen mode keeps existing viewer/UI fullscreen behavior.
     const fullscreenRoot = document.getElementById('app');
     const viewerEl = document.getElementById('viewer');
     if (!fullscreenRoot) return;
@@ -221,8 +235,19 @@ function App() {
       // Wait for fade-out to complete
       await new Promise((r) => setTimeout(r, 150));
       
-      if (document.fullscreenElement === fullscreenRoot) {
+      if (fullscreenRoot.classList.contains('fullscreen-mode-fallback')) {
+        fullscreenRoot.classList.remove('fullscreen-mode-fallback');
+        setIsFullscreenMode(false);
+        resize();
+        requestRender();
+      } else if (document.fullscreenElement === fullscreenRoot) {
         await document.exitFullscreen();
+      } else if (document.fullscreenElement === document.documentElement) {
+        // If regular fullscreen is active, avoid replacing it; emulate app fullscreen via class.
+        fullscreenRoot.classList.add('fullscreen-mode-fallback');
+        setIsFullscreenMode(true);
+        resize();
+        requestRender();
       } else {
         await fullscreenRoot.requestFullscreen();
       }
@@ -243,6 +268,52 @@ function App() {
     } catch (err) {
       console.warn('Fullscreen toggle failed:', err);
       // Ensure we restore visibility on error
+      if (viewerEl) {
+        viewerEl.classList.remove('fs-fade-out');
+        viewerEl.classList.add('fs-fade-in');
+      }
+    }
+  }, []);
+
+  const handleToggleRegularFullscreen = useCallback(async () => {
+    const viewerEl = document.getElementById('viewer');
+    const fullscreenRoot = document.getElementById('app');
+
+    try {
+      if (viewerEl) {
+        viewerEl.classList.remove('fs-fade-in');
+        viewerEl.classList.add('fs-fade-out');
+      }
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      if (document.fullscreenElement) {
+        if (fullscreenRoot?.classList.contains('fullscreen-mode-fallback')) {
+          fullscreenRoot.classList.remove('fullscreen-mode-fallback');
+          setIsFullscreenMode(false);
+        }
+        await document.exitFullscreen();
+      } else {
+        if (fullscreenRoot?.classList.contains('fullscreen-mode-fallback')) {
+          fullscreenRoot.classList.remove('fullscreen-mode-fallback');
+          setIsFullscreenMode(false);
+        }
+        await document.documentElement.requestFullscreen();
+      }
+
+      setTimeout(() => {
+        requestAnimationFrame(() => {
+          resize();
+          requestRender();
+          if (viewerEl) {
+            viewerEl.classList.remove('fs-fade-out');
+            viewerEl.classList.add('fs-fade-in');
+            setTimeout(() => viewerEl.classList.remove('fs-fade-in'), 250);
+          }
+        });
+      }, 500);
+    } catch (err) {
+      console.warn('Regular fullscreen toggle failed:', err);
       if (viewerEl) {
         viewerEl.classList.remove('fs-fade-out');
         viewerEl.classList.add('fs-fade-in');
@@ -314,14 +385,6 @@ function App() {
     }
     handleResetView();
   }, [handleResetView]);
-
-  const handleToggleFillMode = useCallback(() => {
-    toggleFillMode();
-    requestAnimationFrame(() => {
-      resize();
-      requestRender();
-    });
-  }, [toggleFillMode]);
 
   const handleDeviceRotate = useCallback(async () => {
     const viewerEl = document.getElementById('viewer');
@@ -759,24 +822,22 @@ function App() {
                 <FocusIcon size={18} />
               </button>
              
-              {isFullscreen && (
-                <button
-                  class="bottom-page-btn"
-                  onClick={handleToggleFillMode}
-                  aria-label={fillMode ? "Fit to bounds" : "Fill screen"}
-                  title={fillMode ? "Fit to bounds" : "Fill screen"}
-                >
-<FontAwesomeIcon icon={fillMode ? faCompressAlt : faExpandAlt} />
-                </button>
-              )}
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleFullscreenMode}
+                aria-label={isFullscreenMode ? "Exit fullscreen mode" : "Enter fullscreen mode"}
+                title={isFullscreenMode ? "Exit fullscreen mode" : "Enter fullscreen mode"}
+              >
+                <FontAwesomeIcon icon={isFullscreenMode ? faCompressAlt : faExpandAlt} />
+              </button>
 
               <button
                 class="bottom-page-btn"
-                onClick={handleToggleFullscreen}
-                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                onClick={handleToggleRegularFullscreen}
+                aria-label={isRegularFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                title={isRegularFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
                 >
-                {isFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
+                {isRegularFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
               </button>
 {isMobile && <button
                 class={`bottom-page-btn immersive-toggle ${immersiveMode ? 'is-active' : 'is-inactive'}`}

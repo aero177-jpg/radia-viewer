@@ -44,6 +44,7 @@ const setMobileSystemUiHidden = async () => {};
 
 const isFullscreenOrImmersive = (fullscreenRootEl, viewerEl) =>
   document.fullscreenElement === fullscreenRootEl ||
+  fullscreenRootEl?.classList?.contains('fullscreen-mode-fallback') ||
   (viewerEl && IMMERSIVE_CLASSES.some((cls) => viewerEl.classList.contains(cls)));
 
 /**
@@ -85,7 +86,9 @@ export function setupFullscreenHandler(fullscreenRootEl, viewerEl, onStateChange
   };
 
   const processChange = async () => {
-    const isFullscreen = document.fullscreenElement === fullscreenRootEl;
+    const isFullscreen =
+      document.fullscreenElement === fullscreenRootEl ||
+      fullscreenRootEl.classList.contains('fullscreen-mode-fallback');
 
     setViewerTransitionState(viewerEl, true);
     suspendRenderLoop();

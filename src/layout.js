@@ -63,6 +63,7 @@ export const applyCameraProjection = (cameraMetadata, viewportWidth, viewportHei
   const imageIsPortrait = intrinsics.imageHeight > intrinsics.imageWidth;
   const screenIsPortrait = viewportHeight > viewportWidth;
   const { fillMode = true } = getStoreState();
+  // Deprecated legacy fill-mode branch retained for possible future reuse.
   const s = fillMode
     ? imageIsPortrait === screenIsPortrait
       ? imageIsPortrait
@@ -128,7 +129,9 @@ export const updateViewerAspectRatio = () => {
   
   const { isMobile, isPortrait, panelOpen } = getStoreState();
   const fullscreenRoot = document.getElementById('app');
-  const isFullscreen = document.fullscreenElement === fullscreenRoot;
+  const isFullscreen =
+    document.fullscreenElement === fullscreenRoot ||
+    fullscreenRoot?.classList?.contains('fullscreen-mode-fallback');
   
   let availableWidth = Math.max(0, window.innerWidth - (isFullscreen ? 0 : PAGE_PADDING));
   let availableHeight = Math.max(0, window.innerHeight - (isFullscreen ? 0 : PAGE_PADDING));

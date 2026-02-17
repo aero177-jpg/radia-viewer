@@ -10,7 +10,7 @@ export const resetLandingView = ({ setHasDefaultSource, setLandingVisible, statu
   state.clearActiveSource();
   state.setAssets([]);
   state.setCurrentAssetIndex(-1);
-  state.setFillMode(true);
+  state.setFillMode(false);
 
   resetSplatManager();
   setCurrentMesh(null);

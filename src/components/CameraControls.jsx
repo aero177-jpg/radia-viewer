@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import { useStore } from '../store';
-import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, getFocusDistance, calculateOptimalEyeSeparation, setOriginalImageAspect } from '../viewer';
+import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, setStereoEyeSeparation, setStereoAspect as setStereoAspectRatio, setStereoScale as setStereoRenderScale, setStereoEffectEnabled, getFocusDistance, calculateOptimalEyeSeparation, setOriginalImageAspect } from '../viewer';
 import { FocusIcon, KeyboardIcon } from '../icons/customIcons';
 import { applyCameraRangeDegrees, restoreHomeView, resetViewWithImmersive } from '../cameraUtils';
 import { currentMesh, raycaster, SplatMesh, scene } from '../viewer';
@@ -15,7 +15,7 @@ import { enableImmersiveMode, disableImmersiveMode, recenterInImmersiveMode, isI
 import { saveFocusDistance, clearFocusDistance } from '../fileStorage';
 import { updateFocusDistanceInCache, clearFocusDistanceInCache } from '../splatManager';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown, faEye, faEyeSlash, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faEye, faEyeSlash, faSpinner, faCompressAlt } from '@fortawesome/free-solid-svg-icons';
 import { loadSplatFile, loadAssetByIndex } from '../fileLoader';
 import { captureCurrentAssetPreview, getAssetList } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
@@ -179,6 +179,8 @@ function CameraControls() {
   const setStereoEyeSep = useStore((state) => state.setStereoEyeSep);
   const stereoAspect = useStore((state) => state.stereoAspect);
   const setStereoAspect = useStore((state) => state.setStereoAspect);
+  const stereoScale = useStore((state) => state.stereoScale);
+  const setStereoScale = useStore((state) => state.setStereoScale);
   const vrSupported = useStore((state) => state.vrSupported);
   const vrSessionActive = useStore((state) => state.vrSessionActive);
   const hasAssetLoaded = useStore((state) => state.fileInfo?.name && state.fileInfo.name !== '-');
@@ -950,6 +952,34 @@ function CameraControls() {
     setIsHoldingRecenter(false);
   }, []);
 
+  const handleExitSbsMode = useCallback(async () => {
+    const fullscreenRoot = document.getElementById('app');
+
+    try {
+      const bgContainers = document.querySelectorAll('.bg-image-container');
+      bgContainers.forEach((el) => el.classList.remove('stereo-hidden'));
+
+      setStereoEffectEnabled(false);
+      setStereoEnabled(false);
+      requestRender();
+
+      if (document.fullscreenElement === fullscreenRoot) {
+        await document.exitFullscreen();
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      resize();
+      addLog('Stereo mode disabled');
+    } catch (err) {
+      const bgContainers = document.querySelectorAll('.bg-image-container');
+      bgContainers.forEach((el) => el.classList.remove('stereo-hidden'));
+      setStereoEffectEnabled(false);
+      setStereoEnabled(false);
+      addLog('Stereo toggle failed');
+      console.warn('Stereo exit failed:', err);
+    }
+  }, [setStereoEnabled, addLog]);
+
   return (
     <div class="settings-group">
       {/* Collapsible header */}
@@ -1088,7 +1118,22 @@ function CameraControls() {
             </div>
             
             <div class="control-row">
-              <span class="control-label">Stereo aspect</span>
+              <span class="control-label" style="display: flex; align-items: center; gap: 6px;">
+                <span>Stereo aspect</span>
+                <button
+                  type="button"
+                  class="fov-toggle-btn"
+                  title="Set squeezed display aspect"
+                  onClick={() => {
+                    setStereoAspect(1);
+                    setStereoAspectRatio(1);
+                    addLog('Stereo aspect set to squeezed display (1.00)');
+                  }}
+                  aria-label="Set stereo aspect to squeezed display"
+                >
+                  <FontAwesomeIcon icon={faCompressAlt} />
+                </button>
+              </span>
               <div class="control-track">
                 <input
                   type="range"
@@ -1104,6 +1149,27 @@ function CameraControls() {
                 />
                 <span class="control-value">
                   {stereoAspect.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <span class="control-label">Scale</span>
+              <div class="control-track">
+                <input
+                  type="range"
+                  min="0.50"
+                  max="1.00"
+                  step="0.01"
+                  value={stereoScale}
+                  onInput={(e) => {
+                    const value = parseFloat(e.target.value);
+                    setStereoScale(value);
+                    setStereoRenderScale(value);
+                  }}
+                />
+                <span class="control-value">
+                  {(stereoScale * 100).toFixed(0)}%
                 </span>
               </div>
             </div>
@@ -1301,6 +1367,17 @@ function CameraControls() {
               </button>
             )}
           </div>
+
+          {stereoEnabled && (
+            <button
+              class="secondary focus-main-btn"
+              onClick={handleExitSbsMode}
+              aria-label="Exit side-by-side mode"
+              title="Exit side-by-side mode"
+            >
+              Exit SBS mode
+            </button>
+          )}
         </div>
       </div>
     </div>
