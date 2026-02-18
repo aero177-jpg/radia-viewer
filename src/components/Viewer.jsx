@@ -82,6 +82,7 @@ function Viewer({ viewerReady, dropOverlay }) {
   const clearActiveSource = useStore((state) => state.clearActiveSource);
   const setAssets = useStore((state) => state.setAssets);
   const setCurrentAssetIndex = useStore((state) => state.setCurrentAssetIndex);
+  const toggleViewerControlsDimmed = useStore((state) => state.toggleViewerControlsDimmed);
   
   // Store actions
   const addLog = useStore((state) => state.addLog);
@@ -267,7 +268,10 @@ function Viewer({ viewerReady, dropOverlay }) {
       if (now - lastTapTimeRef.current < 300) return;
       lastTapTimeRef.current = now;
 
-      if (!slideshowMode) return;
+      if (!slideshowMode) {
+        toggleViewerControlsDimmed();
+        return;
+      }
 
       if (slideshowPlaying) {
         stopSlideshow();
@@ -421,7 +425,7 @@ function Viewer({ viewerReady, dropOverlay }) {
       document.removeEventListener('keydown', handleKeydown);
       unregisterTapListener();
     };
-  }, [viewerReady, addLog, togglePanel, setAnchorState, panelOpen, assetSidebarOpen, slideshowMode, slideshowPlaying]);
+  }, [viewerReady, addLog, togglePanel, setAnchorState, panelOpen, assetSidebarOpen, slideshowMode, slideshowPlaying, toggleViewerControlsDimmed]);
 
   useEffect(() => {
     const viewerEl = viewerRef.current;

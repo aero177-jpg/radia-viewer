@@ -39,6 +39,7 @@ function BottomControls({ onOpenSlideshowOptions }) {
   const immersiveSensitivity = useStore((state) => state.immersiveSensitivity);
   const slideshowMode = useStore((state) => state.slideshowMode);
   const slideshowPlaying = useStore((state) => state.slideshowPlaying);
+  const viewerControlsDimmed = useStore((state) => state.viewerControlsDimmed);
   const setSlideshowMode = useStore((state) => state.setSlideshowMode);
   const isMobile = useStore((state) => state.isMobile);
   const addLog = useStore((state) => state.addLog);
@@ -164,12 +165,22 @@ function BottomControls({ onOpenSlideshowOptions }) {
   const assetsLength = assets.length;
   return (
     <div
-      class={`bottom-controls${slideshowMode && slideshowPlaying ? ' slideshow-hide' : ''}${controlsRevealed ? ' is-revealed' : ''}`}
+      class={`bottom-controls${(slideshowMode && slideshowPlaying) || viewerControlsDimmed ? ' slideshow-hide' : ''}${controlsRevealed ? ' is-revealed' : ''}`}
       onPointerEnter={() => slideshowMode && slideshowPlaying && revealBottomControls(false)}
       onPointerLeave={() => slideshowMode && slideshowPlaying && revealBottomControls(true, 1000)}
       onPointerDown={() => slideshowMode && slideshowPlaying && revealBottomControls(true, 1000)}
     >
-      <div class="bottom-controls-right">
+      <div class="bottom-controls-left">
+        {hasMesh && assetsLength > 0 && isMobile && (
+          <button
+            class="bottom-page-btn"
+            onClick={handleToggleRegularFullscreen}
+            aria-label={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            title={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+          >
+            {isRegularFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
+          </button>
+        )}
         {assetsLength > 0 && (
           <button
             class={`bottom-page-btn immersive-toggle ${slideshowMode ? 'is-active' : 'is-inactive'}`}
@@ -231,23 +242,27 @@ function BottomControls({ onOpenSlideshowOptions }) {
               <FocusIcon size={18} />
             </button>
 
-            <button
-              class="bottom-page-btn"
-              onClick={handleToggleFullscreenMode}
-              aria-label={isFullscreenMode ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
-              title={isFullscreenMode ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
-            >
-              <FontAwesomeIcon icon={isFullscreenMode ? faCompressAlt : faExpandAlt} />
-            </button>
+            {isRegularFullscreen && (
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleFullscreenMode}
+                aria-label={isFullscreenMode ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
+                title={isFullscreenMode ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
+              >
+                <FontAwesomeIcon icon={isFullscreenMode ? faCompressAlt : faExpandAlt} />
+              </button>
+            )}
 
-            <button
-              class="bottom-page-btn"
-              onClick={handleToggleRegularFullscreen}
-              aria-label={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-              title={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            >
-              {isRegularFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
-            </button>
+            {!isMobile && (
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleRegularFullscreen}
+                aria-label={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                title={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                {isRegularFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
+              </button>
+            )}
 
             {isMobile && (
               <button

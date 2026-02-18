@@ -58,8 +58,10 @@ export const setCapturePreviewFn = (fn) => {
 export const captureCurrentAssetPreview = async () => {
   if (currentAssetIndex < 0 || !capturePreviewFn) return null;
   
-  const asset = assetList[currentAssetIndex];
+  const capturedIndex = currentAssetIndex;
+  const asset = assetList[capturedIndex];
   if (!asset) return null;
+  const capturedAssetId = asset.id;
   
   try {
     const result = await capturePreviewFn();
@@ -75,7 +77,13 @@ export const captureCurrentAssetPreview = async () => {
     };
 
     if (onPreviewGeneratedCallback) {
-      onPreviewGeneratedCallback(asset, currentAssetIndex, result);
+      let callbackIndex = capturedIndex;
+      if (assetList[callbackIndex]?.id !== capturedAssetId) {
+        callbackIndex = assetList.findIndex((candidate) => candidate?.id === capturedAssetId);
+      }
+      if (callbackIndex >= 0) {
+        onPreviewGeneratedCallback(asset, callbackIndex, result);
+      }
     }
     return result;
   } catch (err) {

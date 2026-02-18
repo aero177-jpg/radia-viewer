@@ -303,6 +303,7 @@ export const useStore = create(
   slideshowUseCustom: false,
   slideshowDuration: persistedUiPrefs.animation?.slideshowDuration ?? 3,
   slideshowPlaying: false,
+  viewerControlsDimmed: false,
   
   // Custom animation settings (used when intensity is 'custom')
   customAnimation: {
@@ -490,7 +491,10 @@ export const useStore = create(
   },
   
   /** Enables/disables slideshow mode */
-  setSlideshowMode: (enabled) => set({ slideshowMode: enabled }),
+  setSlideshowMode: (enabled) => set((state) => ({
+    slideshowMode: enabled,
+    viewerControlsDimmed: enabled ? false : state.viewerControlsDimmed,
+  })),
 
   /** Enables/disables custom slideshow transitions */
   setSlideshowUseCustom: (enabled) => set({ slideshowUseCustom: enabled }),
@@ -509,6 +513,12 @@ export const useStore = create(
   
   /** Sets slideshow playing state */
   setSlideshowPlaying: (playing) => set({ slideshowPlaying: playing }),
+
+  /** Sets whether viewer-adjacent controls are dimmed */
+  setViewerControlsDimmed: (dimmed) => set({ viewerControlsDimmed: Boolean(dimmed) }),
+
+  /** Toggles viewer-adjacent controls dimmed state */
+  toggleViewerControlsDimmed: () => set((state) => ({ viewerControlsDimmed: !state.viewerControlsDimmed })),
   
   /** Updates custom animation settings (merges with existing) */
   setCustomAnimation: (settings) => set((state) => {

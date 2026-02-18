@@ -16,8 +16,9 @@ function createInitialSelectionMap(options) {
   }, {});
 }
 
-function AddDemoCollectionsModal({
-  isOpen,
+export function DemoCollectionsPage({
+  isActive = true,
+  onBack,
   onClose,
   onInstall,
   options = [],
@@ -25,16 +26,16 @@ function AddDemoCollectionsModal({
   const [selectionMap, setSelectionMap] = useState(() => createInitialSelectionMap(options));
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState('');
-  const wasOpenRef = useRef(false);
+  const wasActiveRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen && !wasOpenRef.current) {
+    if (isActive && !wasActiveRef.current) {
       setSelectionMap(createInitialSelectionMap(options));
       setInstalling(false);
       setInstallError('');
     }
-    wasOpenRef.current = isOpen;
-  }, [isOpen, options]);
+    wasActiveRef.current = isActive;
+  }, [isActive, options]);
 
   const normalizedOptions = useMemo(() => (Array.isArray(options) ? options : []), [options]);
 
@@ -70,10 +71,13 @@ function AddDemoCollectionsModal({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} maxWidth={520}>
+    <>
+      {onBack && (
+        <button class="back-button" onClick={onBack}>
+          Back
+        </button>
+      )}
       <h2>Add demo collections</h2>
       <p class="dialog-subtitle">
         Choose demo collections to download and install.
@@ -153,6 +157,26 @@ function AddDemoCollectionsModal({
           )}
         </button>
       </div>
+    </>
+  );
+}
+
+function AddDemoCollectionsModal({
+  isOpen,
+  onClose,
+  onInstall,
+  options = [],
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth={520}>
+      <DemoCollectionsPage
+        isActive={isOpen}
+        onClose={onClose}
+        onInstall={onInstall}
+        options={options}
+      />
     </Modal>
   );
 }

@@ -6,6 +6,18 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import { setupFullscreenHandler } from '../fullscreenHandler';
 import { fadeInViewer, fadeOutViewer, restoreViewerVisibility } from './viewerFade';
 
+const isBrowserWindowFullscreen = () => {
+  if (typeof window === 'undefined' || typeof window.screen === 'undefined') {
+    return false;
+  }
+
+  const tolerancePx = 2;
+  return (
+    window.innerWidth >= window.screen.width - tolerancePx &&
+    window.innerHeight >= window.screen.height - tolerancePx
+  );
+};
+
 export default function useFullscreenControls({ hasMesh, resize, requestRender } = {}) {
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
   const [isRegularFullscreen, setIsRegularFullscreen] = useState(false);
@@ -21,8 +33,10 @@ export default function useFullscreenControls({ hasMesh, resize, requestRender }
   useEffect(() => {
     const syncRegularFullscreen = () => {
       const fullscreenRoot = document.getElementById('app');
-      setIsRegularFullscreen(Boolean(document.fullscreenElement));
-      if (!document.fullscreenElement && fullscreenRoot?.classList.contains('fullscreen-mode-fallback')) {
+      const hasFullscreenElement = Boolean(document.fullscreenElement);
+      setIsRegularFullscreen(hasFullscreenElement || isBrowserWindowFullscreen());
+
+      if (!hasFullscreenElement && fullscreenRoot?.classList.contains('fullscreen-mode-fallback')) {
         fullscreenRoot.classList.remove('fullscreen-mode-fallback');
         setIsFullscreenMode(false);
       }
@@ -30,7 +44,13 @@ export default function useFullscreenControls({ hasMesh, resize, requestRender }
 
     syncRegularFullscreen();
     document.addEventListener('fullscreenchange', syncRegularFullscreen);
-    return () => document.removeEventListener('fullscreenchange', syncRegularFullscreen);
+    window.addEventListener('resize', syncRegularFullscreen);
+    window.addEventListener('orientationchange', syncRegularFullscreen);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncRegularFullscreen);
+      window.removeEventListener('resize', syncRegularFullscreen);
+      window.removeEventListener('orientationchange', syncRegularFullscreen);
+    };
   }, []);
 
   const handleToggleFullscreenMode = useCallback(async () => {

@@ -37,6 +37,14 @@ const formatBytes = (bytes) => {
 
 let batchPreviewAborted = false;
 
+const resolveAssetIndexForUpdate = (asset, fallbackIndex) => {
+  const assets = getAssetList();
+  if (Number.isInteger(fallbackIndex) && assets[fallbackIndex]?.id === asset?.id) {
+    return fallbackIndex;
+  }
+  return assets.findIndex((candidate) => candidate?.id === asset?.id);
+};
+
 const loadSplatFileFast = async (asset) => {
   const viewerEl = document.getElementById('viewer');
   if (!viewerEl || !asset) return;
@@ -193,7 +201,15 @@ export const generateAllPreviews = async (options = {}) => {
             height: result.height,
             format: result.format,
           }, asset.previewStorageKey || asset.name);
-          store.updateAssetPreview(i, asset.preview);
+          const updateIndex = resolveAssetIndexForUpdate(asset, i);
+          if (updateIndex >= 0) {
+            store.updateAssetPreview(updateIndex, asset.preview);
+            if (updateIndex !== i) {
+              store.addLog(`[BatchPreview] Index drift guard: ${asset.name} resolved ${i} → ${updateIndex}`);
+            }
+          } else {
+            store.addLog(`[BatchPreview] Skipped sidebar update for ${asset.name} (asset not found)`);
+          }
           successCount++;
           store.addLog(`[BatchPreview] ✓ ${asset.name}`);
         } else {

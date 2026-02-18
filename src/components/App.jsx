@@ -302,6 +302,8 @@ function App() {
         onLoadDemo={handleLoadDemo}
         onSelectSource={handleSelectSource}
         onOpenCloudGpu={handleOpenCloudGpu}
+        onInstallDemoCollections={handleInstallDemoCollections}
+        demoCollectionOptions={demoCollectionOptions}
       />
         <Viewer viewerReady={viewerReady} dropOverlay={dropOverlay} />
       {/* Separate swipe target near bottom controls (debug green) */}

@@ -313,7 +313,7 @@ input[type="checkbox"]:disabled:checked {
   opacity: 1;
   display: flex;
   transform: none;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .title-card-overlay.is-fast-exit {
@@ -418,6 +418,20 @@ input[type="checkbox"]:disabled:checked {
   margin-bottom: 0px;
 }
 
+.viewer-upload-title-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.viewer-upload-title-main > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .viewer-upload-title.has-spinner {
   gap: 10px;
   justify-content: space-between;
@@ -463,6 +477,7 @@ input[type="checkbox"]:disabled:checked {
 }
 
 .viewer-upload-meta {
+  margin-left: 19px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2339,7 +2354,7 @@ select option {
   position: absolute;
   left: 0;
   top: 0;
- height: max(80vh, calc(100% - 150px));
+ height: max(80vh, calc(100% - 200px));
   width: 12vw;
   z-index: 9;
 }
@@ -2368,7 +2383,7 @@ select option {
 /* On mobile portrait, leave space for bottom sheet */
 @media (max-width: 768px) and (orientation: portrait) {
   .asset-sidebar {
-      height: calc(100% - 130px);
+      height: calc(100% - 180px);
 
     bottom: 45px;
     border-radius: 0 12px 12px 0;
@@ -2885,10 +2900,6 @@ border-radius: 10px;
   gap: 8px;
 }
 
-.bottom-controls-left {
-  flex: 0 0 auto;
-}
-
 .bottom-controls-center {
   flex: 1 1 auto;
   justify-content: center;
@@ -2936,7 +2947,7 @@ border-radius: 10px;
   transition: transform 0.15s ease;
 }
 
-.bottom-controls-right {
+.bottom-controls-left, .bottom-controls-right {
   flex: 0 0 auto;
   justify-content: flex-end;
   display: flex;
@@ -4102,6 +4113,7 @@ background: #3e576c52;
 }
 
 .collection-name {
+  color: white;
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;

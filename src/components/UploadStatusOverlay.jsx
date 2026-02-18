@@ -13,6 +13,8 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 
+const ALLOW_UPLOAD_OVERLAY_DEBUG = false;
+
 const PHASE_LABELS = {
   queued: 'Queued',
   starting_worker: 'Warming up GPU',
@@ -84,26 +86,105 @@ const formatEta = (seconds) => {
   return `${secs}s`;
 };
 
+const readDebugOverlayState = () => {
+  if (typeof window === 'undefined') {
+    return { enabled: false, isUploading: false, uploadProgress: null };
+  }
+
+  if (!ALLOW_UPLOAD_OVERLAY_DEBUG) {
+    return { enabled: false, isUploading: false, uploadProgress: null };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const enabled = params.get('debugUploadOverlay') === '1';
+  if (!enabled) {
+    return { enabled: false, isUploading: false, uploadProgress: null };
+  }
+
+  const mode = String(params.get('debugUploadMode') || 'processing').trim().toLowerCase();
+
+  if (mode === 'error' || mode === 'failed') {
+    const errorMessage = String(params.get('debugUploadErrorMessage') || 'Simulated upload failure').trim();
+    const errorDetail = String(
+      params.get('debugUploadErrorDetail')
+      || 'Simulated backend failure while processing image 5.\nGPU worker timed out and returned no output payload.'
+    ).trim();
+
+    return {
+      enabled: true,
+      isUploading: true,
+      uploadProgress: {
+        stage: 'error',
+        phase: 'failed',
+        status: 'failed',
+        message: errorMessage,
+        error: {
+          message: errorMessage,
+          detail: errorDetail,
+        },
+      },
+    };
+  }
+
+  const totalFiles = Math.max(2, normalizeStep(params.get('debugUploadTotal') || 8));
+  const currentFile = Math.max(1, Math.min(totalFiles, normalizeStep(params.get('debugUploadCurrent') || Math.ceil(totalFiles / 2))));
+  const timerTotalMs = Math.max(1000, normalizeStep(params.get('debugUploadMsTotal') || 120000));
+  const timerRemainingMs = Math.max(1000, Math.min(timerTotalMs - 1000, normalizeStep(params.get('debugUploadMsRemaining') || 52000)));
+
+  return {
+    enabled: true,
+    isUploading: true,
+    uploadProgress: {
+      stage: 'processing',
+      phase: 'processing_images',
+      status: 'processing_images',
+      timer: {
+        currentFile,
+        totalFiles,
+        totalMs: timerTotalMs,
+        remainingMs: timerRemainingMs,
+      },
+      total: totalFiles,
+      message: 'Debug overlay mode (simulated mid-process)',
+    },
+  };
+};
+
 function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default', onDismiss }) {
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [showDetailMessage, setShowDetailMessage] = useState(false);
   const [liveTimer, setLiveTimer] = useState(null);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const debugState = useMemo(() => readDebugOverlayState(), []);
 
-  const showUploadProgress = isUploading && (
-    uploadProgress?.stage
-    || uploadProgress?.upload?.total
-    || uploadProgress?.timer
-    || uploadProgress?.error
-    || uploadProgress?.total
+  const activeIsUploading = debugState.enabled ? debugState.isUploading : isUploading;
+  const activeUploadProgress = debugState.enabled ? debugState.uploadProgress : uploadProgress;
+
+  const showUploadProgress = activeIsUploading && (
+    activeUploadProgress?.stage
+    || activeUploadProgress?.upload?.total
+    || activeUploadProgress?.timer
+    || activeUploadProgress?.error
+    || activeUploadProgress?.total
   );
 
   useEffect(() => {
     setShowErrorDetails(false);
-  }, [uploadProgress?.error?.detail, uploadProgress?.error?.message]);
+  }, [activeUploadProgress?.error?.detail, activeUploadProgress?.error?.message]);
 
   useEffect(() => {
     setShowDetailMessage(false);
-  }, [uploadProgress?.message, uploadProgress?.phase, uploadProgress?.stage]);
+  }, [activeUploadProgress?.message, activeUploadProgress?.phase, activeUploadProgress?.stage]);
+
+  useEffect(() => {
+    if (!showUploadProgress) {
+      setIsDismissed(false);
+    }
+  }, [showUploadProgress]);
+
+  useEffect(() => {
+    setIsDismissed(false);
+  }, [activeUploadProgress?.error?.detail, activeUploadProgress?.error?.message, activeUploadProgress?.status, activeUploadProgress?.phase, activeUploadProgress?.stage]);
 
   useEffect(() => {
     if (!showUploadProgress) {
@@ -111,11 +192,11 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
       return;
     }
 
-    const stage = uploadProgress?.stage || 'upload';
-    const phase = normalizePhase(uploadProgress?.phase);
-    const status = normalizeStatus(uploadProgress?.status);
+    const stage = activeUploadProgress?.stage || 'upload';
+    const phase = normalizePhase(activeUploadProgress?.phase);
+    const status = normalizeStatus(activeUploadProgress?.status);
     const isTerminalDone = status === 'completed' || phase === 'completed' || TERMINAL_STATUSES.has(status);
-    const timer = uploadProgress?.timer || null;
+    const timer = activeUploadProgress?.timer || null;
     const isTimedStage = stage === 'warmup' || stage === 'processing' || phase === 'processing_images';
 
     if (!isTimedStage) {
@@ -123,7 +204,7 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
       return;
     }
 
-    const totalFiles = Math.max(1, normalizeStep(timer?.totalFiles || uploadProgress?.total || 1));
+    const totalFiles = Math.max(1, normalizeStep(timer?.totalFiles || activeUploadProgress?.total || 1));
     const observedStep = Math.min(totalFiles, normalizeStep(timer?.currentFile));
 
     setLiveTimer((previous) => {
@@ -169,7 +250,7 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
         terminal: false,
       };
     });
-  }, [showUploadProgress, uploadProgress]);
+  }, [showUploadProgress, activeUploadProgress]);
 
   useEffect(() => {
     if (!showUploadProgress || !liveTimer || liveTimer.terminal) return undefined;
@@ -207,16 +288,16 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
   const viewModel = useMemo(() => {
     if (!showUploadProgress) return null;
 
-    const stage = uploadProgress?.stage || 'upload';
-    const phase = normalizePhase(uploadProgress?.phase);
-    const status = normalizeStatus(uploadProgress?.status);
-    const timer = uploadProgress?.timer || null;
-    const download = uploadProgress?.download || null;
-    const totalFiles = timer?.totalFiles || uploadProgress?.total || 0;
+    const stage = activeUploadProgress?.stage || 'upload';
+    const phase = normalizePhase(activeUploadProgress?.phase);
+    const status = normalizeStatus(activeUploadProgress?.status);
+    const timer = activeUploadProgress?.timer || null;
+    const download = activeUploadProgress?.download || null;
+    const totalFiles = timer?.totalFiles || activeUploadProgress?.total || 0;
     const currentFile = timer?.currentFile || 0;
-    const error = uploadProgress?.error || null;
-    const backendMessage = String(uploadProgress?.message || '').trim();
-    const batch = uploadProgress?.batch || null;
+    const error = activeUploadProgress?.error || null;
+    const backendMessage = String(activeUploadProgress?.message || '').trim();
+    const batch = activeUploadProgress?.batch || null;
     const batchPrefix = batch?.total > 1
       ? `Batch ${batch?.index || 1} of ${batch?.total} • `
       : '';
@@ -321,9 +402,9 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
       progressPercent: percentFromTime,
       messageLabel,
     };
-  }, [showUploadProgress, uploadProgress, liveTimer]);
+  }, [showUploadProgress, activeUploadProgress, liveTimer]);
 
-  if (!showUploadProgress || !viewModel) return null;
+  if (!showUploadProgress || isDismissed || !viewModel) return null;
 
   const variantClass = variant && variant !== 'default' ? ` ${variant}` : '';
   const titleClass = viewModel.showSpinner || viewModel.showErrorIcon
@@ -333,22 +414,7 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
   return (
     <div class={`viewer-upload-overlay${variantClass}`}>
       <div class={titleClass}>
-        <span>{viewModel.stageLabel}</span>
-        {viewModel.showSpinner && <span class="viewer-upload-spinner" />}
-        {viewModel.showErrorIcon && (
-          <button
-            type="button"
-            class="viewer-upload-error-close"
-            onClick={onDismiss}
-            aria-label="Close"
-          >
-            <span class="viewer-upload-error-icon">✕</span>
-          </button>
-        )}
-      </div>
-      {(viewModel.etaLabel || viewModel.messageLabel) && (
-        <div class="viewer-upload-meta">
-          <span class="viewer-upload-eta">{viewModel.etaLabel || '\u00a0'}</span>
+        <div class="viewer-upload-title-main">
           {viewModel.messageLabel && (
             <button
               type="button"
@@ -367,6 +433,26 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
               </span>
             </button>
           )}
+          <span>{viewModel.stageLabel}</span>
+        </div>
+        {viewModel.showSpinner && <span class="viewer-upload-spinner" />}
+        {viewModel.showErrorIcon && (
+          <button
+            type="button"
+            class="viewer-upload-error-close"
+            onClick={() => {
+              setIsDismissed(true);
+              onDismiss?.();
+            }}
+            aria-label="Close"
+          >
+            <span class="viewer-upload-error-icon">✕</span>
+          </button>
+        )}
+      </div>
+      {viewModel.etaLabel && (
+        <div class="viewer-upload-meta">
+          <span class="viewer-upload-eta">{viewModel.etaLabel}</span>
         </div>
       )}
       {viewModel.messageLabel && showDetailMessage && (

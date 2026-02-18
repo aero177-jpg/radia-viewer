@@ -11,6 +11,7 @@ import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '
 import { savePreviewBlob } from '../fileStorage';
 import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
 import { loadFromStorageSource, resize } from '../fileLoader';
+import { applyPreviewBackground } from '../backgroundManager.js';
 import { clearCustomMetadataForAsset } from '../customMetadata.js';
 import { requestRender, setStereoEffectEnabled } from '../viewer';
 import { formatBytes } from '../previewManager.js';
@@ -251,6 +252,11 @@ function DebugSettings() {
       
       if (result?.url) {
         addLog(`[Debug] Preview captured: ${result.url.substring(0, 50)}...`);
+
+        const storeCurrentIndex = useStore.getState().currentAssetIndex;
+        if (storeCurrentIndex === currentIndex) {
+          applyPreviewBackground(result.url);
+        }
         
         // Force update the store directly
         console.log('[Debug] Calling updateAssetPreview with index:', currentIndex, 'preview:', asset.preview);
@@ -710,7 +716,7 @@ function DebugSettings() {
             onClick={handleRegeneratePreview}
             disabled={generatingPreview}
           >
-            {generatingPreview ? 'Capturing...' : 'Capture'}
+             Capture
           </button>
         </div>
 

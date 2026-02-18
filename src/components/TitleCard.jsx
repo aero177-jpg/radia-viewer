@@ -10,6 +10,7 @@ import { FolderIcon, ServerIcon, RocketIcon, CollectionIcon, FolderOpenIcon } fr
 import { getSourcesArray, onSourceChange } from '../storage/index.js';
 import StorageSourceList from './StorageSourceList';
 import Modal from './Modal';
+import { DemoCollectionsPage } from './AddDemoCollectionsModal';
 
 function TitleCard({
   show,
@@ -18,6 +19,8 @@ function TitleCard({
   onLoadDemo,
   onSelectSource,
   onOpenCloudGpu,
+  onInstallDemoCollections,
+  demoCollectionOptions = [],
 }) {
   // Keep the overlay mounted through fade-out; unmount after transition ends
   const [mounted, setMounted] = useState(show);
@@ -34,6 +37,7 @@ function TitleCard({
   // Sources state for collections button
   const [sources, setSources] = useState(() => getSourcesArray());
   const [showCollectionsModal, setShowCollectionsModal] = useState(false);
+  const [collectionsView, setCollectionsView] = useState('sources');
   const [fastExit, setFastExit] = useState(false);
   const closeCollectionsTimerRef = useRef(null);
   const openControlsModalWithSections = useStore((state) => state.openControlsModalWithSections);
@@ -49,6 +53,7 @@ function TitleCard({
   }, []);
 
   const handleOpenCollections = useCallback(() => {
+    setCollectionsView('sources');
     setShowCollectionsModal(true);
   }, []);
 
@@ -57,6 +62,7 @@ function TitleCard({
       clearTimeout(closeCollectionsTimerRef.current);
       closeCollectionsTimerRef.current = null;
     }
+    setCollectionsView('sources');
     setShowCollectionsModal(false);
   }, []);
 
@@ -185,27 +191,49 @@ function TitleCard({
       <Modal
         isOpen={showCollectionsModal}
         onClose={handleCloseCollections}
-        maxWidth={480}
+        maxWidth={collectionsView === 'demos' ? 520 : 480}
       >
-        <h2>Collections</h2>
-        <p class="dialog-subtitle">Select a collection to load.</p>
+        {collectionsView === 'sources' ? (
+          <>
+            <h2>Collections</h2>
+            <p class="dialog-subtitle">Select a collection to load.</p>
 
-        <StorageSourceList
-          onAddSource={onOpenStorage}
-          onSelectSource={handleSelectSource}
-          onOpenCloudGpu={onOpenCloudGpu}
-          listOnly
-        />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px', marginBottom: '8px' }}>
+              <button
+                class="back-button"
+                onClick={() => setCollectionsView('demos')}
+                style={{ marginBottom: 0 }}
+              >
+                add demo collections
+              </button>
+            </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
-          <button
-            class="secondary-button"
-            onClick={handleCloseCollections}
-            style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
-          >
-            Cancel
-          </button>
-        </div>
+            <StorageSourceList
+              onAddSource={onOpenStorage}
+              onSelectSource={handleSelectSource}
+              onOpenCloudGpu={onOpenCloudGpu}
+              listOnly
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '24px' }}>
+              <button
+                class="secondary-button"
+                onClick={handleCloseCollections}
+                style={{ height: '36px', padding: '0 16px', minWidth: '80px', marginTop: '0' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <DemoCollectionsPage
+            isActive={collectionsView === 'demos' && showCollectionsModal}
+            onBack={() => setCollectionsView('sources')}
+            onClose={handleCloseCollections}
+            onInstall={onInstallDemoCollections}
+            options={demoCollectionOptions}
+          />
+        )}
       </Modal>
     </div>
   );
