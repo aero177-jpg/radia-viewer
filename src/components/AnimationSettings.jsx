@@ -69,6 +69,41 @@ const ZOOM_PROFILE_OPTIONS = [
   { value: 'far', label: 'Far' },
 ];
 
+const FILE_SLIDE_TYPE_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: 'horizontal', label: 'Horizontal' },
+  { value: 'vertical', label: 'Vertical' },
+  { value: 'zoom', label: 'Zoom' },
+  { value: 'fade', label: 'Fade' },
+];
+
+const FILE_TRANSITION_RANGE_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large', label: 'Large' },
+];
+
+const DEFAULT_FILE_CUSTOM_ANIMATION = {
+  slideType: 'default',
+  transitionRange: 'default',
+  zoomProfile: 'default',
+};
+
+const buildCustomAnimationPayload = (settings) => {
+  const payload = {};
+  if (settings.slideType && settings.slideType !== 'default') {
+    payload.slideType = settings.slideType;
+  }
+  if (settings.transitionRange && settings.transitionRange !== 'default') {
+    payload.transitionRange = settings.transitionRange;
+  }
+  if (settings.zoomProfile && settings.zoomProfile !== 'default') {
+    payload.zoomProfile = settings.zoomProfile;
+  }
+  return payload;
+};
+
 function AnimationSettings() {
   // Store state
   const animationEnabled = useStore((state) => state.animationEnabled);
@@ -171,13 +206,12 @@ function AnimationSettings() {
     setContinuousMotionDurationStore(value);
   }, [setContinuousMotionDurationStore]);
 
-  const handleZoomProfileChange = useCallback((e) => {
-    const zoomProfile = e.target.value;
-    setFileCustomAnimation({ zoomProfile });
+  const persistFileCustomAnimation = useCallback((nextSettings) => {
+    setFileCustomAnimation(nextSettings);
     const currentAssetId = assets?.[currentAssetIndex]?.id;
+    const payload = buildCustomAnimationPayload(nextSettings);
 
     if (currentFileName && currentFileName !== '-') {
-      const payload = zoomProfile === 'default' ? {} : { zoomProfile };
       saveCustomAnimationSettings(currentFileName, payload)
         .catch(err => {
           console.warn('Failed to save custom animation settings:', err);
@@ -185,13 +219,52 @@ function AnimationSettings() {
     }
 
     if (currentAssetId) {
-      if (zoomProfile === 'default') {
-        clearCustomAnimationInCache(currentAssetId);
-      } else {
-        updateCustomAnimationInCache(currentAssetId, { zoomProfile });
+      clearCustomAnimationInCache(currentAssetId);
+      if (Object.keys(payload).length > 0) {
+        updateCustomAnimationInCache(currentAssetId, payload);
       }
     }
   }, [setFileCustomAnimation, currentFileName, assets, currentAssetIndex]);
+
+  const handleZoomProfileChange = useCallback((e) => {
+    const zoomProfile = e.target.value;
+    const nextSettings = {
+      ...DEFAULT_FILE_CUSTOM_ANIMATION,
+      ...(fileCustomAnimation || {}),
+      zoomProfile,
+    };
+    persistFileCustomAnimation(nextSettings);
+  }, [fileCustomAnimation, persistFileCustomAnimation]);
+
+  const handleFileSlideTypeChange = useCallback((e) => {
+    const slideType = e.target.value;
+    const nextSettings = {
+      ...DEFAULT_FILE_CUSTOM_ANIMATION,
+      ...(fileCustomAnimation || {}),
+      slideType,
+    };
+    persistFileCustomAnimation(nextSettings);
+  }, [fileCustomAnimation, persistFileCustomAnimation]);
+
+  const handleFileTransitionRangeChange = useCallback((e) => {
+    const transitionRange = e.target.value;
+    const nextSettings = {
+      ...DEFAULT_FILE_CUSTOM_ANIMATION,
+      ...(fileCustomAnimation || {}),
+      transitionRange,
+    };
+    persistFileCustomAnimation(nextSettings);
+  }, [fileCustomAnimation, persistFileCustomAnimation]);
+
+  const effectiveFileSlideType =
+    fileCustomAnimation?.slideType && fileCustomAnimation.slideType !== 'default'
+      ? fileCustomAnimation.slideType
+      : slideMode;
+  const hasFileSlideshowOverride = Boolean(
+    (fileCustomAnimation?.slideType && fileCustomAnimation.slideType !== 'default')
+    || (fileCustomAnimation?.transitionRange && fileCustomAnimation.transitionRange !== 'default')
+    || (fileCustomAnimation?.zoomProfile && fileCustomAnimation.zoomProfile !== 'default')
+  );
 
   const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob || null), type, quality);
@@ -383,6 +456,36 @@ function AnimationSettings() {
           <span>Slideshow</span>
         </div>
 
+        {hasFileSlideshowOverride && (
+          <div class="control-row" style={{ justifyContent: 'flex-end', paddingTop: '0', paddingBottom: '0' }}>
+            <span class="tier-badge">Override Active</span>
+          </div>
+        )}
+
+        <div class="control-row select-row">
+          <span class="control-label">Slide (Per-file)</span>
+          <select
+            value={fileCustomAnimation?.slideType ?? 'default'}
+            onChange={handleFileSlideTypeChange}
+          >
+            {FILE_SLIDE_TYPE_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div class="control-row select-row">
+          <span class="control-label">Range (Per-file)</span>
+          <select
+            value={fileCustomAnimation?.transitionRange ?? 'default'}
+            onChange={handleFileTransitionRangeChange}
+          >
+            {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Slideshow continuous mode toggle */}
         {slideMode !== 'fade' && (
           <div class="control-row animate-toggle-row">
@@ -398,7 +501,7 @@ function AnimationSettings() {
           </div>
         )}
 
-        {slideMode === 'zoom' && (
+        {effectiveFileSlideType === 'zoom' && (
           <div class="control-row select-row">
             <span class="control-label">Zoom target</span>
             <select

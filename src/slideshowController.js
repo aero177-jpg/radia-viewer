@@ -275,7 +275,10 @@ const beginFreshPlayback = () => {
  */
 const resolveContinuousSlideMode = (store) => {
   if (!store.slideshowContinuousMode) return null;
-  const baseSlideMode = store.slideMode ?? 'horizontal';
+  const fileSlideType = store.fileCustomAnimation?.slideType;
+  const baseSlideMode = fileSlideType && fileSlideType !== 'default'
+    ? fileSlideType
+    : (store.slideMode ?? 'horizontal');
   if (baseSlideMode === 'fade') return null;
   return baseSlideMode === 'horizontal' ? 'continuous-orbit'
     : baseSlideMode === 'vertical'   ? 'continuous-orbit-vertical'
@@ -364,7 +367,7 @@ const advanceAndSchedule = async () => {
 
     if (sameBase) {
       try {
-        const handoff = await buildContinuousHandoff(nextAssetObj, { slideMode });
+        const handoff = await buildContinuousHandoff(nextAssetObj);
 
         if (handoff) {
           // Advance the asset index

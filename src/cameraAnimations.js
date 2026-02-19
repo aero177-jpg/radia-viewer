@@ -244,7 +244,7 @@ const calculateSlideGeometry = (mode, direction, amount, isSlideOut) => {
 
   switch (mode) {
     case 'zoom': {
-      const zoomAmount = distance * (isSlideOut ? 0.3 : 0.25);
+      const zoomAmount = distance * amount * (isSlideOut ? (2 / 3) : (5 / 9));
       let zoomDir = isSlideOut ? 1 : -1;
       if (direction === 'prev') zoomDir *= -1;
       const zoomOffset = forward.clone().multiplyScalar(zoomAmount * zoomDir);

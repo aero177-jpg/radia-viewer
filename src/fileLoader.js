@@ -46,7 +46,7 @@ import {
   cancelContinuousVerticalOrbitAnimation,
   clearContinuousHandoff,
 } from "./cameraAnimations.js";
-import { resolveSlideInOptions } from "./slideConfig.js";
+import { resolveSlideInOptions, resolveSlideOutOptions } from "./slideConfig.js";
 import { resetSlideshowTimer } from "./slideshowController.js";
 import { isImmersiveModeActive, pauseImmersiveMode, resumeImmersiveMode } from "./immersiveMode.js";
 import { applyIntrinsicsAspect, updateViewerAspectRatio, resize } from "./layout.js";
@@ -115,6 +115,62 @@ const getStoreState = () => useStore.getState();
 /** Supported file extensions for display */
 const supportedExtensions = getSupportedExtensions();
 const supportedExtensionsText = supportedExtensions.join(", ");
+
+const VALID_FILE_SLIDE_TYPES = new Set(['horizontal', 'vertical', 'zoom', 'fade', 'default']);
+const VALID_TRANSITION_RANGE_KEYS = new Set(['small', 'medium', 'large', 'default']);
+const NON_CONTINUOUS_RANGE_MULTIPLIER_BY_KEY = {
+  small: 0.75,
+  medium: 1,
+  large: 1.25,
+};
+const DEFAULT_FILE_CUSTOM_ANIMATION = {
+  slideType: 'default',
+  transitionRange: 'default',
+  zoomProfile: 'default',
+};
+
+export const normalizeFileCustomAnimationSettings = (customAnimationSettings) => {
+  const slideType = VALID_FILE_SLIDE_TYPES.has(customAnimationSettings?.slideType)
+    ? customAnimationSettings.slideType
+    : 'default';
+  const transitionRange = VALID_TRANSITION_RANGE_KEYS.has(customAnimationSettings?.transitionRange)
+    ? customAnimationSettings.transitionRange
+    : 'default';
+  const zoomProfile = typeof customAnimationSettings?.zoomProfile === 'string'
+    ? customAnimationSettings.zoomProfile
+    : 'default';
+
+  return {
+    slideType,
+    transitionRange,
+    zoomProfile,
+  };
+};
+
+const resolvePerFileSlideType = (store, customAnimationSettings) => {
+  const normalized = normalizeFileCustomAnimationSettings(customAnimationSettings);
+  if (normalized.slideType !== 'default') {
+    return normalized.slideType;
+  }
+  return store.slideMode ?? 'horizontal';
+};
+
+const applyTransitionRangeToAmount = (mode, amount, transitionRangeKey) => {
+  if (!Number.isFinite(amount)) return amount;
+  if (mode === 'fade' || mode?.startsWith('continuous-')) return amount;
+  const multiplier = NON_CONTINUOUS_RANGE_MULTIPLIER_BY_KEY[transitionRangeKey];
+  if (!Number.isFinite(multiplier)) return amount;
+  return amount * multiplier;
+};
+
+const resolveSlideAmountWithPerFileRange = (mode, preset, transitionRangeKey, phase = 'in') => {
+  if (transitionRangeKey === 'default') return undefined;
+  const options = phase === 'out'
+    ? resolveSlideOutOptions(mode, { preset })
+    : resolveSlideInOptions(mode, { preset });
+  const amount = applyTransitionRangeToAmount(mode, options.amount, transitionRangeKey);
+  return Number.isFinite(amount) ? amount : undefined;
+};
 
 const isFile = (value) => typeof File !== "undefined" && value instanceof File;
 
@@ -344,10 +400,11 @@ const resolveAssetView = async (asset) => {
   return { metadata, views, selectedView };
 };
 
-const getSlideModeForStore = (store, { slideDirection } = {}) => {
+const getSlideModeForStore = (store, { slideDirection, customAnimationSettings } = {}) => {
   const immersiveActive = isImmersiveModeActive();
   const forceFadeForNonSequential = !slideDirection;
-  const baseSlideMode = store.slideMode ?? 'horizontal';
+  const normalizedCustomAnimation = normalizeFileCustomAnimationSettings(customAnimationSettings);
+  const baseSlideMode = resolvePerFileSlideType(store, normalizedCustomAnimation);
   const shouldUseContinuous = store.slideshowMode && store.slideshowPlaying && store.slideshowContinuousMode && baseSlideMode !== 'fade';
   const resolvedSlideMode = shouldUseContinuous
     ? (baseSlideMode === 'horizontal'
@@ -361,6 +418,8 @@ const getSlideModeForStore = (store, { slideDirection } = {}) => {
 
   return {
     immersiveActive,
+    baseSlideMode,
+    transitionRange: normalizedCustomAnimation.transitionRange,
     slideMode: (immersiveActive || forceFadeForNonSequential) ? 'fade' : resolvedSlideMode,
   };
 };
@@ -415,8 +474,11 @@ const syncStoredAnimationSettings = async (animationSettings, wasImmersiveModeAc
 };
 
 const syncStoredCustomAnimationSettings = (customAnimationSettings, store) => {
-  const zoomProfile = customAnimationSettings?.zoomProfile ?? 'default';
-  store.setFileCustomAnimation({ zoomProfile });
+  const normalized = normalizeFileCustomAnimationSettings(customAnimationSettings);
+  store.setFileCustomAnimation({
+    ...DEFAULT_FILE_CUSTOM_ANIMATION,
+    ...normalized,
+  });
 };
 
 const refreshSparkForCurrentView = (reason = 'unspecified') => {
@@ -475,11 +537,16 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
   const store = getStoreState();
   const { slideDirection } = options;
-  const { immersiveActive, slideMode } = getSlideModeForStore(store, { slideDirection });
   const forceFadeForNonSequential = !slideDirection;
   const isFirstLoad = !hasLoadedFirstAsset; // Detect first asset load before any mesh exists
   const wasAlreadyCached = isSplatCached(asset);
   const activeCacheKey = asset.cacheKey || getBaseAssetId(asset) || asset.id;
+  const cachedCustomAnimation = getSplatCache().get(activeCacheKey)?.storedSettings?.customAnimation;
+  const {
+    immersiveActive,
+    slideMode: initialSlideMode,
+    transitionRange: initialTransitionRange,
+  } = getSlideModeForStore(store, { slideDirection, customAnimationSettings: cachedCustomAnimation });
 
   // For first load, immediately hide content to prevent flash before fade-in
   // This must happen BEFORE any async work that might cause a render
@@ -496,7 +563,17 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
   const shouldRunTransition = currentMesh && (slideDirection || forceFadeForNonSequential);
   let preloadedEntry = null;
   if (shouldRunTransition) {
-    const slideOutPromise = slideOutAnimation(transitionDirection, { mode: slideMode, preset: 'transition' });
+    const slideOutAmount = resolveSlideAmountWithPerFileRange(
+      initialSlideMode,
+      'transition',
+      initialTransitionRange,
+      'out',
+    );
+    const slideOutPromise = slideOutAnimation(transitionDirection, {
+      mode: initialSlideMode,
+      preset: 'transition',
+      amount: slideOutAmount,
+    });
     const prepPromise = entryPromise.catch((err) => {
       console.warn('Failed to preload during transition:', err);
       return null;
@@ -663,6 +740,14 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       store,
     );
 
+    const {
+      slideMode: resolvedSlideMode,
+      transitionRange: resolvedTransitionRange,
+    } = getSlideModeForStore(store, {
+      slideDirection,
+      customAnimationSettings: storedSettings?.customAnimation,
+    });
+
     if (focusDistanceOverride !== undefined) {
       store.setHasCustomFocus(true);
       store.setFocusDistanceOverride(focusDistanceOverride);
@@ -763,7 +848,17 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       }
       
       // Slide in from the navigation direction (1s pan with quick fade-in)
-      await slideInAnimation(slideDirection, { mode: slideMode, preset: 'cached' });
+      const cachedSlideInAmount = resolveSlideAmountWithPerFileRange(
+        resolvedSlideMode,
+        'cached',
+        resolvedTransitionRange,
+        'in',
+      );
+      await slideInAnimation(slideDirection, {
+        mode: resolvedSlideMode,
+        preset: 'cached',
+        amount: cachedSlideInAmount,
+      });
       
       // Safety cleanup in case slideInAnimation didn't fully clean up
       const viewerEl = document.getElementById('viewer');
@@ -803,8 +898,18 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
       }
       
       if (shouldRunTransition) {
+        const transitionSlideInAmount = resolveSlideAmountWithPerFileRange(
+          resolvedSlideMode,
+          'transition',
+          resolvedTransitionRange,
+          'in',
+        );
         // Bring content back with fade/slide-in after camera is set
-        await slideInAnimation(transitionDirection, { mode: slideMode, preset: 'transition' });
+        await slideInAnimation(transitionDirection, {
+          mode: resolvedSlideMode,
+          preset: 'transition',
+          amount: transitionSlideInAmount,
+        });
         const viewerEl = document.getElementById('viewer');
         if (viewerEl) {
           viewerEl.classList.remove('slide-out');
@@ -1349,22 +1454,42 @@ const navigateWithinLoadedBaseAsset = async (asset, options = {}) => {
  * @param {string} opts.slideMode - Continuous slide mode (e.g. 'continuous-orbit')
  * @returns {Promise<Object|null>} handoff payload or null if view can't be resolved
  */
-export const buildContinuousHandoff = async (asset, { slideMode }) => {
+export const buildContinuousHandoff = async (asset, { slideMode: _slideMode } = {}) => {
   const { selectedView, views } = await resolveAssetView(asset);
   if (!selectedView?.cameraPose) return null;
 
-  // Pre-sync proxy views (async work done now, not during handoff)
-  await syncAssetProxyViews({ store: getStoreState(), currentAsset: asset, views });
+  const store = getStoreState();
+  let nextAssetCustomAnimation = null;
+  try {
+    const entry = await ensureSplatEntry(asset);
+    nextAssetCustomAnimation = entry?.storedSettings?.customAnimation ?? null;
+  } catch (err) {
+    console.warn('[FileLoader] Failed to pre-resolve custom animation for handoff', err);
+  }
 
-  const { duration, amount } = resolveSlideInOptions(slideMode, { preset: 'transition' });
+  const { slideMode: resolvedSlideMode } = getSlideModeForStore(store, {
+    slideDirection: 'next',
+    customAnimationSettings: nextAssetCustomAnimation,
+  });
+
+  if (!resolvedSlideMode?.startsWith('continuous-')) {
+    return null;
+  }
+
+  // Pre-sync proxy views (async work done now, not during handoff)
+  await syncAssetProxyViews({ store, currentAsset: asset, views });
+
+  const { duration, amount } = resolveSlideInOptions(resolvedSlideMode, { preset: 'transition' });
 
   return {
-    slideMode,
+    slideMode: resolvedSlideMode,
     duration,
     amount,
     glideDuration: SAME_BASE_GLIDE_MS / 1000,
     onApply: () => {
-      const store = getStoreState();
+      const applyStore = getStoreState();
+
+      syncStoredCustomAnimationSettings(nextAssetCustomAnimation, applyStore);
 
       // Model transform
       if (currentMesh) {
@@ -1373,31 +1498,31 @@ export const buildContinuousHandoff = async (asset, { slideMode }) => {
           modelScale: selectedView?.model?.modelScale ?? 1,
         });
       }
-      store.setCustomModelScale(selectedView?.model?.modelScale ?? 1);
+      applyStore.setCustomModelScale(selectedView?.model?.modelScale ?? 1);
 
       // Aspect ratio – instant, no CSS transition
       const customAspectRatio = selectedView?.view?.aspectRatio ?? null;
       setOriginalImageAspect(customAspectRatio);
-      store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
+      applyStore.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
       applyInstantProxyAspectCutAndReset();
 
       // Camera pose (so the continuous fn calculates offsets from the new view)
       applyCameraPose(selectedView.cameraPose);
-      try { store.setFov(camera.fov); } catch (_) { /* noop */ }
+      try { applyStore.setFov(camera.fov); } catch (_) { /* noop */ }
       saveHomeView();
       applyDebugZoomOut();
       updateDollyZoomBaselineFromCamera();
       forceProxyPostPoseRenderReflow('continuous-handoff');
 
       // Store state
-      store.setMetadataMissing(false);
-      store.setCustomMetadataAvailable(true);
-      store.setCustomMetadataControlsVisible(false);
-      store.setFileInfo({
+      applyStore.setMetadataMissing(false);
+      applyStore.setCustomMetadataAvailable(true);
+      applyStore.setCustomMetadataControlsVisible(false);
+      applyStore.setFileInfo({
         name: getBaseAssetName(asset),
         size: formatBytes(asset.file?.size ?? asset.size),
       });
-      store.setStatus(`Loaded ${getBaseAssetName(asset)} view`);
+      applyStore.setStatus(`Loaded ${getBaseAssetName(asset)} view`);
 
       // Cross-fade background to match the glide duration
       if (asset.preview) {

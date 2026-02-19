@@ -317,6 +317,8 @@ export const useStore = create(
   },
   // Per-file custom animation overrides (stored in IndexedDB file-settings)
   fileCustomAnimation: {
+    slideType: 'default',
+    transitionRange: 'default',
     zoomProfile: 'default',
   },
 

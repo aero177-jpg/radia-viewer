@@ -59,15 +59,33 @@ let continuousVerticalOrbitState = null;
 
 const getStoreState = () => useStore.getState();
 
+const getEffectiveSlideType = () => {
+  const { slideMode, fileCustomAnimation } = getStoreState();
+  const fileSlideType = fileCustomAnimation?.slideType;
+  if (fileSlideType && fileSlideType !== 'default') {
+    return fileSlideType;
+  }
+  return slideMode ?? 'horizontal';
+};
+
+const getEffectiveContinuousRangeKey = () => {
+  const { continuousMotionSize, fileCustomAnimation } = getStoreState();
+  const transitionRange = fileCustomAnimation?.transitionRange;
+  if (transitionRange && transitionRange !== 'default') {
+    return transitionRange;
+  }
+  return continuousMotionSize ?? 'large';
+};
+
 const getContinuousSizeScale = () => {
-  const { continuousMotionSize } = getStoreState();
-  return CONTINUOUS_SIZE_SCALE[continuousMotionSize] ?? CONTINUOUS_SIZE_SCALE.large;
+  const rangeKey = getEffectiveContinuousRangeKey();
+  return CONTINUOUS_SIZE_SCALE[rangeKey] ?? CONTINUOUS_SIZE_SCALE.large;
 };
 
 const getContinuousZoomRatios = () => {
-  const { continuousMotionSize, slideMode, fileCustomAnimation } = getStoreState();
-  const sizeKey = continuousMotionSize ?? 'large';
-  const zoomProfile = slideMode === 'zoom' ? fileCustomAnimation?.zoomProfile : null;
+  const { fileCustomAnimation } = getStoreState();
+  const sizeKey = getEffectiveContinuousRangeKey();
+  const zoomProfile = getEffectiveSlideType() === 'zoom' ? fileCustomAnimation?.zoomProfile : null;
 
   if (zoomProfile === 'near') {
     return {
@@ -98,12 +116,12 @@ const getContinuousZoomRatios = () => {
 };
 
 const resolveDollyZoomProfileKey = () => {
-  const { continuousMotionSize, slideMode, fileCustomAnimation } = getStoreState();
-  const zoomProfile = slideMode === 'zoom' ? fileCustomAnimation?.zoomProfile : null;
+  const { fileCustomAnimation } = getStoreState();
+  const sizeKey = getEffectiveContinuousRangeKey();
+  const zoomProfile = getEffectiveSlideType() === 'zoom' ? fileCustomAnimation?.zoomProfile : null;
   if (zoomProfile && zoomProfile !== 'default') {
     return zoomProfile;
   }
-  const sizeKey = continuousMotionSize ?? 'large';
   if (sizeKey === 'small') return 'near';
   if (sizeKey === 'medium') return 'medium';
   return 'far';
