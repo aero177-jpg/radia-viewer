@@ -4,7 +4,7 @@
 
 import { useCallback, useRef } from 'preact/hooks';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExpandAlt, faCompressAlt } from '@fortawesome/free-solid-svg-icons';
+import { faExpandAlt } from '@fortawesome/free-solid-svg-icons';
 import { FocusIcon, Rotate3DIcon, MaximizeIcon, MinimizeIcon, slideShowToggleIcon as SlideShowToggleIcon } from '../icons/customIcons';
 import { useStore } from '../store';
 import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance, dollyZoomBaseFov, requestRender, THREE, resetViewer } from '../viewer';
@@ -49,9 +49,7 @@ function BottomControls({ onOpenSlideshowOptions }) {
   const resetHoldTriggered = useRef(false);
 
   const {
-    isFullscreenMode,
     isRegularFullscreen,
-    handleToggleFullscreenMode,
     handleToggleRegularFullscreen,
   } = useFullscreenControls({
     hasMesh,
@@ -242,16 +240,14 @@ function BottomControls({ onOpenSlideshowOptions }) {
               <FocusIcon size={18} />
             </button>
 
-            {isRegularFullscreen && (
-              <button
-                class="bottom-page-btn"
-                onClick={handleToggleFullscreenMode}
-                aria-label={isFullscreenMode ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
-                title={isFullscreenMode ? 'Exit fullscreen mode' : 'Enter fullscreen mode'}
-              >
-                <FontAwesomeIcon icon={isFullscreenMode ? faCompressAlt : faExpandAlt} />
-              </button>
-            )}
+            <button
+              class="bottom-page-btn"
+              disabled
+              aria-label="Expand viewer (coming soon)"
+              title="Expand viewer (coming soon)"
+            >
+              <FontAwesomeIcon icon={faExpandAlt} />
+            </button>
 
             {!isMobile && (
               <button

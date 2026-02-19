@@ -72,7 +72,7 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
                 <li><strong>View image:</strong> Drag your .ply or .sog files onto the page to create a quick collection. If a cloud GPU is configured, you can add image files and you will be prompted to upload them. You can also click “browse” to search your device.</li>
                 <li><strong>Gallery:</strong> Click, swipe, or hover on the left side of the screen, or click the button in the bottom left corner. Here you can browse, add more images, or delete with additional options.</li>
                 <li><strong>Main Settings:</strong> On desktop or landscape mode on mobile, click, swipe, or hover on the right side of the screen, or click the arrow in the upper right corner. On mobile portrait mode, tap or swipe up on the bottom menu handle.</li>
-                <li><strong>Viewer buttons:</strong> Advance next/back and play/pause slideshow (if slideshow mode is toggled on). Buttons on the right side, from top to bottom, are reset view, fit to screen toggle (if in fullscreen), fullscreen mode toggle, and immersive mode (on mobile).</li>
+                <li><strong>Viewer buttons:</strong> Advance next/back and play/pause slideshow (if slideshow mode is toggled on). Buttons on the right side, from top to bottom, are reset view, expand viewer (coming soon), fullscreen toggle, and immersive mode (on mobile).</li>
               </ul>
             </Section>
             <Section title="Slideshow" isOpen={isSubsectionOpen('getting-started.slideshow')}>
@@ -120,11 +120,11 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
                 <li><strong>Click-drag:</strong> Orbit.</li>
                 <li><strong>Right click-drag:</strong> Pan.</li>
                 <li><strong>Scroll:</strong> Zoom.</li>
-                <li><strong>Click:</strong> Toggle UI in fullscreen mode.</li>
+                <li><strong>Click:</strong> Interact with controls and viewer.</li>
                 <li><strong>Tap or Spacebar:</strong> Play / pause slideshow. <strong>Double Tap</strong> to orbit image while paused.</li>
                 <li><strong>R key:</strong> Reset camera, or click focus icon in viewer.</li>
                 <li><strong>Arrow keys:</strong> Advance splats.</li>
-                <li><strong>F11:</strong> Will open normal browser fullscreen, but the fullscreen toggle needs to be clicked in the viewer to get intended "fullscreen mode".</li>
+                <li><strong>F11:</strong> Opens normal browser fullscreen. You can also use the fullscreen button in the viewer controls.</li>
               </ul>
             </Section>
 

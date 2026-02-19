@@ -129,9 +129,7 @@ export const updateViewerAspectRatio = () => {
   
   const { isMobile, isPortrait, panelOpen } = getStoreState();
   const fullscreenRoot = document.getElementById('app');
-  const isFullscreen =
-    document.fullscreenElement === fullscreenRoot ||
-    fullscreenRoot?.classList?.contains('fullscreen-mode-fallback');
+  const isFullscreen = document.fullscreenElement === fullscreenRoot;
   
   let availableWidth = Math.max(0, window.innerWidth - (isFullscreen ? 0 : PAGE_PADDING));
   let availableHeight = Math.max(0, window.innerHeight - (isFullscreen ? 0 : PAGE_PADDING));
