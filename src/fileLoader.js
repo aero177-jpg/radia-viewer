@@ -711,7 +711,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     store.setCustomMetadataAvailable(customViews.length > 0);
     store.setCustomMetadataControlsVisible(metadataMissing);
 
-    const shouldDisableOrbitLimits = metadataMissing || hasCustomMetadata || store.slideshowMode;
+    const shouldDisableOrbitLimits = metadataMissing || hasCustomMetadata || (store.slideshowMode && store.slideshowPlaying);
     if (shouldDisableOrbitLimits) {
       applyFullOrbitConstraints();
     } else {

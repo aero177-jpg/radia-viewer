@@ -220,6 +220,69 @@ function ImportZipForm({
         ))}
       </ul>
 
+        {/* Import from URL or JSON collapsible section */}
+      <details class="controls-section" style={{ marginTop: '20px' }}>
+        <summary class="controls-section__summary">
+          <FontAwesomeIcon icon={faChevronRight} className="controls-section__chevron" />
+          <span class="controls-section__title"style={{fontSize: "14px"}}>Import from URL or JSON</span>
+        </summary>
+        <div class="controls-section__content">
+          <div class="controls-section__content-inner" style={{ paddingLeft: 0 }}>
+            <p class="dialog-subtitle" style={{ marginTop: '8px', marginBottom: '12px' }}>
+              Paste a direct download link to a remote .zip or .json bundle,
+              or paste raw JSON manifest text directly.
+            </p>
+
+            <div class="form-field" style={{ marginBottom: 0 }}>
+              <textarea
+                placeholder={'https://example.com/my-export.zip\n\nor paste JSON manifest text...'}
+                value={inlineInput}
+                onInput={(e) => {
+                  setInlineInput(e.target.value);
+                  setInlineError('');
+                  setInlineSuccess('');
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+              <button
+                class="primary-button"
+                disabled={!inlineInput.trim() || inlineBusy}
+                onClick={handleInlineImport}
+                style={{ height: '36px', padding: '0 14px', marginTop: 0, whiteSpace: 'nowrap' }}
+              >
+                {inlineBusy ? (
+                  <>
+                    <FontAwesomeIcon icon={faSpinner} spin />
+                    {' '}Importing...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faDownload} />
+                    {' '}Import
+                  </>
+                )}
+              </button>
+            </div>
+
+            {inlineError && (
+              <div class="form-error" style={{ marginTop: '10px' }}>
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                {' '}{inlineError}
+              </div>
+            )}
+
+            {inlineSuccess && (
+              <div class="form-success" style={{ marginTop: '10px' }}>
+                <FontAwesomeIcon icon={faCheck} />
+                {' '}{inlineSuccess}
+              </div>
+            )}
+          </div>
+        </div>
+      </details>
+
       {!isMobile && (
         <div
           style={dropZoneStyle}
@@ -315,75 +378,6 @@ function ImportZipForm({
           </button>
         )}
       </div>
-
-      {/* Import from URL or JSON collapsible section */}
-      <details class="controls-section" style={{ marginTop: '20px' }}>
-        <summary class="controls-section__summary">
-          <FontAwesomeIcon icon={faChevronRight} className="controls-section__chevron" />
-          <span class="controls-section__title">Import from URL or JSON</span>
-        </summary>
-        <div class="controls-section__content">
-          <div class="controls-section__content-inner" style={{ paddingLeft: 0 }}>
-            <p class="dialog-subtitle" style={{ marginTop: '8px', marginBottom: '12px' }}>
-              Paste a direct download link to a remote .zip or .json bundle,
-              or paste raw JSON manifest text directly.
-            </p>
-
-            <textarea
-              placeholder={'https://example.com/my-export.zip\n\nor paste JSON manifest text...'}
-              value={inlineInput}
-              onInput={(e) => {
-                setInlineInput(e.target.value);
-                setInlineError('');
-                setInlineSuccess('');
-              }}
-              style={{
-                width: '100%',
-                minHeight: '80px',
-                resize: 'vertical',
-                fontFamily: 'monospace',
-                fontSize: '13px',
-                boxSizing: 'border-box',
-              }}
-            />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
-              <button
-                class="primary-button"
-                disabled={!inlineInput.trim() || inlineBusy}
-                onClick={handleInlineImport}
-                style={{ height: '36px', padding: '0 14px', marginTop: 0, whiteSpace: 'nowrap' }}
-              >
-                {inlineBusy ? (
-                  <>
-                    <FontAwesomeIcon icon={faSpinner} spin />
-                    {' '}Importing...
-                  </>
-                ) : (
-                  <>
-                    <FontAwesomeIcon icon={faDownload} />
-                    {' '}Import
-                  </>
-                )}
-              </button>
-            </div>
-
-            {inlineError && (
-              <div class="form-error" style={{ marginTop: '10px' }}>
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-                {' '}{inlineError}
-              </div>
-            )}
-
-            {inlineSuccess && (
-              <div class="form-success" style={{ marginTop: '10px' }}>
-                <FontAwesomeIcon icon={faCheck} />
-                {' '}{inlineSuccess}
-              </div>
-            )}
-          </div>
-        </div>
-      </details>
     </div>
   );
 }

@@ -275,14 +275,16 @@ function BottomControls({ onOpenSlideshowOptions }) {
               <FocusIcon size={18} />
             </button>
 
-            <button
-              class="bottom-page-btn"
-              onClick={handleToggleExpandedViewer}
-              aria-label={expandedViewer ? 'Collapse viewer' : 'Expand viewer'}
-              title={expandedViewer ? 'Collapse viewer' : 'Expand viewer'}
-            >
-              <FontAwesomeIcon icon={expandedViewer ? faCompressAlt : faExpandAlt} />
-            </button>
+            {isRegularFullscreen && (
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleExpandedViewer}
+                aria-label={expandedViewer ? 'Collapse viewer' : 'Expand viewer'}
+                title={expandedViewer ? 'Collapse viewer' : 'Expand viewer'}
+              >
+                <FontAwesomeIcon icon={expandedViewer ? faCompressAlt : faExpandAlt} />
+              </button>
+            )}
 
             {!isMobile && (
               <button

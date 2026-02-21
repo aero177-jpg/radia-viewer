@@ -553,11 +553,9 @@ function Viewer({ viewerReady, dropOverlay }) {
         </div>
       )}
       {showLargeFileNotice && (
-        <div className="large-file-overlay">
-          <div className="large-file-badge">
+          <div className="metadata-warning" style={{height: "40px", padding: "8px 14px"}}>
             <span className="large-file-spinner" aria-hidden="true" />
             <span>Loading file...</span>
-          </div>
         </div>
       )}
       <div class="loading-overlay">

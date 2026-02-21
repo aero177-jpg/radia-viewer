@@ -169,23 +169,6 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
             </select>
           </div>
 
-          <div class="control-row select-row">
-            <span class="control-label">Slide (Per-file)</span>
-            <select value={fileCustomAnimation?.slideType ?? 'default'} onChange={handleFileSlideTypeChange}>
-              {FILE_SLIDE_TYPE_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div class="control-row select-row">
-            <span class="control-label">Range (Per-file)</span>
-            <select value={fileCustomAnimation?.transitionRange ?? 'default'} onChange={handleFileTransitionRangeChange}>
-              {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
 
           {slideshowContinuousMode && slideMode !== 'fade' && (
             <div class="control-row select-row">
@@ -271,6 +254,26 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
               </div>
             </div>
           )}
+           <div class="settings-divider">
+          <span>Custom transitions</span>
+        </div>
+          <div class="control-row select-row">
+            <span class="control-label">Slide (singe image)</span>
+            <select value={fileCustomAnimation?.slideType ?? 'default'} onChange={handleFileSlideTypeChange}>
+              {FILE_SLIDE_TYPE_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div class="control-row select-row">
+            <span class="control-label">Range (Per-file)</span>
+            <select value={fileCustomAnimation?.transitionRange ?? 'default'} onChange={handleFileTransitionRangeChange}>
+              {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     </Modal>

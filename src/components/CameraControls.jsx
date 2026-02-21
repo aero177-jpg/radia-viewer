@@ -188,6 +188,7 @@ function CameraControls() {
   const customMetadataAvailable = useStore((state) => state.customMetadataAvailable);
   const metadataMissing = useStore((state) => state.metadataMissing);
   const slideshowMode = useStore((state) => state.slideshowMode);
+  const slideshowPlaying = useStore((state) => state.slideshowPlaying);
   const customModelScale = useStore((state) => state.customModelScale);
   const setCustomModelScale = useStore((state) => state.setCustomModelScale);
   const customAspectRatio = useStore((state) => state.customAspectRatio);
@@ -605,7 +606,7 @@ function CameraControls() {
     && !activeAsset?.viewId
   );
 
-  const orbitLimitsDisabled = customMetadataAvailable || metadataMissing || slideshowMode;
+  const orbitLimitsDisabled = customMetadataAvailable || metadataMissing || (slideshowMode && slideshowPlaying);
 
   // Enable full orbit whenever orbit limits are disabled
   useEffect(() => {

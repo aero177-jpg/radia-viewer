@@ -100,7 +100,7 @@ function SidePanel() {
             onMouseLeave={handleHoverLeave}
           />
       {/* Side panel content */}
-      <div class="side">
+      <div class={`side${(slideshowMode && slideshowPlaying) || viewerControlsDimmed ? ' slideshow-hide' : ''}`}>
         {/* File info display - hidden on mobile */}
         {!isMobile && (
           <div class="debug">

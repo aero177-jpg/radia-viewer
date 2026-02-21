@@ -1,10 +1,10 @@
 /**
- * Fullscreen control hook using browser fullscreen only.
+ * Fullscreen control hook using browser fullscreen only (F11-style).
+ * This does NOT apply any layout/style changes – those are handled
+ * separately by the expand/compress toggle (expandedViewer in store).
  */
 
 import { useCallback, useEffect, useState } from 'preact/hooks';
-
-const getAppElement = () => document.getElementById('app') || document.documentElement;
 
 const getFullscreenElement = () => {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
@@ -27,10 +27,7 @@ export default function useFullscreenControls({ resize, requestRender } = {}) {
 
   useEffect(() => {
     const syncRegularFullscreen = () => {
-      const appEl = getAppElement();
-      const hasFullscreenElement = Boolean(getFullscreenElement());
-      const hasFallbackClass = Boolean(appEl?.classList?.contains('ios-fullscreen-fallback'));
-      setIsRegularFullscreen(hasFullscreenElement || hasFallbackClass || isBrowserWindowFullscreen());
+      setIsRegularFullscreen(Boolean(getFullscreenElement()) || isBrowserWindowFullscreen());
     };
 
     syncRegularFullscreen();
@@ -47,10 +44,9 @@ export default function useFullscreenControls({ resize, requestRender } = {}) {
   }, []);
 
   const handleToggleRegularFullscreen = useCallback(async () => {
-    const appEl = getAppElement();
-    if (!appEl) return;
+    const docEl = document.documentElement;
 
-    const requestFullscreen = appEl.requestFullscreen || appEl.webkitRequestFullscreen;
+    const requestFullscreen = docEl.requestFullscreen || docEl.webkitRequestFullscreen;
     const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
 
     try {
@@ -58,13 +54,8 @@ export default function useFullscreenControls({ resize, requestRender } = {}) {
         if (exitFullscreen) {
           await Promise.resolve(exitFullscreen.call(document));
         }
-        appEl.classList.remove('ios-fullscreen-fallback');
-      } else {
-        if (requestFullscreen) {
-          await Promise.resolve(requestFullscreen.call(appEl));
-        } else {
-          appEl.classList.toggle('ios-fullscreen-fallback');
-        }
+      } else if (requestFullscreen) {
+        await Promise.resolve(requestFullscreen.call(docEl));
       }
 
       requestAnimationFrame(() => {
@@ -72,9 +63,6 @@ export default function useFullscreenControls({ resize, requestRender } = {}) {
         if (requestRender) requestRender();
       });
     } catch (err) {
-      if (!getFullscreenElement()) {
-        appEl.classList.toggle('ios-fullscreen-fallback');
-      }
       console.warn('Regular fullscreen toggle failed:', err);
     }
   }, [resize, requestRender]);

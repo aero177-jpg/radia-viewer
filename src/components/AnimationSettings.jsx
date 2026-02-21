@@ -123,7 +123,7 @@ function AnimationSettings() {
   const customAnimation = useStore((state) => state.customAnimation);
   const fileCustomAnimation = useStore((state) => state.fileCustomAnimation);
   const currentFileName = useStore((state) => state.fileInfo?.name);
-  
+
   // Store actions
   const setAnimationEnabledStore = useStore((state) => state.setAnimationEnabled);
   const setAnimationIntensityStore = useStore((state) => state.setAnimationIntensity);
@@ -330,7 +330,7 @@ function AnimationSettings() {
    * Handles replay animation with preview capture.
    */
   const handleReplayAnimation = useCallback(() => {
-    startLoadZoomAnimation({ 
+    startLoadZoomAnimation({
       force: true,
       onComplete: () => {
         // Wait a few frames for render to stabilize, then capture preview
@@ -375,10 +375,10 @@ function AnimationSettings() {
         <span class="settings-eyebrow">Slideshow Settings</span>
         <FontAwesomeIcon icon={faChevronDown} className="chevron" />
       </button>
-      
+
       {/* Settings content */}
-      <div 
-        class="group-content" 
+      <div
+        class="group-content"
         style={{ display: animSettingsExpanded ? 'flex' : 'none' }}
       >
         {/* Hidden settings group - not displayed but preserved for future use */}
@@ -401,11 +401,11 @@ function AnimationSettings() {
                 title="Replay animation"
                 aria-label="Replay animation"
               >
-                <FontAwesomeIcon icon={faRotateRight} style={{fontSize: "12px"}} />
+                <FontAwesomeIcon icon={faRotateRight} style={{ fontSize: "12px" }} />
               </button>
             </div>
           </div>
-          
+
           {/* Intensity selector */}
           <div class="control-row select-row">
             <span class="control-label">Style</span>
@@ -451,17 +451,14 @@ function AnimationSettings() {
             <span class="switch-track" aria-hidden="true" />
           </label>
         </div>
-
-        <div class="settings-divider">
-          <span>Slideshow</span>
-        </div>
-
         {hasFileSlideshowOverride && (
           <div class="control-row" style={{ justifyContent: 'flex-end', paddingTop: '0', paddingBottom: '0' }}>
             <span class="tier-badge">Override Active</span>
           </div>
         )}
-
+        <div class="settings-divider">
+          <span>Custom transitions</span>
+        </div>
         <div class="control-row select-row">
           <span class="control-label">Slide (Per-file)</span>
           <select
@@ -485,6 +482,10 @@ function AnimationSettings() {
             ))}
           </select>
         </div>
+        <div class="settings-divider">
+          <span>Slideshow</span>
+        </div>
+
 
         {/* Slideshow continuous mode toggle */}
         {slideMode !== 'fade' && (
@@ -586,7 +587,7 @@ function AnimationSettings() {
                   title="Stop slideshow"
                   aria-label="Stop slideshow"
                 >
-                  <FontAwesomeIcon icon={faStop} style={{fontSize: "12px"}} />
+                  <FontAwesomeIcon icon={faStop} style={{ fontSize: "12px" }} />
                   <span>Stop</span>
                 </button>
               ) : (
@@ -596,7 +597,7 @@ function AnimationSettings() {
                   title="Start slideshow"
                   aria-label="Start slideshow"
                 >
-                  <FontAwesomeIcon icon={faPlay} style={{fontSize: "12px"}} />
+                  <FontAwesomeIcon icon={faPlay} style={{ fontSize: "12px" }} />
                   <span>Play</span>
                 </button>
               )}

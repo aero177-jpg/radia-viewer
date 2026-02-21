@@ -254,17 +254,11 @@ function UploadStatusOverlay({ isUploading, uploadProgress, variant = 'default',
   );
 
   useEffect(() => {
-    setShowErrorDetails(false);
-  }, [effectiveUploadProgress?.error?.detail, effectiveUploadProgress?.error?.message]);
-
-  useEffect(() => {
-    setShowDetailMessage(false);
-  }, [effectiveUploadProgress?.message, effectiveUploadProgress?.phase, effectiveUploadProgress?.stage]);
-
-  useEffect(() => {
     if (!showUploadProgress) {
       setIsDismissed(false);
       setCancelInFlight(false);
+      setShowErrorDetails(false);
+      setShowDetailMessage(false);
       if (!optimisticCancelling && cancelCloseTimerRef.current) {
         clearTimeout(cancelCloseTimerRef.current);
         cancelCloseTimerRef.current = null;

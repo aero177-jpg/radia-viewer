@@ -502,25 +502,27 @@ function ExportPage({ onBack, onClose, addLog, exportMode = 'all-data', scopeCon
         </summary>
         <div class="controls-section__content">
           <div class="controls-section__content-inner" style={{ paddingLeft: 0 }}>
-            <p class="dialog-subtitle" style={{ marginTop: '8px', marginBottom: '12px' }}>
+            <p style={{margin: "4px 0 14px 0"}}><i class="dialog-subtitle" style={{ margin: '0', padding: '0' }}>
               Upload your exported ZIP or JSON file to any publicly accessible location
               (cloud storage, static file host, CDN, etc.).
               Paste the direct download link below to generate a shareable viewer link.
+            </i>
             </p>
 
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input
-                type="url"
-                placeholder="https://example.com/my-export.zip"
-                value={shareUrl}
-                onInput={(e) => {
-                  setShareUrl(e.target.value);
-                  setShareError('');
-                  setGeneratedLink('');
-                  setShareCopied(false);
-                }}
-                style={{ flex: 1 }}
-              />
+              <div class="form-field" style={{ flex: 1, marginBottom: 0 }}>
+                <input
+                  type="url"
+                  placeholder="https://example.com/my-export.zip"
+                  value={shareUrl}
+                  onInput={(e) => {
+                    setShareUrl(e.target.value);
+                    setShareError('');
+                    setGeneratedLink('');
+                    setShareCopied(false);
+                  }}
+                />
+              </div>
               <button
                 class="primary-button"
                 disabled={!shareUrl.trim()}
@@ -541,7 +543,7 @@ function ExportPage({ onBack, onClose, addLog, exportMode = 'all-data', scopeCon
                     setTimeout(() => setShareCopied(false), 3000);
                   } catch { /* clipboard may fail silently */ }
                 }}
-                style={{ height: '36px', padding: '0 14px', marginTop: 0, whiteSpace: 'nowrap' }}
+                style={{ height: '36px', width: '150px', marginTop: 0, whiteSpace: 'nowrap' }}
               >
                 Generate link
               </button>
@@ -557,13 +559,14 @@ function ExportPage({ onBack, onClose, addLog, exportMode = 'all-data', scopeCon
             {generatedLink && (
               <div style={{ marginTop: '12px' }}>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    value={generatedLink}
-                    readOnly
-                    onClick={(e) => e.target.select()}
-                    style={{ flex: 1, fontSize: '13px' }}
-                  />
+                  <div class="form-field" style={{ flex: 1, marginBottom: 0 }}>
+                    <input
+                      type="text"
+                      value={generatedLink}
+                      readOnly
+                      onClick={(e) => e.target.select()}
+                    />
+                  </div>
                   <button
                     class="secondary-button"
                     onClick={() => {
@@ -573,7 +576,7 @@ function ExportPage({ onBack, onClose, addLog, exportMode = 'all-data', scopeCon
                         setTimeout(() => setShareCopied(false), 3000);
                       } catch { /* ignore */ }
                     }}
-                    style={{ height: '36px', padding: '0 12px', marginTop: 0, whiteSpace: 'nowrap' }}
+                    style={{ height: '36px', width: '50px', marginTop: 0, whiteSpace: 'nowrap' }}
                   >
                     <FontAwesomeIcon icon={faCopy} />
                   </button>

@@ -24,6 +24,9 @@ function MobileSheet() {
   // Store state
   const panelOpen = useStore((state) => state.panelOpen);
   const togglePanel = useStore((state) => state.togglePanel);
+  const slideshowMode = useStore((state) => state.slideshowMode);
+  const slideshowPlaying = useStore((state) => state.slideshowPlaying);
+  const viewerControlsDimmed = useStore((state) => state.viewerControlsDimmed);
 
   // Refs
   const fileInputRef = useRef(null);
@@ -96,7 +99,7 @@ function MobileSheet() {
   }, []);
 
   return (
-    <div class={`mobile-sheet ${panelOpen ? 'open' : 'closed'}`}>
+    <div class={`mobile-sheet ${panelOpen ? 'open' : 'closed'}${(slideshowMode && slideshowPlaying) || viewerControlsDimmed ? ' slideshow-hide' : ''}`}>
       {/* Drag handle with enlarged touch target - outside scroll container */}
       <div class="drag-handle" ref={dragHandleRef}>
         <div 
