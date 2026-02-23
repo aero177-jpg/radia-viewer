@@ -128,6 +128,7 @@ const DEFAULT_FILE_CUSTOM_ANIMATION = {
   transitionRange: 'default',
   zoomProfile: 'default',
 };
+const DEFAULT_FILE_ANNOTATION = '';
 
 export const normalizeFileCustomAnimationSettings = (customAnimationSettings) => {
   const slideType = VALID_FILE_SLIDE_TYPES.has(customAnimationSettings?.slideType)
@@ -145,6 +146,10 @@ export const normalizeFileCustomAnimationSettings = (customAnimationSettings) =>
     transitionRange,
     zoomProfile,
   };
+};
+
+export const normalizeFileAnnotation = (annotation) => {
+  return typeof annotation === 'string' ? annotation : '';
 };
 
 const resolvePerFileSlideType = (store, customAnimationSettings) => {
@@ -481,6 +486,11 @@ const syncStoredCustomAnimationSettings = (customAnimationSettings, store) => {
   });
 };
 
+const syncStoredAnnotation = (annotation, store) => {
+  const normalized = normalizeFileAnnotation(annotation);
+  store.setAnnotation(typeof normalized === 'string' ? normalized : DEFAULT_FILE_ANNOTATION);
+};
+
 const refreshSparkForCurrentView = (reason = 'unspecified') => {
   if (!spark?.update) return;
 
@@ -739,6 +749,10 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
     );
     syncStoredCustomAnimationSettings(
       storedSettings?.customAnimation,
+      store,
+    );
+    syncStoredAnnotation(
+      storedSettings?.annotation,
       store,
     );
 
@@ -1411,7 +1425,19 @@ const navigateWithinLoadedBaseAsset = async (asset, options = {}) => {
   const customAspectRatio = selectedView?.view?.aspectRatio ?? null;
   setOriginalImageAspect(customAspectRatio);
   store.setCustomAspectRatio(aspectRatioToKey(customAspectRatio));
+
+  // Preserve camera projection properties so the upcoming animation starts
+  // from the *current* FOV / near / far rather than defaults.  Without this,
+  // clearMetadataCamera inside applyInstantProxyAspectCutAndReset resets them
+  // to defaultCamera values, causing an instant FOV jump before the glide.
+  const preservedFov = camera.fov;
+  const preservedNear = camera.near;
+  const preservedFar = camera.far;
   applyInstantProxyAspectCutAndReset();
+  camera.fov = preservedFov;
+  camera.near = preservedNear;
+  camera.far = preservedFar;
+  camera.updateProjectionMatrix();
 
   // Start background cross-fade in parallel with the camera glide so the
   // blurred glow transitions smoothly instead of snapping.
@@ -1462,9 +1488,11 @@ export const buildContinuousHandoff = async (asset, { slideMode: _slideMode } = 
 
   const store = getStoreState();
   let nextAssetCustomAnimation = null;
+  let nextAssetAnnotation = null;
   try {
     const entry = await ensureSplatEntry(asset);
     nextAssetCustomAnimation = entry?.storedSettings?.customAnimation ?? null;
+    nextAssetAnnotation = entry?.storedSettings?.annotation ?? null;
   } catch (err) {
     console.warn('[FileLoader] Failed to pre-resolve custom animation for handoff', err);
   }
@@ -1492,6 +1520,7 @@ export const buildContinuousHandoff = async (asset, { slideMode: _slideMode } = 
       const applyStore = getStoreState();
 
       syncStoredCustomAnimationSettings(nextAssetCustomAnimation, applyStore);
+      syncStoredAnnotation(nextAssetAnnotation, applyStore);
 
       // Model transform
       if (currentMesh) {

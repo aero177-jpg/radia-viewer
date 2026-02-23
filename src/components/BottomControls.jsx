@@ -11,7 +11,8 @@ import { camera, controls, defaultCamera, defaultControls, dollyZoomBaseDistance
 import { resize, reloadCurrentAsset } from '../fileLoader';
 import { resetViewWithImmersive } from '../cameraUtils';
 import { enableImmersiveMode, disableImmersiveMode, setImmersiveSensitivityMultiplier, setTouchPanEnabled, syncImmersiveBaseline } from '../immersiveMode';
-import { resetSplatManager } from '../splatManager';
+import { resetSplatManager, updateAnnotationInCache } from '../splatManager';
+import { saveAnnotation } from '../fileStorage';
 import { initVrSupport } from '../vrMode';
 import useHasMesh from '../utils/useHasMesh';
 import useFullscreenControls from '../utils/useFullscreenControls';
@@ -47,6 +48,8 @@ function BottomControls({ onOpenSlideshowOptions }) {
   const isMobile = useStore((state) => state.isMobile);
   const addLog = useStore((state) => state.addLog);
   const disableTransparentUi = useStore((state) => state.disableTransparentUi);
+  const annotation = useStore((state) => state.annotation);
+  const setAnnotation = useStore((state) => state.setAnnotation);
 
   const hasMesh = useHasMesh();
   const resetHoldTimeout = useRef(null);
@@ -195,50 +198,91 @@ function BottomControls({ onOpenSlideshowOptions }) {
     });
   }, [expandedViewer, toggleExpandedViewer, setSuppressSizeTransition]);
 
+  const currentAsset = currentAssetIndex >= 0 && currentAssetIndex < assets.length
+    ? assets[currentAssetIndex]
+    : null;
+  const annotationText = typeof annotation === 'string' ? annotation : '';
+
+  const handleAnnotationInput = useCallback((event) => {
+    const nextAnnotation = event?.target?.value ?? '';
+    setAnnotation(nextAnnotation);
+
+    const fileName = currentAsset?.baseAssetName || currentAsset?.name;
+    const assetId = currentAsset?.cacheKey || currentAsset?.baseAssetId || currentAsset?.id;
+    if (!fileName) return;
+
+    saveAnnotation(fileName, nextAnnotation).then((saved) => {
+      if (!saved) return;
+      if (assetId) {
+        updateAnnotationInCache(assetId, nextAnnotation);
+      }
+    }).catch((err) => {
+      console.warn('[BottomControls] Failed to save annotation', err);
+    });
+  }, [setAnnotation, currentAsset]);
+
   const assetsLength = assets.length;
   return (
-    <div
-      class={`bottom-controls${(slideshowMode && slideshowPlaying) || viewerControlsDimmed ? ' slideshow-hide' : ''}${controlsRevealed ? ' is-revealed' : ''}${disableTransparentUi ? ' no-transparent-ui' : ''}`}
-      onPointerEnter={() => slideshowMode && slideshowPlaying && revealBottomControls(false)}
-      onPointerLeave={() => slideshowMode && slideshowPlaying && revealBottomControls(true, 1000)}
-      onPointerDown={() => slideshowMode && slideshowPlaying && revealBottomControls(true, 1000)}
-    >
-      <div class="bottom-controls-left">
-        {hasMesh && assetsLength > 0 && isMobile && (
-          <button
-            class="bottom-page-btn"
-            onClick={handleToggleRegularFullscreen}
-            aria-label={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-          >
-            {isRegularFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
-          </button>
-        )}
-        {assetsLength > 0 && (
-          <button
-            class={`bottom-page-btn immersive-toggle ${slideshowMode ? 'is-active' : 'is-inactive'}`}
-            onClick={handleSlideshowButtonClick}
-            onPointerDown={handleSlideshowHoldStart}
-            onPointerUp={handleSlideshowHoldEnd}
-            onPointerLeave={handleSlideshowHoldEnd}
-            onPointerCancel={handleSlideshowHoldEnd}
-            aria-pressed={slideshowMode}
-            aria-label={slideshowMode ? 'Stop slideshow' : 'Start slideshow'}
-            title={slideshowMode ? 'Stop slideshow' : 'Start slideshow'}
-          >
-            <SlideShowToggleIcon size={18} />
-          </button>
-        )}
-        {assetsLength > 0 && (
-          <button
-            class="bottom-page-btn"
-            onClick={toggleAssetSidebar}
-            title="Open asset browser"
-          >
-            {currentAssetIndex + 1} / {assetsLength}
-          </button>
-        )}
-      </div>
+    <>
+      {assetsLength > 0 && (
+        <div class={`page-annotation-overlay${(slideshowMode && slideshowPlaying) || viewerControlsDimmed ? ' slideshow-hide' : ''}${controlsRevealed ? ' is-revealed' : ''}`}>
+           {/* <input
+            type="text"
+            placeholder="annotation"
+            size="18"
+            value={annotationText}
+            onInput={handleAnnotationInput}
+          /> */}
+          {annotationText && (
+            <div class="bottom-page-label bottom-page-btn" title={annotationText}>
+              {annotationText}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        class={`bottom-controls${(slideshowMode && slideshowPlaying) || viewerControlsDimmed ? ' slideshow-hide' : ''}${controlsRevealed ? ' is-revealed' : ''}${disableTransparentUi ? ' no-transparent-ui' : ''}`}
+        onPointerEnter={() => slideshowMode && slideshowPlaying && revealBottomControls(false)}
+        onPointerLeave={() => slideshowMode && slideshowPlaying && revealBottomControls(true, 1000)}
+        onPointerDown={() => slideshowMode && slideshowPlaying && revealBottomControls(true, 1000)}
+      >
+        <div class="bottom-controls-left">
+            {hasMesh && assetsLength > 0 && isMobile && (
+              <button
+                class="bottom-page-btn"
+                onClick={handleToggleRegularFullscreen}
+                aria-label={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                title={isRegularFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              >
+                {isRegularFullscreen ? <MinimizeIcon size={18} /> : <MaximizeIcon size={18} />}
+              </button>
+            )}
+            {assetsLength > 0 && (
+              <button
+                class={`bottom-page-btn immersive-toggle ${slideshowMode ? 'is-active' : 'is-inactive'}`}
+                onClick={handleSlideshowButtonClick}
+                onPointerDown={handleSlideshowHoldStart}
+                onPointerUp={handleSlideshowHoldEnd}
+                onPointerLeave={handleSlideshowHoldEnd}
+                onPointerCancel={handleSlideshowHoldEnd}
+                aria-pressed={slideshowMode}
+                aria-label={slideshowMode ? 'Stop slideshow' : 'Start slideshow'}
+                title={slideshowMode ? 'Stop slideshow' : 'Start slideshow'}
+              >
+                <SlideShowToggleIcon size={18} />
+              </button>
+            )}
+            {assetsLength > 0 && (
+              <button
+                class="bottom-page-btn"
+                onClick={toggleAssetSidebar}
+                title="Open asset browser"
+              >
+                {currentAssetIndex + 1} / {assetsLength}
+              </button>
+            )}
+        </div>
 
       {hasMesh && assetsLength > 0 && (
         <>
@@ -311,7 +355,8 @@ function BottomControls({ onOpenSlideshowOptions }) {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -507,7 +507,12 @@ export function useCollectionUploadFlow({
 
             const mergedProgress = mapProgress(progress);
             onUploadProgress?.(mergedProgress);
-            reportUploadState({ isUploading: true, uploadProgress: mergedProgress });
+            // Skip overlay update for download-notification events — they carry
+            // only sparse file-delivery data and would clobber the richer
+            // get-progress polling state currently displayed in the overlay.
+            if (progress?.source !== 'download-notification') {
+              reportUploadState({ isUploading: true, uploadProgress: mergedProgress });
+            }
           },
         });
 

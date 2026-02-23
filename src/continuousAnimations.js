@@ -377,9 +377,13 @@ export const continuousZoomSlideIn = (duration, amount, options = {}) => {
     if (glideDuration > 0) {
       const glideStartPos = glideFrom?.position ?? currentPosition;
       const glideStartTarget = glideFrom?.target ?? currentTarget;
+      const glideStartFov = glideFrom?.fov ?? camera.fov;
+      const glideEndFov = camera.fov;
       // Snap camera back to glideFrom immediately so there's no flash frame
       camera.position.copy(glideStartPos);
       controls.target.copy(glideStartTarget);
+      camera.fov = glideStartFov;
+      camera.updateProjectionMatrix();
       controls.update();
       const glideProxy = { t: 0 };
       continuousZoomTween = gsap.to(glideProxy, {
@@ -389,6 +393,10 @@ export const continuousZoomSlideIn = (duration, amount, options = {}) => {
         onUpdate: () => {
           camera.position.lerpVectors(glideStartPos, startPosition, glideProxy.t);
           controls.target.lerpVectors(glideStartTarget, currentTarget, glideProxy.t);
+          if (glideStartFov !== glideEndFov) {
+            camera.fov = THREE.MathUtils.lerp(glideStartFov, glideEndFov, glideProxy.t);
+            camera.updateProjectionMatrix();
+          }
           controls.update();
           requestRender();
         },
@@ -581,9 +589,13 @@ export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
     if (glideDuration > 0) {
       const glideStartPos = glideFrom?.position ?? currentPosition;
       const glideStartTarget = glideFrom?.target ?? currentTarget;
+      const glideStartFov = glideFrom?.fov ?? camera.fov;
+      const glideEndFov = camera.fov;
       // Snap camera back to glideFrom immediately so there's no flash frame
       camera.position.copy(glideStartPos);
       controls.target.copy(glideStartTarget);
+      camera.fov = glideStartFov;
+      camera.updateProjectionMatrix();
       controls.update();
       const glideProxy = { t: 0 };
       continuousOrbitTween = gsap.to(glideProxy, {
@@ -593,6 +605,10 @@ export const continuousOrbitSlideIn = (duration, amount, options = {}) => {
         onUpdate: () => {
           camera.position.lerpVectors(glideStartPos, startPosition, glideProxy.t);
           controls.target.lerpVectors(glideStartTarget, startTarget, glideProxy.t);
+          if (glideStartFov !== glideEndFov) {
+            camera.fov = THREE.MathUtils.lerp(glideStartFov, glideEndFov, glideProxy.t);
+            camera.updateProjectionMatrix();
+          }
           controls.update();
           requestRender();
         },
@@ -686,9 +702,13 @@ export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) =
     if (glideDuration > 0) {
       const glideStartPos = glideFrom?.position ?? currentPosition;
       const glideStartTarget = glideFrom?.target ?? currentTarget;
+      const glideStartFov = glideFrom?.fov ?? camera.fov;
+      const glideEndFov = camera.fov;
       // Snap camera back to glideFrom immediately so there's no flash frame
       camera.position.copy(glideStartPos);
       controls.target.copy(glideStartTarget);
+      camera.fov = glideStartFov;
+      camera.updateProjectionMatrix();
       controls.update();
       const glideProxy = { t: 0 };
       continuousVerticalOrbitTween = gsap.to(glideProxy, {
@@ -698,6 +718,10 @@ export const continuousVerticalOrbitSlideIn = (duration, amount, options = {}) =
         onUpdate: () => {
           camera.position.lerpVectors(glideStartPos, startPosition, glideProxy.t);
           controls.target.lerpVectors(glideStartTarget, startTarget, glideProxy.t);
+          if (glideStartFov !== glideEndFov) {
+            camera.fov = THREE.MathUtils.lerp(glideStartFov, glideEndFov, glideProxy.t);
+            camera.updateProjectionMatrix();
+          }
           controls.update();
           requestRender();
         },

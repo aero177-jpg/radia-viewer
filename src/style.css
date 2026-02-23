@@ -450,7 +450,7 @@ input[type="checkbox"]:disabled:checked {
   height: 14px;
   background: transparent;
   border: none;
-  color: rgba(255, 170, 170, 0.92);
+  color: rgba(155, 179, 195, 0.673);
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -1748,6 +1748,11 @@ input[type="checkbox"]:disabled:checked {
   opacity: 0.9;
 }
 
+.secondary.batch-preview-disabled {
+  color: rgba(180, 180, 180, 0.95);
+  opacity: 0.5;
+}
+
 /* Enter VR button */
 .enter-vr-btn {
   width: 100%;
@@ -2269,8 +2274,8 @@ select option {
   display: flex;
   flex-direction: column;
   max-height: 50vh;
-  background: #0c0e15c9;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #090b0db3;
+  border: 1px solid #999fa51f;
   border-radius: 12px 12px 0 0;
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(22px);
@@ -2413,7 +2418,7 @@ select option {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.25s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2581,6 +2586,72 @@ select option {
   border-color: rgba(255, 80, 80, 0.4);
 }
 
+/* Sidebar batch generate button */
+.sidebar-batch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0 8px;
+  margin-bottom: 8px;
+}
+.sidebar-batch-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.sidebar-batch-btn:disabled,
+.sidebar-batch-btn.is-busy {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Batch preview modal progress */
+.batch-preview-blur-overlay {
+  position: fixed;
+  inset: 0;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: -1;
+  pointer-events: none;
+}
+.batch-preview-progress {
+  margin: 12px 0 4px;
+}
+.batch-progress-bar-track {
+  height: 6px;
+  background: var(--color-bg-tertiary, rgba(255,255,255,0.08));
+  border-radius: 3px;
+  overflow: hidden;
+}
+.batch-progress-bar-fill {
+  height: 100%;
+  background: var(--color-accent, #6c8cff);
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+.batch-progress-pct {
+  text-align: right;
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  margin-top: 4px;
+}
+.batch-preview-result {
+  margin: 8px 0;
+}
+.text-danger {
+  color: #ff6b6b;
+}
+
 /* Modal Styles */
 .modal-overlay {
   position: fixed;
@@ -2693,7 +2764,7 @@ select option {
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  color: #d4d4d4;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s ease;
@@ -2702,7 +2773,7 @@ select option {
 .modal-actions button.modal-confirm-btn {
   background: #31516345;
   border: 1px solid #4b5a64;
-  color: rgb(170, 188, 202);
+  color: #bbd3e6;
 }
 
 .modal-actions button.modal-confirm-btn:hover {
@@ -2901,8 +2972,6 @@ border-radius: 10px;
   gap: 16px;
   z-index: 10;
   pointer-events: none; /* enable from children */
-  transition: opacity 0.25s ease;
-  opacity: 1;
 }
 
 .bottom-controls > * { 
@@ -2910,17 +2979,32 @@ border-radius: 10px;
 }
 
 .bottom-controls.slideshow-hide {
-  opacity: 0;
   pointer-events: none;
 }
 
-.bottom-controls.slideshow-hide.is-revealed,
-.bottom-controls.slideshow-hide.is-revealed {
+/* Fade individual buttons/overlays instead of the container to preserve backdrop-filter blur */
+.bottom-controls .bottom-page-btn,
+.bottom-controls .fov-overlay,
+.page-annotation-overlay .bottom-page-btn {
+  transition: background 0.2s ease, border-color 0.2s ease, opacity 0.25s ease;
+}
+
+.bottom-controls.slideshow-hide .bottom-page-btn,
+.bottom-controls.slideshow-hide .fov-overlay,
+.page-annotation-overlay.slideshow-hide .bottom-page-btn {
+  opacity: 0;
+}
+
+.bottom-controls.slideshow-hide.is-revealed .bottom-page-btn,
+.bottom-controls.slideshow-hide.is-revealed .fov-overlay,
+.page-annotation-overlay.slideshow-hide.is-revealed .bottom-page-btn {
   opacity: 1;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .bottom-controls.slideshow-hide:hover {
+  .bottom-controls.slideshow-hide:hover .bottom-page-btn,
+  .bottom-controls.slideshow-hide:hover .fov-overlay,
+  .page-annotation-overlay.slideshow-hide:hover .bottom-page-btn {
     opacity: 1;
   }
 }
@@ -2980,7 +3064,8 @@ border-radius: 10px;
   transition: transform 0.15s ease;
 }
 
-.bottom-controls-left, .bottom-controls-right {
+
+ .bottom-controls-left, .bottom-controls-right {
   flex: 0 0 auto;
   justify-content: flex-end;
   display: flex;
@@ -2989,10 +3074,45 @@ border-radius: 10px;
   gap: 10px;
 }
 
+.page-annotation-overlay {
+  position: fixed;
+  bottom: 2px;
+  left: 2px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(58vw, 640px);
+  pointer-events: auto;
+}
+
+.bottom-page-btn.bottom-page-label {
+  color: rgba(219, 219, 219, 0.787);
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 0px 10px 2px 10px;
+  width: auto;
+  font-weight: 400;
+  max-width: min(48vw, 520px);
+  height: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+    pointer-events: none;
+  cursor: default;
+  background: rgba(12, 16, 26, 0.639);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
 /* Mobile portrait: adjust for bottom sheet */
 @media (max-width: 768px) and (orientation: portrait) {
   .bottom-controls {
     bottom: 55px;
+  }
+.page-annotation-overlay {
+    top: 2px;
+    right: 2px;
+    left: auto;
+    bottom: auto;
   }
 }
 

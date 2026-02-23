@@ -9,7 +9,6 @@ import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useStore } from '../store';
 import { captureCurrentAssetPreview, getAssetList, getCurrentAssetIndex } from '../assetManager';
 import { savePreviewBlob } from '../fileStorage';
-import { generateAllPreviews, abortBatchPreview } from '../batchPreview';
 import { loadFromStorageSource, resize } from '../fileLoader';
 import { applyPreviewBackground } from '../backgroundManager.js';
 import { clearCustomMetadataForAsset } from '../customMetadata.js';
@@ -21,6 +20,7 @@ import TransferDataModal from './TransferDataModal';
 import ExportChoiceModal from './ExportChoiceModal';
 import BatchPreviewModal from './BatchPreviewModal';
 import ClearDataModal from './ClearDataModal';
+import { useBatchPreview } from './useBatchPreview';
 
 
 function DebugSettings() {
@@ -61,14 +61,11 @@ function DebugSettings() {
   } = useStore();
 
   const [generatingPreview, setGeneratingPreview] = useState(false);
-  const [batchProgress, setBatchProgress] = useState(null); // { current, total, name }
-  const [generatingBatch, setGeneratingBatch] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isRestoringRemoved, setIsRestoringRemoved] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [clearDataModalOpen, setClearDataModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [batchPreviewModalOpen, setBatchPreviewModalOpen] = useState(false);
 
   // Debug upload overlay simulation
   const [debugOverlayStep, setDebugOverlayStep] = useState(0);
@@ -77,6 +74,18 @@ function DebugSettings() {
 
   const currentAsset = assets[currentAssetIndex] || null;
   const currentAssetSize = currentAsset?.file?.size ?? currentAsset?.size ?? null;
+
+  const {
+    batchProgress,
+    generatingBatch,
+    batchPreviewModalOpen,
+    batchResult,
+    canBatchGeneratePreviews,
+    handleOpenBatchPreviewModal,
+    handleConfirmBatchPreview,
+    handleAbortBatchPreview,
+    handleCloseBatchPreviewModal,
+  } = useBatchPreview();
 
   const collectionInfo = useMemo(() => {
     const source = activeSourceId ? getSource(activeSourceId) : null;
@@ -102,9 +111,9 @@ function DebugSettings() {
   }, [activeSourceId, assets]);
 
   const refreshAssets = useCallback(() => {
-    const assets = getAssetList();
+    const freshAssets = getAssetList();
     const idx = getCurrentAssetIndex();
-    setAssets([...assets]);
+    setAssets([...freshAssets]);
     setCurrentAssetIndex(idx);
   }, [setAssets, setCurrentAssetIndex]);
 
@@ -283,50 +292,7 @@ function DebugSettings() {
     }
   }, [addLog, updateAssetPreview]);
 
-  /** Generate previews for all assets in batch mode */
-  const startGenerateAllPreviews = useCallback(async () => {
-    const assetList = getAssetList();
-    if (assetList.length === 0) {
-      addLog('[BatchPreview] No assets loaded');
-      return;
-    }
 
-    setGeneratingBatch(true);
-    setBatchProgress({ current: 0, total: assetList.length, name: '' });
-
-    try {
-      await generateAllPreviews({
-        onProgress: (current, total, name) => {
-          setBatchProgress({ current, total, name });
-        },
-        onComplete: (success, failed) => {
-          addLog(`[BatchPreview] Done: ${success} succeeded, ${failed} failed`);
-        },
-      });
-    } catch (err) {
-      console.error('[BatchPreview] Error:', err);
-      addLog(`[BatchPreview] Error: ${err.message}`);
-    } finally {
-      setGeneratingBatch(false);
-      setBatchProgress(null);
-      refreshAssets();
-    }
-  }, [addLog, refreshAssets]);
-
-  const handleOpenBatchPreviewModal = useCallback(() => {
-    setBatchPreviewModalOpen(true);
-  }, []);
-
-  const handleConfirmBatchPreview = useCallback(() => {
-    setBatchPreviewModalOpen(false);
-    startGenerateAllPreviews();
-  }, [startGenerateAllPreviews]);
-
-  /** Abort batch preview generation */
-  const handleAbortBatchPreview = useCallback(() => {
-    abortBatchPreview();
-    addLog('[BatchPreview] Abort requested');
-  }, [addLog]);
 
   // --- Debug upload overlay simulation ---
   const FAKE_FILE_COUNT = 3;
@@ -748,8 +714,9 @@ function DebugSettings() {
             ) : (
               <button
                 type="button"
-                class="secondary"
+                class={`secondary ${!canBatchGeneratePreviews ? 'batch-preview-disabled' : ''}`}
                 onClick={handleOpenBatchPreviewModal}
+                disabled={!canBatchGeneratePreviews}
               >
                 Generate All
               </button>
@@ -895,10 +862,13 @@ function DebugSettings() {
       />
       <BatchPreviewModal
         isOpen={batchPreviewModalOpen}
-        onClose={() => setBatchPreviewModalOpen(false)}
+        onClose={handleCloseBatchPreviewModal}
         onConfirm={handleConfirmBatchPreview}
+        onAbort={handleAbortBatchPreview}
         assetCount={assets.length}
         isBusy={generatingBatch}
+        batchProgress={batchProgress}
+        batchResult={batchResult}
       />
     </>
   );

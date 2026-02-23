@@ -207,7 +207,6 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
             <Section title="Collections" isOpen={isSubsectionOpen('troubleshooting.collections')}>
               <ul>
                 <li><strong>Files not appearing:</strong> If using a connected cloud storage, make sure you have the correct permissions set up. For Supabase, you can set up a policy with "select" permissions for the relevant table. For R2, make sure your access key and secret key are correct, and that your bucket is set to public.</li>
-                <li><strong>Issues with cloud GPU:</strong> Large upload batches (over 20 images) can cause occasional timeouts, and cause some inaccuracies with the progress bar. If the process is complete, but no new images, try manually refreshing the collection.</li>
               </ul>
             </Section>
           </Section>

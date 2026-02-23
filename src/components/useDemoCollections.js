@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useState } from 'preact/hooks';
-import { faFolder, faLeaf, faGamepad } from '@fortawesome/free-solid-svg-icons';
+import { faFolder, faLeaf, faGamepad, faTreeCity, faCat } from '@fortawesome/free-solid-svg-icons';
 import { getSource } from '../storage/index.js';
 import { loadFromStorageSource } from '../fileLoader';
 import { importTransferBundle } from '../utils/debugTransfer.js';
@@ -11,23 +11,23 @@ import { importTransferBundle } from '../utils/debugTransfer.js';
 const DEMO_COLLECTION_OPTIONS = [
   {
     key: 'street',
-    title: 'Street',
-    subtitle: 'Street scene demo collection',
-    icon: faFolder,
-    url: '',
+    title: 'Street & Travel',
+    subtitle: 'Street photography demo collection',
+    icon: faTreeCity,
+    url: 'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/demo_street/radia-transfer-demo-street-20260222.zip',
   },
   {
-    key: 'nature',
-    title: 'Nature',
-    subtitle: 'Nature scene demo collection',
+    key: 'plants-hiking',
+    title: 'Plants & Hiking',
+    subtitle: 'Outdoor photography demo collection',
     icon: faLeaf,
-    url: '',
+    url: 'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/demo_nature/radia-transfer-demo-plants-hiking-20260222.zip',
   },
   {
-    key: 'people-pets',
-    title: 'People & Pets',
-    subtitle: 'People and pets demo collection',
-    icon: faGamepad,
+    key: 'people-animals',
+    title: 'People & Animals',
+    subtitle: 'People and animals demo collection',
+    icon: faCat,
     url: 'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/demo_people/radia-transfer-demo-people-animals-20260218.zip',
   },
   {

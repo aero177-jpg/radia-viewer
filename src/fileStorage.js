@@ -17,7 +17,7 @@ const STORE_NAME = 'file-settings';
 const PREVIEW_STORE_NAME = 'file-previews';
 
 /** Preview schema version to force regeneration when encoding changes */
-const PREVIEW_VERSION = 2;
+const PREVIEW_VERSION = 1;
 
 /**
  * File settings schema.
@@ -27,6 +27,7 @@ const PREVIEW_VERSION = 2;
  * @property {number} lastModified - Timestamp of last update
  * @property {AnimationSettings} [animation] - Load animation preferences
  * @property {Object} [customAnimation] - Per-file custom animation overrides
+ * @property {string} [annotation] - Per-file annotation text
  * @property {number} [focusDistance] - Optional user-set focus distance override
  * @property {CustomCameraMetadata} [customMetadata] - Optional user-set camera metadata override
  * @property {boolean} [isCached] - Whether this file is cached in IndexedDB
@@ -208,6 +209,18 @@ export const saveAnimationSettings = async (fileName, animation) => {
  */
 export const saveCustomAnimationSettings = async (fileName, customAnimation) => {
   return await saveFileSettings(fileName, { customAnimation });
+};
+
+/**
+ * Saves per-file annotation text.
+ * @param {string} fileName - File name
+ * @param {string} annotation - Annotation text
+ * @returns {Promise<boolean>} Success status
+ */
+export const saveAnnotation = async (fileName, annotation) => {
+  return await saveFileSettings(fileName, {
+    annotation: typeof annotation === 'string' ? annotation : '',
+  });
 };
 
 /**

@@ -321,6 +321,8 @@ export const useStore = create(
     transitionRange: 'default',
     zoomProfile: 'default',
   },
+  // Per-file annotation text (stored in IndexedDB file-settings)
+  annotation: '',
 
   // Custom focus state
   hasCustomFocus: false,
@@ -536,6 +538,9 @@ export const useStore = create(
   setFileCustomAnimation: (settings) => set((state) => ({
     fileCustomAnimation: { ...state.fileCustomAnimation, ...settings },
   })),
+
+  /** Sets per-file annotation text */
+  setAnnotation: (annotation) => set({ annotation: typeof annotation === 'string' ? annotation : '' }),
 
   /** Sets custom focus state */
   setHasCustomFocus: (hasCustomFocus) => set({ hasCustomFocus }),

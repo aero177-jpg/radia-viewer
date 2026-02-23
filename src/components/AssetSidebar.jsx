@@ -9,6 +9,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { addRemovedAssetNames, getSource } from '../storage/index.js';
 import { useCollectionUploadFlow } from './useCollectionUploadFlow.js';
+import { useBatchPreview } from './useBatchPreview.js';
+import { GeneratePreviewsIcon } from '../icons/customIcons.jsx';
+import BatchPreviewModal from './BatchPreviewModal';
 import Modal from './Modal';
 
 function AssetSidebar() {
@@ -33,6 +36,19 @@ function AssetSidebar() {
   const hoverOpenTimeoutRef = useRef(null);
   const suppressTimeoutRef = useRef(null);
   const repairingRef = useRef(new Set()); // Track indices being repaired
+
+  const {
+    batchProgress,
+    generatingBatch,
+    batchPreviewModalOpen,
+    batchResult,
+    canBatchGeneratePreviews,
+    missingPreviewCount,
+    handleOpenBatchPreviewModal,
+    handleConfirmBatchPreview,
+    handleAbortBatchPreview,
+    handleCloseBatchPreviewModal,
+  } = useBatchPreview({ skipExisting: true });
 
   const {
     uploadInputRef,
@@ -417,6 +433,17 @@ function AssetSidebar() {
           ))}
         </div>
         <div class="sidebar-footer">
+          {missingPreviewCount > 4 && canBatchGeneratePreviews && (
+            <button
+              class={`sidebar-batch-btn ${generatingBatch ? 'is-busy' : ''}`}
+              onClick={handleOpenBatchPreviewModal}
+              disabled={generatingBatch}
+              title="Generate missing previews"
+            >
+              <GeneratePreviewsIcon size={23} />
+              {/* <span>{generatingBatch ? 'Generating…' : 'Generate Previews'}</span> */}
+            </button>
+          )}
           <div class="sidebar-controls">
             <button 
               class="sidebar-btn add" 
@@ -591,6 +618,16 @@ function AssetSidebar() {
           <button class="danger" onClick={confirmDelete}>Delete</button>
         </div>
       </Modal>
+      <BatchPreviewModal
+        isOpen={batchPreviewModalOpen}
+        onClose={handleCloseBatchPreviewModal}
+        onConfirm={handleConfirmBatchPreview}
+        onAbort={handleAbortBatchPreview}
+        assetCount={missingPreviewCount}
+        isBusy={generatingBatch}
+        batchProgress={batchProgress}
+        batchResult={batchResult}
+      />
       {uploadModal}
     </>
   );

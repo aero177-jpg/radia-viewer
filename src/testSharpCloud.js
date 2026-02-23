@@ -135,6 +135,7 @@ const emitErrorProgress = ({ onProgress, progressBase, message, detail }) => {
   if (typeof onProgress !== 'function') return;
   onProgress({
     ...(progressBase || {}),
+    source: 'error',
     stage: 'error',
     error: {
       message: message || 'Processing failed',
@@ -391,6 +392,7 @@ const submitJob = async ({ submitUrl, apiKey, formData, onProgress, progressBase
     onUploadProgress: ({ loaded, total, done }) => {
       onProgress?.({
         ...(progressBase || {}),
+        source: 'upload',
         stage: 'upload',
         upload: { loaded, total, done },
       });
@@ -600,6 +602,7 @@ const pollJobStatus = async ({
 
       onProgress?.({
         ...(progressBase || {}),
+        source: 'poll',
         stage,
         phase: displayPhase,
         status: status || payload?.status || (done ? 'done' : phase),
@@ -711,6 +714,7 @@ const downloadResultItems = async ({
     if (!SILENCE_BACKGROUND_DOWNLOAD_STATUS) {
       onProgress?.({
         ...(progressBase || {}),
+        source: 'download',
         stage: 'downloading',
         phase: 'downloading_results',
         status: 'running',
@@ -761,6 +765,7 @@ const downloadResultItems = async ({
     if (!SILENCE_BACKGROUND_DOWNLOAD_STATUS) {
       onProgress?.({
         ...(progressBase || {}),
+        source: 'download',
         stage: 'downloading',
         phase: 'downloading_results',
         status: 'running',
@@ -883,6 +888,7 @@ const processMockJob = async ({
 
   onProgress?.({
     ...(progressBase || {}),
+    source: 'upload',
     stage: 'upload',
     upload: { loaded: totalFiles, total: totalFiles, done: true },
   });
@@ -890,6 +896,7 @@ const processMockJob = async ({
   if (mockConfig?.warmupMs > 0) {
     onProgress?.({
       ...(progressBase || {}),
+      source: 'poll',
       stage: 'warmup',
       phase: 'queued',
       status: 'queued',
@@ -965,6 +972,7 @@ const processMockJob = async ({
 
     onProgress?.({
       ...(progressBase || {}),
+      source: 'poll',
       stage: 'processing',
       phase: 'processing_images',
       status: 'processing',
@@ -991,6 +999,7 @@ const processMockJob = async ({
 
   onProgress?.({
     ...(progressBase || {}),
+    source: 'poll',
     stage: 'done',
     phase: 'completed',
     status: 'done',
@@ -1177,6 +1186,7 @@ const processAsyncJob = async ({
         if (data.files?.length || data.downloaded?.length) {
           onProgress?.({
             ...pollProgressBase,
+            source: 'download-notification',
             ...(SILENCE_BACKGROUND_DOWNLOAD_STATUS ? {} : {
               stage: 'downloading',
               phase: 'downloading_results',
@@ -1242,6 +1252,7 @@ const processAsyncJob = async ({
   if (isRemoteStorageTarget(storageTarget)) {
     onProgress?.({
       ...pollProgressBase,
+      source: 'poll',
       stage: 'done',
       status: 'done',
       done: true,
@@ -1299,6 +1310,7 @@ const processAsyncJob = async ({
   const effectiveSuccessCount = Math.max(successCount, combinedDownloaded.length || combinedFiles.length || 0);
   onProgress?.({
     ...pollProgressBase,
+    source: 'poll',
     stage: 'done',
     status: 'done',
     done: true,
@@ -1394,7 +1406,7 @@ export async function testSharpCloud(files, {
 
     results.push({ file: 'batch', ok: true, data, jobId: activeJobId });
     if (!data?.cancelled) {
-      onProgress?.({ completed: total, total, stage: 'done', jobId: activeJobId });
+      onProgress?.({ completed: total, total, source: 'poll', stage: 'done', jobId: activeJobId });
     }
     return results;
   } catch (err) {

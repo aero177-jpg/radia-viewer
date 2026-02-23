@@ -116,7 +116,7 @@ const loadSplatFileFast = async (asset) => {
 };
 
 export const generateAllPreviews = async (options = {}) => {
-  const { onProgress, onComplete } = options;
+  const { onProgress, onComplete, skipExisting = false } = options;
   const store = getStoreState();
   const assetList = getAssetList();
 
@@ -168,8 +168,9 @@ export const generateAllPreviews = async (options = {}) => {
 
   let successCount = 0;
   let failCount = 0;
+  let skippedCount = 0;
 
-  store.addLog(`[BatchPreview] Starting batch for ${assetList.length} assets`);
+  store.addLog(`[BatchPreview] Starting batch for ${assetList.length} assets${skipExisting ? ' (skipping existing)' : ''}`);
 
   try {
     for (let i = 0; i < assetList.length; i++) {
@@ -179,7 +180,16 @@ export const generateAllPreviews = async (options = {}) => {
       }
 
       const asset = assetList[i];
-      onProgress?.(i + 1, assetList.length, asset.name);
+
+      // Skip assets that already have a preview if requested
+      if (skipExisting && asset.preview) {
+        skippedCount++;
+        onProgress?.(i + 1, assetList.length, asset.name, true);
+        store.addLog(`[BatchPreview] ⊘ ${asset.name} (already has preview)`);
+        continue;
+      }
+
+      onProgress?.(i + 1, assetList.length, asset.name, false);
       store.setStatus(`Generating preview ${i + 1}/${assetList.length}: ${asset.name}`);
 
       try {
@@ -245,12 +255,12 @@ export const generateAllPreviews = async (options = {}) => {
       resumeImmersiveMode();
     }
 
-    store.addLog(`[BatchPreview] Complete: ${successCount} succeeded, ${failCount} failed`);
+    store.addLog(`[BatchPreview] Complete: ${successCount} succeeded, ${failCount} failed${skippedCount ? `, ${skippedCount} skipped` : ''}`);
     store.setStatus(`Batch preview complete: ${successCount}/${assetList.length}`);
-    onComplete?.(successCount, failCount);
+    onComplete?.(successCount, failCount, skippedCount);
   }
 
-  return { success: successCount, failed: failCount };
+  return { success: successCount, failed: failCount, skipped: skippedCount };
 };
 
 export const abortBatchPreview = () => {

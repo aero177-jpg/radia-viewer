@@ -130,6 +130,9 @@ const createEntry = async (asset) => {
     if (sourceMetadata.customAnimation && !storedSettings.customAnimation) {
       storedSettings.customAnimation = sourceMetadata.customAnimation;
     }
+    if (typeof sourceMetadata.annotation === 'string' && storedSettings.annotation === undefined) {
+      storedSettings.annotation = sourceMetadata.annotation;
+    }
     if (sourceMetadata.focusDistance !== undefined && storedSettings.focusDistance === undefined) {
       storedSettings.focusDistance = sourceMetadata.focusDistance;
     }
@@ -213,6 +216,25 @@ export const clearCustomAnimationInCache = (assetId) => {
   if (!entry) return;
   if (entry.storedSettings && entry.storedSettings.customAnimation !== undefined) {
     delete entry.storedSettings.customAnimation;
+  }
+};
+
+export const updateAnnotationInCache = (assetId, annotation) => {
+  if (!assetId || !cache.has(assetId)) return;
+  const entry = cache.get(assetId);
+  if (!entry) return;
+  if (!entry.storedSettings) {
+    entry.storedSettings = {};
+  }
+  entry.storedSettings.annotation = typeof annotation === 'string' ? annotation : '';
+};
+
+export const clearAnnotationInCache = (assetId) => {
+  if (!assetId || !cache.has(assetId)) return;
+  const entry = cache.get(assetId);
+  if (!entry) return;
+  if (entry.storedSettings && entry.storedSettings.annotation !== undefined) {
+    delete entry.storedSettings.annotation;
   }
 };
 
