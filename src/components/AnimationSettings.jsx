@@ -84,10 +84,17 @@ const FILE_TRANSITION_RANGE_OPTIONS = [
   { value: 'large', label: 'Large' },
 ];
 
+const TRANSITION_SPEED_OPTIONS = [
+  { value: 'snappy', label: 'Snappy' },
+  { value: 'default', label: 'Default' },
+  { value: 'vibe', label: 'Vibe' },
+];
+
 const DEFAULT_FILE_CUSTOM_ANIMATION = {
   slideType: 'default',
   transitionRange: 'default',
   zoomProfile: 'default',
+  dollyZoom: false,
 };
 
 const buildCustomAnimationPayload = (settings) => {
@@ -101,6 +108,9 @@ const buildCustomAnimationPayload = (settings) => {
   if (settings.zoomProfile && settings.zoomProfile !== 'default') {
     payload.zoomProfile = settings.zoomProfile;
   }
+  if (settings.dollyZoom) {
+    payload.dollyZoom = true;
+  }
   return payload;
 };
 
@@ -110,6 +120,7 @@ function AnimationSettings() {
   const animationIntensity = useStore((state) => state.animationIntensity);
   const animationDirection = useStore((state) => state.animationDirection);
   const slideMode = useStore((state) => state.slideMode);
+  const transitionSpeed = useStore((state) => state.transitionSpeed);
   const continuousMotionSize = useStore((state) => state.continuousMotionSize);
   const continuousMotionDuration = useStore((state) => state.continuousMotionDuration);
   const assets = useStore((state) => state.assets);
@@ -129,6 +140,7 @@ function AnimationSettings() {
   const setAnimationIntensityStore = useStore((state) => state.setAnimationIntensity);
   const setAnimationDirectionStore = useStore((state) => state.setAnimationDirection);
   const setSlideModeStore = useStore((state) => state.setSlideMode);
+  const setTransitionSpeedStore = useStore((state) => state.setTransitionSpeed);
   const setContinuousMotionSizeStore = useStore((state) => state.setContinuousMotionSize);
   const setContinuousMotionDurationStore = useStore((state) => state.setContinuousMotionDuration);
   const setSlideshowModeStore = useStore((state) => state.setSlideshowMode);
@@ -256,6 +268,16 @@ function AnimationSettings() {
     persistFileCustomAnimation(nextSettings);
   }, [fileCustomAnimation, persistFileCustomAnimation]);
 
+  const handleFileDollyZoomChange = useCallback((e) => {
+    const dollyZoom = e.target.checked;
+    const nextSettings = {
+      ...DEFAULT_FILE_CUSTOM_ANIMATION,
+      ...(fileCustomAnimation || {}),
+      dollyZoom,
+    };
+    persistFileCustomAnimation(nextSettings);
+  }, [fileCustomAnimation, persistFileCustomAnimation]);
+
   const effectiveFileSlideType =
     fileCustomAnimation?.slideType && fileCustomAnimation.slideType !== 'default'
       ? fileCustomAnimation.slideType
@@ -264,6 +286,7 @@ function AnimationSettings() {
     (fileCustomAnimation?.slideType && fileCustomAnimation.slideType !== 'default')
     || (fileCustomAnimation?.transitionRange && fileCustomAnimation.transitionRange !== 'default')
     || (fileCustomAnimation?.zoomProfile && fileCustomAnimation.zoomProfile !== 'default')
+    || fileCustomAnimation?.dollyZoom
   );
 
   const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
@@ -439,6 +462,16 @@ function AnimationSettings() {
           </select>
         </div>
 
+        {/* Transition speed selector */}
+        {/* <div class="control-row select-row">
+          <span class="control-label">Speed</span>
+          <select value={transitionSpeed} onChange={(e) => setTransitionSpeedStore(e.target.value)}>
+            {TRANSITION_SPEED_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div> */}
+
         {/* Slideshow mode toggle */}
         <div class="control-row animate-toggle-row">
           <span class="control-label">Slideshow Mode</span>
@@ -471,17 +504,44 @@ function AnimationSettings() {
           </select>
         </div>
 
-        <div class="control-row select-row">
-          <span class="control-label">Range (Per-file)</span>
-          <select
-            value={fileCustomAnimation?.transitionRange ?? 'default'}
-            onChange={handleFileTransitionRangeChange}
-          >
-            {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </div>
+        {effectiveFileSlideType === 'zoom' ? (
+          <>
+            <div class="control-row select-row">
+              <span class="control-label">Zoom target</span>
+              <select
+                value={fileCustomAnimation?.zoomProfile ?? 'default'}
+                onChange={handleZoomProfileChange}
+              >
+                {ZOOM_PROFILE_OPTIONS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div class="control-row animate-toggle-row">
+              <span class="control-label">Dolly Zoom</span>
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  checked={fileCustomAnimation?.dollyZoom ?? false}
+                  onChange={handleFileDollyZoomChange}
+                />
+                <span class="switch-track" aria-hidden="true" />
+              </label>
+            </div>
+          </>
+        ) : (
+          <div class="control-row select-row">
+            <span class="control-label">Range (Per-file)</span>
+            <select
+              value={fileCustomAnimation?.transitionRange ?? 'default'}
+              onChange={handleFileTransitionRangeChange}
+            >
+              {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div class="settings-divider">
           <span>Slideshow</span>
         </div>
@@ -496,34 +556,6 @@ function AnimationSettings() {
                 type="checkbox"
                 checked={slideshowContinuousMode}
                 onChange={(e) => setSlideshowContinuousModeStore(e.target.checked)}
-              />
-              <span class="switch-track" aria-hidden="true" />
-            </label>
-          </div>
-        )}
-
-        {effectiveFileSlideType === 'zoom' && (
-          <div class="control-row select-row">
-            <span class="control-label">Zoom target</span>
-            <select
-              value={fileCustomAnimation?.zoomProfile ?? 'default'}
-              onChange={handleZoomProfileChange}
-            >
-              {ZOOM_PROFILE_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {slideMode === 'zoom' && slideshowContinuousMode && (
-          <div class="control-row animate-toggle-row">
-            <span class="control-label">Dolly Zoom</span>
-            <label class="switch">
-              <input
-                type="checkbox"
-                checked={continuousDollyZoom}
-                onChange={(e) => setContinuousDollyZoomStore(e.target.checked)}
               />
               <span class="switch-track" aria-hidden="true" />
             </label>

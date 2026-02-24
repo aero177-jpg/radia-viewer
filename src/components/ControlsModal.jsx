@@ -78,8 +78,8 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
             <Section title="Slideshow" isOpen={isSubsectionOpen('getting-started.slideshow')}>
               <ul>
                 <li><strong>Start slideshow: </strong>Click the play icon on the bottom left of the screen to toggle. pause by tapping the screen, or clicking the play/pause button between the arrow buttons.</li>
-                <li><strong>Settings: </strong>Hold the slideshow button for a second to open slide settings.</li>
-                <li><strong>Continuous mode:</strong> This replaces the side in and out animation with a single sliding animation.</li>
+                <li><strong>Settings: </strong>Hold the slideshow button to open slide settings.</li>
+                <li><strong>Continuous mode:</strong> This replaces the slide in and out animation with a single sliding animation.</li>
                 <li><strong>Zoom target:</strong> Sets a zoom limit for the current image, overriding slideshow continuous mode presets. "Far" is recommended for landscapes or distant subjects, for example.</li>
                 <li><strong>Dolly zoom:</strong> Makes a visually interesting zoom effect, at the cost of revealing distortion or artifacts.</li>
 
@@ -182,12 +182,11 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
                   rel="noreferrer"
                 >
                   modal.com
-                </a>{' '} using their free tier. It connects to this viewer for seamless uploads and processing. If you are in a supabase or r2 collection, the results will be send to your storage and automatically added to the viewer. Otherwise, the files will be downloaded to your device to manually be added.
+                </a>{' '} using their free tier. It connects to this viewer for seamless uploads and processing.
+                 If you are in a supabase or r2 collection, the results will be send to your storage and automatically added to the viewer. Otherwise, the files will be downloaded to your device to manually be added. 
+                 <br/><br/>If you are in a temporary collection, your downloaded files will be removed when you exit, be sure to go to advanced settings and click "Export splats".
               </p>
 
-              <ul>
-                <li><strong>Endpoint Url: </strong> This is found on your modal dashboard, ml-sharp-optimized container, under process_image. It should look something like "https://{'<user>'}--ml-sharp-optimized-process-image.modal.run".</li>
-              </ul>
             </Section>
             <div class="controls-section-divider" />
 
@@ -199,14 +198,14 @@ function ControlsModal({ isOpen, onClose, defaultOpenSubsections = [] }) {
                 <li><strong>Cropped render:</strong> The viewer crops splats to improve performance. If edges are revealed in "fit to size", resize window or hold recenter button to fix.</li>
                 <li><strong>Distorted preview:</strong> Previews generated on first load may capture partial renders. Click "regen preview" in advanced settings to fix (persisted).</li>
                 <li><strong>Background glow:</strong> This is a copy of preview for visual effect. May not appear on first render. Regenerate preview to correct issues, or remove in advanced settings.</li>
-                <li><strong>Missing previews:</strong> Only generated on first load. Click "batch previews" in advanced settings to generate all (experimental; captures previews by rapidly loading splats).</li>
-                <li><strong>'Cracks' in splat:</strong> Thin areas may show cracks in low quality. "High" quality alleviates this but impacts performance.</li>
+                <li><strong>Missing previews:</strong> Only generated on first load. Click "batch previews" in advanced settings, or in the preview sidebar (available if multiple missing previews) to generate all.</li>
+                <li><strong>'Cracks' in splat:</strong> Thin areas may show cracks on performance or lower quality. "High" quality alleviates this but impacts performance.</li>
                 <li><strong>Poor performance:</strong> This app is focused on splat optimization, but some devices may still experience lag or stuttering. Integrated graphics, older mobile devices, and standalone VR headsets may be affected. Try adjusting quality presets, or adjust performance options in advanced settings. If running in browser, ensure that your dedicated GPU is utilized, and not your integrated graphics.</li>
               </ul>
             </Section>
             <Section title="Collections" isOpen={isSubsectionOpen('troubleshooting.collections')}>
               <ul>
-                <li><strong>Files not appearing:</strong> If using a connected cloud storage, make sure you have the correct permissions set up. For Supabase, you can set up a policy with "select" permissions for the relevant table. For R2, make sure your access key and secret key are correct, and that your bucket is set to public.</li>
+                <li><strong>Files not appearing:</strong> If using a connected cloud storage, make sure you have the correct permissions set up. For Supabase, you can set up a policy with "select" permissions for the relevant table. For R2, make sure your access key and secret key are correct, and be sure to add a CORS policy under "settings".</li>
               </ul>
             </Section>
           </Section>

@@ -85,6 +85,7 @@ const DEFAULT_UI_PREFS = {
     intensity: 'medium',
     direction: 'left',
     slideMode: 'horizontal',
+    transitionSpeed: 'default',
     continuousMotionSize: 'large',
     continuousMotionDuration: 7,
     slideshowContinuousMode: false,
@@ -119,6 +120,7 @@ const normalizeUiPrefs = (raw) => {
     if (typeof raw.animation.intensity === 'string') anim.intensity = raw.animation.intensity;
     if (typeof raw.animation.direction === 'string') anim.direction = raw.animation.direction;
     if (typeof raw.animation.slideMode === 'string') anim.slideMode = raw.animation.slideMode;
+    if (typeof raw.animation.transitionSpeed === 'string') anim.transitionSpeed = raw.animation.transitionSpeed;
     if (typeof raw.animation.continuousMotionSize === 'string') anim.continuousMotionSize = raw.animation.continuousMotionSize;
     if (typeof raw.animation.slideshowContinuousMode === 'boolean') {
       anim.slideshowContinuousMode = raw.animation.slideshowContinuousMode;
@@ -174,6 +176,9 @@ const persistUiPrefs = (state) => {
   }
   if (state.slideMode && state.slideMode !== DEFAULT_UI_PREFS.animation.slideMode) {
     anim.slideMode = state.slideMode;
+  }
+  if (state.transitionSpeed && state.transitionSpeed !== DEFAULT_UI_PREFS.animation.transitionSpeed) {
+    anim.transitionSpeed = state.transitionSpeed;
   }
   if (state.continuousMotionSize && state.continuousMotionSize !== DEFAULT_UI_PREFS.animation.continuousMotionSize) {
     anim.continuousMotionSize = state.continuousMotionSize;
@@ -295,6 +300,7 @@ export const useStore = create(
   animationIntensity: persistedUiPrefs.animation?.intensity ?? 'medium',
   animationDirection: persistedUiPrefs.animation?.direction ?? 'left',
   slideMode: persistedUiPrefs.animation?.slideMode ?? 'horizontal',
+  transitionSpeed: persistedUiPrefs.animation?.transitionSpeed ?? 'default',
   continuousMotionSize: persistedUiPrefs.animation?.continuousMotionSize ?? 'large',
   continuousMotionDuration: persistedUiPrefs.animation?.continuousMotionDuration ?? 7,
   slideshowContinuousMode: persistedUiPrefs.animation?.slideshowContinuousMode ?? false,
@@ -320,6 +326,7 @@ export const useStore = create(
     slideType: 'default',
     transitionRange: 'default',
     zoomProfile: 'default',
+    dollyZoom: false,
   },
   // Per-file annotation text (stored in IndexedDB file-settings)
   annotation: '',
@@ -470,6 +477,12 @@ export const useStore = create(
   setSlideMode: (mode) => {
     set({ slideMode: mode });
     persistUiPrefs({ ...get(), slideMode: mode });
+  },
+
+  /** Sets transition speed preset (snappy / default / vibe) */
+  setTransitionSpeed: (speed) => {
+    set({ transitionSpeed: speed });
+    persistUiPrefs({ ...get(), transitionSpeed: speed });
   },
 
   /** Sets continuous motion size preset */

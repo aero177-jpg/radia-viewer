@@ -80,7 +80,7 @@ export function DemoCollectionsPage({
       )}
       <h2>Add demo collections</h2>
       <p class="dialog-subtitle">
-        Choose demo collections to download and install.
+        Choose demo collections to view.
       </p>
 
       <div
@@ -151,7 +151,6 @@ export function DemoCollectionsPage({
             </>
           ) : (
             <>
-              <FontAwesomeIcon icon={faDownload} />
               {' '}Open selected
             </>
           )}

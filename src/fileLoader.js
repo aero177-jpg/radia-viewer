@@ -90,6 +90,9 @@ import {
   getSplatCache,
 } from "./splatManager.js";
 
+/** Debug: ?nofade disables the opacity fade between slides */
+const noFade = new URLSearchParams(window.location.search).has('nofade');
+
 /** Warmup frames for renderer stabilization (fresh load) */
 const WARMUP_FRAMES = 120;
 
@@ -127,6 +130,7 @@ const DEFAULT_FILE_CUSTOM_ANIMATION = {
   slideType: 'default',
   transitionRange: 'default',
   zoomProfile: 'default',
+  dollyZoom: false,
 };
 const DEFAULT_FILE_ANNOTATION = '';
 
@@ -140,11 +144,13 @@ export const normalizeFileCustomAnimationSettings = (customAnimationSettings) =>
   const zoomProfile = typeof customAnimationSettings?.zoomProfile === 'string'
     ? customAnimationSettings.zoomProfile
     : 'default';
+  const dollyZoom = customAnimationSettings?.dollyZoom === true;
 
   return {
     slideType,
     transitionRange,
     zoomProfile,
+    dollyZoom,
   };
 };
 
@@ -410,6 +416,7 @@ const getSlideModeForStore = (store, { slideDirection, customAnimationSettings }
   const forceFadeForNonSequential = !slideDirection;
   const normalizedCustomAnimation = normalizeFileCustomAnimationSettings(customAnimationSettings);
   const baseSlideMode = resolvePerFileSlideType(store, normalizedCustomAnimation);
+  const perFileDollyZoom = normalizedCustomAnimation.dollyZoom;
   const shouldUseContinuous = store.slideshowMode && store.slideshowPlaying && store.slideshowContinuousMode && baseSlideMode !== 'fade';
   const resolvedSlideMode = shouldUseContinuous
     ? (baseSlideMode === 'horizontal'
@@ -417,9 +424,11 @@ const getSlideModeForStore = (store, { slideDirection, customAnimationSettings }
       : baseSlideMode === 'vertical'
         ? 'continuous-orbit-vertical'
         : baseSlideMode === 'zoom'
-          ? (store.continuousDollyZoom ? 'continuous-dolly-zoom' : 'continuous-zoom')
+          ? (perFileDollyZoom ? 'continuous-dolly-zoom' : 'continuous-zoom')
           : baseSlideMode)
-    : baseSlideMode;
+    : (baseSlideMode === 'zoom' && perFileDollyZoom)
+      ? 'dolly-zoom'
+      : baseSlideMode;
 
   return {
     immersiveActive,
@@ -562,7 +571,7 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
   // For first load, immediately hide content to prevent flash before fade-in
   // This must happen BEFORE any async work that might cause a render
-  if (isFirstLoad) {
+  if (isFirstLoad && !noFade) {
     viewerEl.classList.add('slide-out');
   }
 
@@ -800,8 +809,16 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
 
     // slide-out class was already added at the start of loadSplatFile for first load
 
+    const isSnappy = store.transitionSpeed === 'snappy';
+
     if (shouldHardCutCustomViewAspect) {
       applyInstantProxyAspectCutAndReset('load-custom-base-view');
+    } else if (isSnappy) {
+      // Snappy: skip CSS size transition entirely — instant resize
+      updateViewerAspectRatio();
+      resize();
+      requestRender();
+      if (isFirstLoad) hasLoadedFirstAsset = true;
     } else {
       if (aspectApplied) {
         await waitForViewerResizeTransition();
@@ -935,22 +952,33 @@ export const loadSplatFile = async (assetOrFile, options = {}) => {
         // Legacy fade-in for slide transitions when slideOutAnimation was skipped
         const viewerEl = document.getElementById('viewer');
         if (viewerEl) {
-          viewerEl.classList.remove('slide-out');
-          viewerEl.classList.add('slide-in');
+          if (!noFade) {
+            viewerEl.classList.add('slide-out');   // ensure hidden baseline
+            viewerEl.classList.add('slide-in');    // combined rule → opacity: 0
+            void viewerEl.offsetHeight;
+            viewerEl.classList.remove('slide-out'); // transition fires 0 → 1
+          } else {
+            viewerEl.classList.remove('slide-out');
+          }
           setTimeout(() => {
             viewerEl.classList.remove('slide-in');
-          }, 550);
+          }, 400);
         }
       } else if (isFirstLoad) {
         // First load: fade-in after aspect ratio transition completed
         // Content was hidden with slide-out class during resize
         const viewerEl = document.getElementById('viewer');
         if (viewerEl) {
-          viewerEl.classList.remove('slide-out');
-          viewerEl.classList.add('slide-in');
+          if (!noFade) {
+            viewerEl.classList.add('slide-in');     // combined with slide-out → opacity: 0
+            void viewerEl.offsetHeight;
+            viewerEl.classList.remove('slide-out'); // transition fires 0 → 1
+          } else {
+            viewerEl.classList.remove('slide-out');
+          }
           setTimeout(() => {
             viewerEl.classList.remove('slide-in');
-          }, 500);
+          }, 400);
         }
       }
     }

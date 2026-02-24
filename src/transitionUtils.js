@@ -35,6 +35,6 @@ export const waitForViewerResizeTransition = () => new Promise((resolve) => {
     }
   };
 
-  timeoutId = setTimeout(done, 280); // Fallback in case transitionend doesn't fire
+  timeoutId = setTimeout(done, 180); // Fallback in case transitionend doesn't fire
   viewerEl.addEventListener('transitionend', onEnd);
 });

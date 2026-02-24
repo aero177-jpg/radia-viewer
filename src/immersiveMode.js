@@ -55,6 +55,7 @@ let currentSensitivity = { ...BASE_SENSITIVITY };
 
 // Touch pan scale multiplier (derived from immersive sensitivity)
 let touchPanScaleMultiplier = 1;
+let wasBlockedBySlideshowPlayback = false;
 
 /**
  * Computes touch pan scaling based on immersive sensitivity multiplier.
@@ -224,6 +225,15 @@ const isSlideTransitionActive = () => {
 };
 
 /**
+ * Checks if slideshow is actively auto-playing.
+ * Used to block immersive input while slideshow is running (not paused).
+ */
+const isSlideshowPlaybackActive = () => {
+  const { slideshowMode, slideshowPlaying } = useStore.getState();
+  return Boolean(slideshowMode && slideshowPlaying);
+};
+
+/**
  * Handles device orientation event.
  * Just stores the raw values - actual camera update happens in unified loop.
  */
@@ -295,6 +305,20 @@ const immersiveUpdateLoop = () => {
   if (!isActive || isPaused || !camera || !controls) {
     updateLoopId = requestAnimationFrame(immersiveUpdateLoop);
     return;
+  }
+
+  // Block input while slideshow is actively playing.
+  if (isSlideshowPlaybackActive()) {
+    wasBlockedBySlideshowPlayback = true;
+    touchStartPos = null;
+    updateLoopId = requestAnimationFrame(immersiveUpdateLoop);
+    return;
+  }
+
+  // Slideshow unblocked; re-baseline to avoid camera jumps from accumulated device movement.
+  if (wasBlockedBySlideshowPlayback) {
+    resetImmersiveBaseline();
+    wasBlockedBySlideshowPlayback = false;
   }
   
   // Block input during slide transitions
@@ -439,6 +463,7 @@ export const enableImmersiveMode = async () => {
   panOffset = { x: 0, y: 0 };
   touchStartPos = null;
   baseCameraTarget = controls?.target?.clone() ?? null;
+  wasBlockedBySlideshowPlayback = false;
   
   // Start listening to device orientation (just stores values)
   window.addEventListener('deviceorientation', handleDeviceOrientation, true);
@@ -521,6 +546,7 @@ export const disableImmersiveMode = () => {
   panOffset = { x: 0, y: 0 };
   touchStartPos = null;
   baseCameraTarget = null;
+  wasBlockedBySlideshowPlayback = false;
   
   console.log('Immersive mode disabled');
 };

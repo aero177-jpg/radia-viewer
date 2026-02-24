@@ -2,7 +2,7 @@
  * Continuous slideshow animations: zoom, orbit, and vertical-orbit.
  * These run as long-lived GSAP tweens during slideshow "continuous" mode.
  */
-import { camera, controls, requestRender, THREE, updateDollyZoomBaselineFromCamera } from "./viewer.js";
+import { camera, controls, requestRender, forceRenderNow, THREE, updateDollyZoomBaselineFromCamera } from "./viewer.js";
 import { useStore } from "./store.js";
 import gsap from "gsap";
 
@@ -171,13 +171,21 @@ const restoreOrbitLimitOverride = (stateRef) => {
   controls.update();
 };
 
+/** Debug: ?nofade disables the opacity fade between slides */
+const noFade = new URLSearchParams(window.location.search).has('nofade');
+
 /** Shared setup for continuous slide-in: toggle CSS classes, guard camera. */
 const beginContinuousSlideIn = (durationMs) => {
   const viewerEl = document.getElementById('viewer');
   if (viewerEl) {
-    viewerEl.classList.remove('slide-out');
+    // Ensure slide-out is present (cancelSlideAnimation in the caller may have
+    // stripped it). Use the .slide-out.slide-in combined rule to hold opacity: 0,
+    // then remove slide-out so the slide-in transition fires from 0 → 1.
+    viewerEl.classList.add('slide-out');
+    if (!noFade) viewerEl.classList.add('slide-in');
+    forceRenderNow();
     void viewerEl.offsetHeight;
-    viewerEl.classList.add('slide-in');
+    viewerEl.classList.remove('slide-out');
   }
 
   if (!camera || !controls) {

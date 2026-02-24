@@ -48,6 +48,7 @@ const DEFAULT_FILE_CUSTOM_ANIMATION = {
   slideType: 'default',
   transitionRange: 'default',
   zoomProfile: 'default',
+  dollyZoom: false,
 };
 
 const buildCustomAnimationPayload = (settings) => {
@@ -61,6 +62,9 @@ const buildCustomAnimationPayload = (settings) => {
   if (settings.zoomProfile && settings.zoomProfile !== 'default') {
     payload.zoomProfile = settings.zoomProfile;
   }
+  if (settings.dollyZoom) {
+    payload.dollyZoom = true;
+  }
   return payload;
 };
 
@@ -69,7 +73,6 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
   const continuousMotionSize = useStore((state) => state.continuousMotionSize);
   const continuousMotionDuration = useStore((state) => state.continuousMotionDuration);
   const slideshowContinuousMode = useStore((state) => state.slideshowContinuousMode);
-  const continuousDollyZoom = useStore((state) => state.continuousDollyZoom);
   const slideshowDuration = useStore((state) => state.slideshowDuration);
   const assets = useStore((state) => state.assets);
   const currentAssetIndex = useStore((state) => state.currentAssetIndex);
@@ -80,7 +83,6 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
   const setContinuousMotionSizeStore = useStore((state) => state.setContinuousMotionSize);
   const setContinuousMotionDurationStore = useStore((state) => state.setContinuousMotionDuration);
   const setSlideshowContinuousModeStore = useStore((state) => state.setSlideshowContinuousMode);
-  const setContinuousDollyZoomStore = useStore((state) => state.setContinuousDollyZoom);
   const setSlideshowDurationStore = useStore((state) => state.setSlideshowDuration);
   const setFileCustomAnimation = useStore((state) => state.setFileCustomAnimation);
 
@@ -139,6 +141,16 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
     persistFileCustomAnimation(nextSettings);
   }, [fileCustomAnimation, persistFileCustomAnimation]);
 
+  const handleFileDollyZoomChange = useCallback((e) => {
+    const dollyZoom = e.target.checked;
+    const nextSettings = {
+      ...DEFAULT_FILE_CUSTOM_ANIMATION,
+      ...(fileCustomAnimation || {}),
+      dollyZoom,
+    };
+    persistFileCustomAnimation(nextSettings);
+  }, [fileCustomAnimation, persistFileCustomAnimation]);
+
   const effectiveFileSlideType =
     fileCustomAnimation?.slideType && fileCustomAnimation.slideType !== 'default'
       ? fileCustomAnimation.slideType
@@ -147,6 +159,7 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
     (fileCustomAnimation?.slideType && fileCustomAnimation.slideType !== 'default')
     || (fileCustomAnimation?.transitionRange && fileCustomAnimation.transitionRange !== 'default')
     || (fileCustomAnimation?.zoomProfile && fileCustomAnimation.zoomProfile !== 'default')
+    || fileCustomAnimation?.dollyZoom
   );
 
   return (
@@ -178,34 +191,6 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
                   <option key={value} value={value}>{label}</option>
                 ))}
               </select>
-            </div>
-          )}
-
-          {effectiveFileSlideType === 'zoom' && (
-            <div class="control-row select-row">
-              <span class="control-label">Zoom target</span>
-              <select
-                value={fileCustomAnimation?.zoomProfile ?? 'default'}
-                onChange={handleZoomProfileChange}
-              >
-                {ZOOM_PROFILE_OPTIONS.map(({ value, label }) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {slideMode === 'zoom' && slideshowContinuousMode && (
-            <div class="control-row animate-toggle-row">
-              <span class="control-label">Dolly Zoom</span>
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  checked={continuousDollyZoom}
-                  onChange={(e) => setContinuousDollyZoomStore(e.target.checked)}
-                />
-                <span class="switch-track" aria-hidden="true" />
-              </label>
             </div>
           )}
 
@@ -266,14 +251,41 @@ function SlideshowOptionsModal({ isOpen, onClose }) {
             </select>
           </div>
 
-          <div class="control-row select-row">
-            <span class="control-label">Range (Per-file)</span>
-            <select value={fileCustomAnimation?.transitionRange ?? 'default'} onChange={handleFileTransitionRangeChange}>
-              {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
+          {effectiveFileSlideType === 'zoom' ? (
+            <>
+              <div class="control-row select-row">
+                <span class="control-label">Zoom target</span>
+                <select
+                  value={fileCustomAnimation?.zoomProfile ?? 'default'}
+                  onChange={handleZoomProfileChange}
+                >
+                  {ZOOM_PROFILE_OPTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div class="control-row animate-toggle-row">
+                <span class="control-label">Dolly Zoom</span>
+                <label class="switch">
+                  <input
+                    type="checkbox"
+                    checked={fileCustomAnimation?.dollyZoom ?? false}
+                    onChange={handleFileDollyZoomChange}
+                  />
+                  <span class="switch-track" aria-hidden="true" />
+                </label>
+              </div>
+            </>
+          ) : (
+            <div class="control-row select-row">
+              <span class="control-label">Range (Per-file)</span>
+              <select value={fileCustomAnimation?.transitionRange ?? 'default'} onChange={handleFileTransitionRangeChange}>
+                {FILE_TRANSITION_RANGE_OPTIONS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
     </Modal>

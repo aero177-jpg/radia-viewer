@@ -686,7 +686,7 @@ function CameraControls() {
     setCustomAspectRatio(value);
     const ratio = aspectKeyToRatio(value);
     const viewerEl = document.getElementById('viewer');
-    if (viewerEl) {
+    if (viewerEl && !new URLSearchParams(window.location.search).has('nofade')) {
       viewerEl.classList.add('slide-out-fast');
       viewerEl.classList.remove('slide-in');
     }
@@ -697,7 +697,7 @@ function CameraControls() {
       requestRender();
       if (viewerEl) {
         viewerEl.classList.remove('slide-out-fast');
-        viewerEl.classList.add('slide-in');
+        if (!new URLSearchParams(window.location.search).has('nofade')) viewerEl.classList.add('slide-in');
         setTimeout(() => {
           viewerEl.classList.remove('slide-in');
         }, 550);

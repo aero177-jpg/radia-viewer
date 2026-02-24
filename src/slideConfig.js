@@ -62,7 +62,7 @@ export const SLIDE_PRESETS = {
   slideOut: {
     transition: {
       fade: { duration: 650, amount: 0.35, fadeDelay: 0.5 },
-      default: { duration: 1200, amount: 0.5, fadeDelay: 0.5 },
+      default: { duration: 1400, amount: 0.5, fadeDelay: 0.7 },
     },
   },
   slideIn: {

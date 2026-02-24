@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useState } from 'preact/hooks';
-import { faFolder, faLeaf, faGamepad, faTreeCity, faCat } from '@fortawesome/free-solid-svg-icons';
+import { faFolder, faLeaf, faGamepad, faTreeCity, faCat, faCube } from '@fortawesome/free-solid-svg-icons';
 import { getSource } from '../storage/index.js';
 import { loadFromStorageSource } from '../fileLoader';
 import { importTransferBundle } from '../utils/debugTransfer.js';
@@ -37,6 +37,13 @@ const DEMO_COLLECTION_OPTIONS = [
     icon: faGamepad,
     url: 'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/demo_misc/radia-transfer-screenshots-20260218.zip',
   },
+  {
+    key: 'multiview-model',
+    title: 'Multiview Model',
+    subtitle: 'Single model with multiple viewpoints',
+    icon: faCube,
+    url: 'https://pub-db16fc5228e844edb71f8282c2992658.r2.dev/demo_multiview/radia-transfer-demo-multiview-model-20260224.zip',
+  }
 ];
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

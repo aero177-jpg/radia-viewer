@@ -108,7 +108,7 @@ const getCollectionUploadCopy = (source) => {
       title: 'Upload to Supabase',
       subtitle: `Choose what you want to upload to "${collectionName}".`,
       assetTitle: '3dgs asset upload',
-      assetSubtitle: 'Uploads supported 3DGS assets to Supabase storage.',
+      assetSubtitle: 'Uploads supported 3DGS models to Supabase storage.',
       imageTitle: 'Images to convert',
       imageSubtitle: 'Sends images to cloud GPU and uploads the results to Supabase.',
       note: '',
@@ -120,7 +120,7 @@ const getCollectionUploadCopy = (source) => {
       title: 'Upload to R2',
       subtitle: `Choose what you want to upload to "${collectionName}".`,
       assetTitle: '3dgs asset upload',
-      assetSubtitle: 'Uploads supported 3DGS assets to R2 storage.',
+      assetSubtitle: 'Uploads supported 3DGS models to R2 storage.',
       imageTitle: 'Images to convert',
       imageSubtitle: 'Sends images to cloud GPU and uploads the results to R2.',
       note: '',
@@ -132,7 +132,7 @@ const getCollectionUploadCopy = (source) => {
       title: 'Add to app storage',
       subtitle: `Choose what you want to add to "${collectionName}".`,
       assetTitle: '3dgs asset import',
-      assetSubtitle: 'Saves supported 3DGS assets into app storage.',
+      assetSubtitle: 'Saves supported 3DGS models into app storage.',
       imageTitle: 'Images to convert',
       imageSubtitle: 'Sends images to cloud GPU and saves results into app storage.',
       note: '',
@@ -143,8 +143,8 @@ const getCollectionUploadCopy = (source) => {
     return {
       title: 'Add files',
       subtitle: 'Local folders are read-only. Converted images will download.',
-      assetTitle: '3dgs assets',
-      assetSubtitle: 'Adds supported 3DGS assets to the temporary queue.',
+      assetTitle: '3dgs models',
+      assetSubtitle: 'Adds supported 3DGS models to the temporary queue.',
       imageTitle: 'Images to convert',
       imageSubtitle: 'Sends images to cloud GPU and downloads the results.',
       note: 'Files added here are temporary unless saved to a storage collection.',
@@ -154,8 +154,8 @@ const getCollectionUploadCopy = (source) => {
   return {
     title: 'Add files',
     subtitle: 'Choose what to add to the local queue.',
-    assetTitle: '3dgs assets',
-    assetSubtitle: 'Adds supported 3DGS assets to the temporary queue.',
+    assetTitle: '3dgs models',
+    assetSubtitle: 'Adds supported 3DGS models to the temporary queue.',
     imageTitle: 'Images to convert',
     imageSubtitle: 'Sends images to cloud GPU and adds converted assets to the queue.',
     note: 'Files added here are temporary unless saved to a storage collection.',
@@ -247,10 +247,10 @@ export function useCollectionUploadFlow({
 
   // Helper to compute accept string based on mode
   const computeAcceptForMode = (mode) => {
-    // Android needs no filter for 3D files to reach the generic file browser
-    if (IS_ANDROID && mode === 'assets') return undefined;
+    // Keep asset selection unfiltered so platform pickers (especially Android)
+    // can show generic file providers and specialized formats like .sog.
+    if (mode === 'assets') return undefined;
     if (mode === 'images') return IMAGE_ACCEPT;
-    if (mode === 'assets') return FORMAT_ACCEPT || undefined;
     // Default: combine both if allowed
     if (allowAssets && allowImages) return FORMAT_ACCEPT ? `${FORMAT_ACCEPT},${IMAGE_ACCEPT}` : IMAGE_ACCEPT;
     if (allowImages) return IMAGE_ACCEPT;
@@ -677,9 +677,20 @@ export function useCollectionUploadFlow({
     const accept = computeAcceptForMode(mode);
     setUploadAccept(accept);
 
+    const syncInputAccept = () => {
+      const input = uploadInputRef.current;
+      if (!input) return;
+      if (accept) {
+        input.setAttribute('accept', accept);
+      } else {
+        input.removeAttribute('accept');
+      }
+    };
+
     if (IS_ANDROID && mode === 'assets') {
       // Use setTimeout to ensure state update has flushed to DOM
       setTimeout(() => {
+        syncInputAccept();
         uploadInputRef.current?.click();
       }, 0);
       return;
@@ -687,15 +698,16 @@ export function useCollectionUploadFlow({
 
     if (typeof window.showOpenFilePicker === 'function') {
       try {
-        const types = mode === 'images'
-          ? [{ description: 'Images', accept: { 'image/*': DEFAULT_IMAGE_EXTENSIONS } }]
-          : [{ description: 'Supported 3DGS assets', accept: { 'application/octet-stream': SUPPORTED_EXTENSIONS } }];
-
-        const handles = await window.showOpenFilePicker({
+        const pickerOptions = {
           multiple: true,
-          types,
           excludeAcceptAllOption: false,
-        });
+        };
+
+        if (mode === 'images') {
+          pickerOptions.types = [{ description: 'Images', accept: { 'image/*': DEFAULT_IMAGE_EXTENSIONS } }];
+        }
+
+        const handles = await window.showOpenFilePicker(pickerOptions);
 
         const files = await Promise.all(handles.map((handle) => handle.getFile()));
         await handleFilesForMode(mode, files);
@@ -708,6 +720,7 @@ export function useCollectionUploadFlow({
 
     // For non-Android fallback, also wait for state to flush
     setTimeout(() => {
+      syncInputAccept();
       uploadInputRef.current?.click();
     }, 0);
   }, [handleFilesForMode]);

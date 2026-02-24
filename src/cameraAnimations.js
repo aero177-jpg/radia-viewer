@@ -7,7 +7,7 @@
  * This file re-exports the public API from both so existing import sites
  * can keep importing from "./cameraAnimations.js" with no changes.
  */
-import { camera, controls, requestRender, THREE, bgImageContainer, updateDollyZoomBaselineFromCamera, dollyZoomBaseDistance, dollyZoomBaseFov } from "./viewer.js";
+import { camera, controls, requestRender, forceRenderNow, THREE, bgImageContainer, updateDollyZoomBaselineFromCamera, dollyZoomBaseDistance, dollyZoomBaseFov } from "./viewer.js";
 import { cancelLoadZoomAnimation } from "./customAnimations.js";
 import { useStore } from "./store.js";
 import gsap from "gsap";
@@ -66,8 +66,30 @@ let anchorAnimationState = null;
 let currentGsapTween = null;
 let slideAnimationState = null;
 
+/** Debug: ?nofade disables the opacity fade between slides */
+const noFade = new URLSearchParams(window.location.search).has('nofade');
+
 const easeInOutCubic = easingFunctions['ease-in-out'];
 const getStoreState = () => useStore.getState();
+
+// ============================================================================
+// Dolly-zoom FOV deltas for standard (non-continuous) transitions
+// ============================================================================
+// Smaller than continuous since standard transitions are much shorter.
+// startDelta: FOV offset at animation start, endDelta: FOV offset at animation end.
+const DOLLY_ZOOM_DELTAS = {
+  default: { startDelta: 8, endDelta: -5 },
+  near:    { startDelta: 5, endDelta: -3 },
+  medium:  { startDelta: 10, endDelta: -6 },
+  far:     { startDelta: 15, endDelta: -10 },
+};
+
+const getDollyZoomDeltas = () => {
+  const { fileCustomAnimation } = getStoreState();
+  const profile = fileCustomAnimation?.zoomProfile;
+  if (profile && DOLLY_ZOOM_DELTAS[profile]) return DOLLY_ZOOM_DELTAS[profile];
+  return DOLLY_ZOOM_DELTAS.default;
+};
 
 // ============================================================================
 // Smooth reset animation
@@ -259,12 +281,12 @@ const calculateSlideGeometry = (mode, direction, amount, isSlideOut) => {
       const vPanSign = isSlideOut
         ? (direction === 'next' ? -1 : 1)
         : (direction === 'next' ? 1 : -1);
-      const vPanAmount = distance * amount * vPanSign;
+      const vPanAmount = distance * amount * 0.6 * vPanSign;
       const vPanOffset = up.clone().multiplyScalar(vPanAmount);
       offsetPosition = currentPosition.clone().add(vPanOffset);
       offsetTarget = currentTarget.clone().add(vPanOffset);
       orbitAxis = right;
-      orbitAngle = (Math.PI / 180) * 8 * (direction === 'next' ? (isSlideOut ? 1 : -1) : (isSlideOut ? -1 : 1));
+      orbitAngle = (Math.PI / 180) * 4 * (direction === 'next' ? (isSlideOut ? 1 : -1) : (isSlideOut ? -1 : 1));
       break;
     }
 
@@ -284,12 +306,12 @@ const calculateSlideGeometry = (mode, direction, amount, isSlideOut) => {
       const hPanSign = isSlideOut
         ? (direction === 'next' ? 1 : -1)
         : (direction === 'next' ? -1 : 1);
-      const hPanAmount = distance * amount * hPanSign;
+      const hPanAmount = distance * amount * 0.6 * hPanSign;
       const hPanOffset = right.clone().multiplyScalar(hPanAmount);
       offsetPosition = currentPosition.clone().add(hPanOffset);
       offsetTarget = currentTarget.clone().add(hPanOffset);
       orbitAxis = up;
-      orbitAngle = (Math.PI / 180) * 8 * (direction === 'next' ? (isSlideOut ? 1 : -1) : (isSlideOut ? -1 : 1));
+      orbitAngle = (Math.PI / 180) * 4 * (direction === 'next' ? (isSlideOut ? 1 : -1) : (isSlideOut ? -1 : 1));
       break;
     }
   }
@@ -323,14 +345,16 @@ export const slideOutAnimation = (direction, options = {}) => {
   return new Promise((resolve) => {
     const mode = options.mode ?? 'horizontal';
     const { duration, amount, fadeDelay } = resolveSlideOutOptions(mode, options);
-    const { slideshowMode, slideshowUseCustom } = getStoreState();
+    const { slideshowMode, slideshowUseCustom, transitionSpeed } = getStoreState();
     const useCustom = slideshowMode && slideshowUseCustom;
     const config = useCustom ? SLIDESHOW_CONFIG.slideOut : DEFAULT_CONFIG.slideOut;
 
     const baseDuration = useCustom ? config.totalDuration : duration / 1000;
     const speedMultiplier = useCustom ? (config.speedMultiplier || 1) : 1;
     const durationSec = baseDuration / speedMultiplier;
-    const actualFadeDelay = useCustom ? config.fadeDelay : fadeDelay;
+    const baseFadeDelay = useCustom ? config.fadeDelay : fadeDelay;
+    // Snappy: push fade-out trigger to 85% of the animation so content stays visible longer
+    const actualFadeDelay = transitionSpeed === 'snappy' ? Math.max(baseFadeDelay, 0.85) : baseFadeDelay;
 
     cancelSlideAnimation();
 
@@ -342,7 +366,7 @@ export const slideOutAnimation = (direction, options = {}) => {
     // Continuous modes: fade-only out (no camera movement)
     if (isContinuousMode(mode)) {
       const fadeTimeoutId = setTimeout(() => {
-        if (viewerEl) viewerEl.classList.add('slide-out');
+        if (!noFade && viewerEl) viewerEl.classList.add('slide-out');
         if (bgImageContainer) bgImageContainer.classList.remove('active');
       }, durationSec * actualFadeDelay * 1000);
 
@@ -367,11 +391,24 @@ export const slideOutAnimation = (direction, options = {}) => {
     const speedScale = useCustom ? computeSpeedScale(speedAt, durationSec) : 1;
 
     const fadeTimeoutId = setTimeout(() => {
-      if (viewerEl) viewerEl.classList.add('slide-out');
+      if (!noFade && viewerEl) viewerEl.classList.add('slide-out');
       if (bgImageContainer) bgImageContainer.classList.remove('active');
     }, durationSec * actualFadeDelay * 1000);
 
     slideAnimationState = { fadeTimeoutId };
+
+    // Dolly-zoom: compute FOV endpoints and distance-compensation baseline
+    let dollyBaseFov, dollyBaseDistance, dollyBaseDirection, dollyBaseTan, dollyStartFov, dollyEndFov;
+    if (mode === 'dolly-zoom') {
+      const { startDelta, endDelta } = getDollyZoomDeltas();
+      dollyBaseFov = camera.fov;
+      dollyBaseDistance = camera.position.distanceTo(controls.target);
+      dollyBaseDirection = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+      dollyBaseTan = Math.tan(THREE.MathUtils.degToRad(dollyBaseFov / 2));
+      // Slide-out goes from current FOV toward endDelta offset
+      dollyStartFov = dollyBaseFov;
+      dollyEndFov = THREE.MathUtils.clamp(dollyBaseFov + endDelta, 20, 120);
+    }
 
     currentGsapTween = gsap.to(proxy, {
       t: durationSec,
@@ -389,14 +426,24 @@ export const slideOutAnimation = (direction, options = {}) => {
           progress = gsap.parseEase(config.ease || "power2.in")(clamp01(t / durationSec));
         }
 
-        camera.position.lerpVectors(startPosition, endPosition, progress);
-        controls.target.lerpVectors(startTarget, endTarget, progress);
+        if (mode === 'dolly-zoom') {
+          // Animate FOV with distance compensation to keep subject size
+          const newFov = THREE.MathUtils.lerp(dollyStartFov, dollyEndFov, progress);
+          const newTan = Math.tan(THREE.MathUtils.degToRad(newFov / 2));
+          const newDistance = dollyBaseDistance * (dollyBaseTan / newTan);
+          camera.position.copy(controls.target).addScaledVector(dollyBaseDirection, newDistance);
+          camera.fov = newFov;
+          camera.updateProjectionMatrix();
+        } else {
+          camera.position.lerpVectors(startPosition, endPosition, progress);
+          controls.target.lerpVectors(startTarget, endTarget, progress);
 
-        if (orbitAngle !== 0) {
-          const currentOrbitAngle = orbitAngle * progress;
-          const orbitOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
-          orbitOffset.applyAxisAngle(orbitAxis, currentOrbitAngle);
-          camera.position.copy(controls.target).add(orbitOffset);
+          if (orbitAngle !== 0) {
+            const currentOrbitAngle = orbitAngle * progress;
+            const orbitOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
+            orbitOffset.applyAxisAngle(orbitAxis, currentOrbitAngle);
+            camera.position.copy(controls.target).add(orbitOffset);
+          }
         }
 
         controls.update();
@@ -436,6 +483,13 @@ export const slideInAnimation = (direction, options = {}) => {
 
     cancelSlideAnimation();
 
+    // Re-ensure slide-out is present to keep canvas hidden during setup.
+    // cancelSlideAnimation strips all slide classes, but we need slide-out as
+    // the opacity baseline so the .slide-out.slide-in combined CSS rule (opacity:0)
+    // holds until we're ready for the transition.
+    const viewerEl = document.getElementById('viewer');
+    if (viewerEl && !noFade) viewerEl.classList.add('slide-out');
+
     // Delegate continuous modes to their own module
     if (mode === 'continuous-zoom') {
       continuousZoomSlideIn(duration, amount).then(() => {
@@ -468,66 +522,130 @@ export const slideInAnimation = (direction, options = {}) => {
 
 
     // Standard slide-in (horizontal / vertical / zoom / fade)
-    const viewerEl = document.getElementById('viewer');
-    if (viewerEl) {
-      viewerEl.classList.remove('slide-out');
-      void viewerEl.offsetHeight;
-      viewerEl.classList.add('slide-in');
+    if (!camera || !controls) {
+      if (viewerEl) viewerEl.classList.remove('slide-out', 'slide-in');
+      resolve();
+      return;
     }
-
-    if (!camera || !controls) { resolve(); return; }
 
     const geometry = calculateSlideGeometry(mode, direction, amount, false);
     const { startPosition, endPosition, startTarget, endTarget, orbitAxis, startOrbitAngle } = geometry;
 
-    camera.position.copy(startPosition);
-    controls.target.copy(startTarget);
+    // Dolly-zoom: compute FOV endpoints and distance-compensation baseline
+    let dollyBaseFov, dollyBaseDistance, dollyBaseDirection, dollyBaseTan, dollyStartFov, dollyEndFov;
+    if (mode === 'dolly-zoom') {
+      const { startDelta } = getDollyZoomDeltas();
+      dollyBaseFov = camera.fov;
+      dollyBaseDistance = camera.position.distanceTo(controls.target);
+      dollyBaseDirection = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+      dollyBaseTan = Math.tan(THREE.MathUtils.degToRad(dollyBaseFov / 2));
+      // Slide-in goes from startDelta offset back to base FOV
+      dollyStartFov = THREE.MathUtils.clamp(dollyBaseFov + startDelta, 20, 120);
+      dollyEndFov = dollyBaseFov;
+      // Apply start FOV + compensated position so forceRenderNow shows the correct frame
+      const startTan = Math.tan(THREE.MathUtils.degToRad(dollyStartFov / 2));
+      const startDistance = dollyBaseDistance * (dollyBaseTan / startTan);
+      camera.position.copy(controls.target).addScaledVector(dollyBaseDirection, startDistance);
+      camera.fov = dollyStartFov;
+      camera.updateProjectionMatrix();
+    } else {
+      // Set camera to its START position
+      camera.position.copy(startPosition);
+      controls.target.copy(startTarget);
+    }
+
+    // Force a synchronous render so the canvas contains the correct new frame
+    // before we reveal it.
     controls.update();
-    requestRender();
+    forceRenderNow();
 
-    const proxy = { t: 0 };
-    let progress = 0;
-    let lastTime = 0;
-
-    const speedAt = useCustom ? createSlideInSpeedProfile(config, durationSec) : null;
-    const speedScale = useCustom ? computeSpeedScale(speedAt, durationSec) : 1;
-
-    currentGsapTween = gsap.to(proxy, {
-      t: durationSec,
-      duration: durationSec,
-      ease: "none",
-      onUpdate: () => {
-        const t = proxy.t;
-
-        if (useCustom) {
-          const dt = t - lastTime;
-          lastTime = t;
-          progress += speedAt(t) * speedScale * dt;
-          progress = clamp01(progress);
+    // Bundle CSS reveal + GSAP tween start so they can be deferred together
+    // for snappy mode (GPU needs an extra frame to present the new content).
+    const { transitionSpeed } = getStoreState();
+    const startRevealAndTween = () => {
+      // Trigger CSS fade-in using the combined rule:
+      //   .slide-out.slide-in → opacity: 0 (holds hidden)
+      //   remove slide-out   → .slide-in   → opacity: 1 with transition (fades in)
+      if (viewerEl) {
+        if (!noFade) {
+          viewerEl.classList.add('slide-in');      // combined rule keeps opacity: 0
+          void viewerEl.offsetHeight;              // commit baseline
+          viewerEl.classList.remove('slide-out');  // transition from 0 → 1
         } else {
-          progress = gsap.parseEase(config.ease || "power2.out")(clamp01(t / durationSec));
+          viewerEl.classList.remove('slide-out');
         }
+      }
 
-        camera.position.lerpVectors(startPosition, endPosition, progress);
-        controls.target.lerpVectors(startTarget, endTarget, progress);
+      const proxy = { t: 0 };
+      let progress = 0;
+      let lastTime = 0;
 
-        if (startOrbitAngle !== 0) {
-          const currentOrbitAngle = startOrbitAngle * (1 - progress);
-          const orbitOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
-          orbitOffset.applyAxisAngle(orbitAxis, currentOrbitAngle);
-          camera.position.copy(controls.target).add(orbitOffset);
-        }
+      const speedAt = useCustom ? createSlideInSpeedProfile(config, durationSec) : null;
+      const speedScale = useCustom ? computeSpeedScale(speedAt, durationSec) : 1;
 
-        controls.update();
-        requestRender();
-      },
-      onComplete: () => {
-        currentGsapTween = null;
-        slideAnimationState = null;
-        updateDollyZoomBaselineFromCamera();
-        if (viewerEl) viewerEl.classList.remove('slide-out', 'slide-in');
-        resolve();
-      },
-    });
+      // Delay the camera tween so motion starts when the content is partially
+      // visible. Without this, power2.out rushes through most of its travel
+      // while the opacity fade-in is still ramping up, making the animation
+      // appear "already done" when the image becomes visible.
+      const tweenDelay = noFade ? 0 : 0.12;
+
+      currentGsapTween = gsap.to(proxy, {
+        t: durationSec,
+        duration: durationSec,
+        delay: tweenDelay,
+        ease: "none",
+        onUpdate: () => {
+          const t = proxy.t;
+
+          if (useCustom) {
+            const dt = t - lastTime;
+            lastTime = t;
+            progress += speedAt(t) * speedScale * dt;
+            progress = clamp01(progress);
+          } else {
+            progress = gsap.parseEase(config.ease || "power2.out")(clamp01(t / durationSec));
+          }
+
+          if (mode === 'dolly-zoom') {
+            // Animate FOV with distance compensation to keep subject size
+            const newFov = THREE.MathUtils.lerp(dollyStartFov, dollyEndFov, progress);
+            const newTan = Math.tan(THREE.MathUtils.degToRad(newFov / 2));
+            const newDistance = dollyBaseDistance * (dollyBaseTan / newTan);
+            camera.position.copy(controls.target).addScaledVector(dollyBaseDirection, newDistance);
+            camera.fov = newFov;
+            camera.updateProjectionMatrix();
+          } else {
+            camera.position.lerpVectors(startPosition, endPosition, progress);
+            controls.target.lerpVectors(startTarget, endTarget, progress);
+
+            if (startOrbitAngle !== 0) {
+              const currentOrbitAngle = startOrbitAngle * (1 - progress);
+              const orbitOffset = new THREE.Vector3().subVectors(camera.position, controls.target);
+              orbitOffset.applyAxisAngle(orbitAxis, currentOrbitAngle);
+              camera.position.copy(controls.target).add(orbitOffset);
+            }
+          }
+
+          controls.update();
+          requestRender();
+        },
+        onComplete: () => {
+          currentGsapTween = null;
+          slideAnimationState = null;
+          updateDollyZoomBaselineFromCamera();
+          if (viewerEl) viewerEl.classList.remove('slide-out', 'slide-in');
+          resolve();
+        },
+      });
+    };
+
+    // Snappy: the GPU compositor hasn't presented the new frame yet even after
+    // forceRenderNow (JS-synchronous but display-async). Wait two rAFs so the
+    // freshly-rendered content is on screen before we reveal it.
+    if (transitionSpeed === 'snappy') {
+      requestAnimationFrame(() => requestAnimationFrame(startRevealAndTween));
+    } else {
+      startRevealAndTween();
+    }
   });
 };
