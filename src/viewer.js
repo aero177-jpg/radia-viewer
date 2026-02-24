@@ -151,6 +151,11 @@ export const setStereoEffectEnabled = (enabled) => {
   if (enabled) {
     ensureStereoCamera();
   }
+  // Re-layout so the canvas uses the full viewport in stereo mode
+  // (lazy import to avoid circular dependency with layout.js)
+  import('./layout.js').then(({ resize }) => {
+    resize();
+  }).catch(() => {});
   requestRender();
 };
 

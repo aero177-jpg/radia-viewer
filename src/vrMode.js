@@ -20,6 +20,7 @@ let xrHandMesh = null;
 let initialModelScale = null;
 let initialModelPosition = null;
 let initialModelQuaternion = null; // Store initial rotation
+let trueOriginalScale = null; // scale before VR baseline applied, for restoring on exit
 let keyListenerAttached = false;
 let controller1 = null;
 let controller2 = null;
@@ -43,6 +44,7 @@ const AXIS_THUMBSTICK_X = 2;
 const AXIS_THUMBSTICK_Y = 3;
 
 // Tuning constants
+const VR_BASELINE_SCALE = 0.25; // initial model size in VR relative to default
 const SCALE_STEP = 1.5; // for button presses
 const MIN_SCALE = 0.02;
 const MAX_SCALE = 20.0;
@@ -116,7 +118,10 @@ const scaleModel = (multiplier) => {
 
 const restoreModelTransform = () => {
   const store = useStore.getState();
-  if (currentMesh && initialModelScale) {
+  // Restore to the true original scale (before VR baseline was applied)
+  if (currentMesh && trueOriginalScale) {
+    currentMesh.scale.copy(trueOriginalScale);
+  } else if (currentMesh && initialModelScale) {
     currentMesh.scale.copy(initialModelScale);
   }
   if (currentMesh && initialModelPosition) {
@@ -129,6 +134,7 @@ const restoreModelTransform = () => {
   initialModelScale = null;
   initialModelPosition = null;
   initialModelQuaternion = null;
+  trueOriginalScale = null;
 };
 
 const resetRotationOnly = () => {
@@ -528,6 +534,11 @@ const handleSessionStart = () => {
   if (controls) controls.enabled = false;
 
   prepareVrCameraStart();
+  trueOriginalScale = currentMesh?.scale?.clone() ?? null;
+  // Apply baseline scale and store as the VR "home" transform
+  if (currentMesh && trueOriginalScale) {
+    currentMesh.scale.copy(trueOriginalScale).multiplyScalar(VR_BASELINE_SCALE);
+  }
   initialModelScale = currentMesh?.scale?.clone() ?? null;
   initialModelPosition = currentMesh?.position?.clone() ?? null;
   initialModelQuaternion = currentMesh?.quaternion?.clone() ?? null; // Store initial rotation

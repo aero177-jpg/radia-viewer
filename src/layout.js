@@ -13,6 +13,7 @@ import {
   requestRender,
   setOriginalImageAspect,
   originalImageAspect,
+  stereoEnabled,
   THREE,
 } from "./viewer.js";
 
@@ -77,7 +78,8 @@ const getVisualViewerSize = () => {
     isPortrait,
   });
 
-  if (fillViewport) {
+  // In stereo mode, use full viewport so each eye gets a proper half-width viewport
+  if (fillViewport || stereoEnabled) {
     return {
       width: clampDimension(availableWidth),
       height: clampDimension(availableHeight),
@@ -92,10 +94,18 @@ const getProjectionViewportSize = () => {
   const fullscreenRoot = document.getElementById('app');
   const isFullscreen = document.fullscreenElement === fullscreenRoot;
   const { availableWidth, availableHeight } = resolveAvailableBounds({
-    fillViewport: isFullscreen,
+    fillViewport: isFullscreen || stereoEnabled,
     isMobile,
     isPortrait,
   });
+
+  // In stereo mode, use full viewport – skip aspect fitting
+  if (stereoEnabled) {
+    return {
+      width: clampDimension(availableWidth),
+      height: clampDimension(availableHeight),
+    };
+  }
 
   return resolveAspectFittedSize(availableWidth, availableHeight, originalImageAspect);
 };
